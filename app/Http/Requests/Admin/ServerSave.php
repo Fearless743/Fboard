@@ -4,115 +4,15 @@
 namespace App\Http\Requests\Admin;
 
 use App\Models\Server;
+use App\Services\ProtocolDefinitionRegistry;
 use Illuminate\Foundation\Http\FormRequest;
 
 class ServerSave extends FormRequest
 {
-    private const UTLS_RULES = [
-        'utls.enabled' => 'nullable|boolean',
-        'utls.fingerprint' => 'nullable|string',
-    ];
-
-    private const MULTIPLEX_RULES = [
-        'multiplex.enabled' => 'nullable|boolean',
-        'multiplex.protocol' => 'nullable|string',
-        'multiplex.max_connections' => 'nullable|integer',
-        'multiplex.min_streams' => 'nullable|integer',
-        'multiplex.max_streams' => 'nullable|integer',
-        'multiplex.padding' => 'nullable|boolean',
-        'multiplex.brutal.enabled' => 'nullable|boolean',
-        'multiplex.brutal.up_mbps' => 'nullable|integer',
-        'multiplex.brutal.down_mbps' => 'nullable|integer',
-    ];
-
-    private const ECH_RULES = [
-        'enabled' => 'nullable|boolean',
-        'config' => 'nullable|string',
-        'query_server_name' => 'nullable|string',
-        'key' => 'nullable|string',
-    ];
-
-    private const REALITY_RULES = [
-        'reality_settings.allow_insecure' => 'nullable|boolean',
-        'reality_settings.server_name' => 'nullable|string',
-        'reality_settings.server_port' => 'nullable|integer',
-        'reality_settings.public_key' => 'nullable|string',
-        'reality_settings.private_key' => 'nullable|string',
-        'reality_settings.short_id' => 'nullable|string',
-    ];
-
-    private const PROTOCOL_RULES = [
-        'shadowsocks' => [
-            'cipher' => 'required|string',
-            'obfs' => 'nullable|string',
-            'obfs_settings.path' => 'nullable|string',
-            'obfs_settings.host' => 'nullable|string',
-            'plugin' => 'nullable|string',
-            'plugin_opts' => 'nullable|string',
-        ],
-        'vmess' => [
-            'tls' => 'required|integer',
-            'network' => 'required|string',
-            'network_settings' => 'nullable|array',
-            'rules' => 'nullable|array',
-        ],
-        'trojan' => [
-            'tls' => 'nullable|integer',
-            'network' => 'required|string',
-            'network_settings' => 'nullable|array',
-            'server_name' => 'nullable|string',
-            'allow_insecure' => 'nullable|boolean',
-        ],
-        'hysteria' => [
-            'version' => 'required|integer',
-            'alpn' => 'nullable|string',
-            'obfs.open' => 'nullable|boolean',
-            'obfs.type' => 'string|nullable',
-            'obfs.password' => 'string|nullable',
-            'bandwidth.up' => 'nullable|integer',
-            'bandwidth.down' => 'nullable|integer',
-            'hop_interval' => 'integer|nullable',
-        ],
-        'vless' => [
-            'tls' => 'required|integer',
-            'network' => 'required|string',
-            'network_settings' => 'nullable|array',
-            'flow' => 'nullable|string',
-            'encryption' => 'nullable|array',
-            'encryption.enabled' => 'nullable|boolean',
-            'encryption.encryption' => 'nullable|string',
-            'encryption.decryption' => 'nullable|string',
-        ],
-        'socks' => [
-            'tls' => 'nullable|integer',
-        ],
-        'naive' => [
-            'tls' => 'required|integer',
-        ],
-        'http' => [
-            'tls' => 'required|integer',
-        ],
-        'tuic' => [
-            'version' => 'nullable|integer',
-            'congestion_control' => 'nullable|string',
-            'alpn' => 'nullable|array',
-            'udp_relay_mode' => 'nullable|string',
-        ],
-        'mieru' => [
-            'transport' => 'required|string|in:TCP,UDP',
-            'traffic_pattern' => 'string',
-        ],
-        'anytls' => [
-            'tls' => 'nullable|array',
-            'alpn' => 'nullable|string',
-            'padding_scheme' => 'nullable|array',
-        ],
-    ];
-
     private function getBaseRules(): array
     {
         return [
-            'type' => 'required|in:' . implode(',', Server::VALID_TYPES),
+            'type' => 'required|in:' . implode(',', Server::getValidTypes()),
             'spectific_key' => 'nullable|string',
             'code' => 'nullable|string',
             'show' => '',
@@ -144,86 +44,14 @@ class ServerSave extends FormRequest
 
     private function getProtocolRules(string $type): array
     {
-        $rules = self::PROTOCOL_RULES[$type] ?? [];
+        $registry = app(ProtocolDefinitionRegistry::class);
+        $definition = $registry->get($type);
 
-        return match ($type) {
-            'vmess' => array_merge(
-                $rules,
-                $this->buildTlsSettingsRules(),
-                self::MULTIPLEX_RULES,
-                self::UTLS_RULES,
-            ),
-            'trojan' => array_merge(
-                $rules,
-                $this->buildTlsSettingsRules(includeRoot: true),
-                self::REALITY_RULES,
-                self::MULTIPLEX_RULES,
-                self::UTLS_RULES,
-            ),
-            'hysteria' => array_merge(
-                $rules,
-                $this->buildTlsObjectRules(),
-            ),
-            'tuic' => array_merge(
-                $rules,
-                $this->buildTlsObjectRules(),
-            ),
-            'mieru' => array_merge(
-                $rules,
-                self::MULTIPLEX_RULES,
-            ),
-            'vless' => array_merge(
-                $rules,
-                $this->buildTlsSettingsRules(),
-                self::REALITY_RULES,
-                self::MULTIPLEX_RULES,
-                self::UTLS_RULES,
-            ),
-            'socks', 'naive', 'http' => array_merge(
-                $rules,
-                $this->buildTlsSettingsRules(includeRoot: $type !== 'socks'),
-            ),
-            'anytls' => array_merge(
-                $rules,
-                $this->buildTlsObjectRules(includeRoot: true),
-            ),
-            default => $rules,
-        };
-    }
-
-    private function buildTlsSettingsRules(bool $includeRoot = false): array
-    {
-        return array_merge(
-            $includeRoot ? ['tls_settings' => 'nullable|array'] : [],
-            [
-                'tls_settings.server_name' => 'nullable|string',
-                'tls_settings.allow_insecure' => 'nullable|boolean',
-                'tls_settings.ech' => 'nullable|array',
-            ],
-            $this->prefixRules('tls_settings.ech.', self::ECH_RULES),
-        );
-    }
-
-    private function buildTlsObjectRules(bool $includeRoot = false): array
-    {
-        return array_merge(
-            $includeRoot ? ['tls' => 'nullable|array'] : [],
-            [
-                'tls.server_name' => 'nullable|string',
-                'tls.allow_insecure' => 'nullable|boolean',
-                'tls.ech' => 'nullable|array',
-            ],
-            $this->prefixRules('tls.ech.', self::ECH_RULES),
-        );
-    }
-
-    private function prefixRules(string $prefix, array $rules): array
-    {
-        $result = [];
-        foreach ($rules as $field => $rule) {
-            $result[$prefix . $field] = $rule;
+        if (!$definition || empty($definition->validationRules)) {
+            return [];
         }
-        return $result;
+
+        return $definition->validationRules;
     }
 
     public function rules(): array
@@ -241,37 +69,27 @@ class ServerSave extends FormRequest
 
     public function attributes(): array
     {
-        return [
-            'protocol_settings.cipher' => '加密方式',
-            'protocol_settings.obfs' => '混淆类型',
-            'protocol_settings.network' => '传输协议',
-            'protocol_settings.port_range' => '端口范围',
-            'protocol_settings.traffic_pattern' => 'Traffic Pattern',
-            'protocol_settings.transport' => '传输方式',
-            'protocol_settings.version' => '协议版本',
-            'protocol_settings.password' => '密码',
-            'protocol_settings.handshake.server' => '握手服务器',
-            'protocol_settings.handshake.server_port' => '握手端口',
-            'protocol_settings.multiplex.enabled' => '多路复用',
-            'protocol_settings.multiplex.protocol' => '复用协议',
-            'protocol_settings.multiplex.max_connections' => '最大连接数',
-            'protocol_settings.multiplex.min_streams' => '最小流数',
-            'protocol_settings.multiplex.max_streams' => '最大流数',
-            'protocol_settings.multiplex.padding' => '复用填充',
-            'protocol_settings.multiplex.brutal.enabled' => 'Brutal加速',
-            'protocol_settings.multiplex.brutal.up_mbps' => 'Brutal上行速率',
-            'protocol_settings.multiplex.brutal.down_mbps' => 'Brutal下行速率',
-            'protocol_settings.utls.enabled' => 'uTLS',
-            'protocol_settings.utls.fingerprint' => 'uTLS指纹',
-            'protocol_settings.tls_settings.ech.enabled' => 'ECH',
-            'protocol_settings.tls_settings.ech.config' => 'ECH配置',
-            'protocol_settings.tls_settings.ech.query_server_name' => 'ECH查询域名',
-            'protocol_settings.tls_settings.ech.key' => 'ECH密钥',
-            'protocol_settings.tls.ech.enabled' => 'ECH',
-            'protocol_settings.tls.ech.config' => 'ECH配置',
-            'protocol_settings.tls.ech.query_server_name' => 'ECH查询域名',
-            'protocol_settings.tls.ech.key' => 'ECH密钥',
-        ];
+        $registry = app(ProtocolDefinitionRegistry::class);
+        $protocolDefinitions = $registry->getAll();
+        $attributes = [];
+
+        foreach ($protocolDefinitions as $type => $definition) {
+            $this->buildAttributesFromFields($definition->configFields, 'protocol_settings.', $attributes);
+        }
+
+        return $attributes;
+    }
+
+    private function buildAttributesFromFields(array $fields, string $prefix, array &$attributes): void
+    {
+        foreach ($fields as $key => $field) {
+            if (isset($field['label'])) {
+                $attributes[$prefix . $key] = $field['label'];
+            }
+            if ($field['type'] === 'object' && isset($field['fields'])) {
+                $this->buildAttributesFromFields($field['fields'], $prefix . $key . '.', $attributes);
+            }
+        }
     }
 
     public function messages()

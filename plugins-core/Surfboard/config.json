@@ -1,0 +1,8 @@
+{
+    "name": "Surfboard Protocol",
+    "code": "surfboard",
+    "type": "protocol",
+    "version": "1.0.0",
+    "description": "Surfboard 协议 - 生成 .conf 配置",
+    "author": "XBoard Team"
+}

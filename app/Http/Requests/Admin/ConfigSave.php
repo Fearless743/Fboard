@@ -53,12 +53,8 @@ class ConfigSave extends FormRequest
         'device_limit_mode' => 'integer',
         'server_ws_enable' => 'boolean',
         'server_ws_url' => 'nullable|url',
-        // frontend
+        // frontend theme
         'frontend_theme' => '',
-        'frontend_theme_sidebar' => 'nullable|in:dark,light',
-        'frontend_theme_header' => 'nullable|in:dark,light',
-        'frontend_theme_color' => 'nullable|in:default,darkblue,black,green',
-        'frontend_background_url' => 'nullable|url',
         // email
         'email_host' => '',
         'email_port' => '',

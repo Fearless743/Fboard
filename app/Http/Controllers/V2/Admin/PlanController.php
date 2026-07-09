@@ -15,6 +15,9 @@ class PlanController extends Controller
 {
     public function fetch(Request $request)
     {
+        $current = $request->input('current', 1);
+        $pageSize = $request->input('pageSize', 10);
+
         $plans = Plan::orderBy('sort', 'ASC')
             ->with([
                 'group:id,name'
@@ -28,9 +31,18 @@ class PlanController extends Controller
                     });
                 }
             ])
-            ->get();
+            ->paginate(
+                perPage: $pageSize,
+                page: $current
+            );
 
-        return $this->success($plans);
+        return response([
+            'data' => $plans->items(),
+            'total' => $plans->total(),
+            'current_page' => $plans->currentPage(),
+            'per_page' => $plans->perPage(),
+            'last_page' => $plans->lastPage(),
+        ]);
     }
 
     public function save(PlanSave $request)

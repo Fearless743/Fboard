@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Protocols;
+namespace Plugin\Stash;
 
 use Symfony\Component\Yaml\Yaml;
 use App\Utils\Helper;

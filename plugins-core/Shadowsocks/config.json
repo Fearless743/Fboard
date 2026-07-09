@@ -1,0 +1,8 @@
+{
+    "name": "Shadowsocks Protocol",
+    "code": "shadowsocks",
+    "type": "protocol",
+    "version": "1.0.0",
+    "description": "Shadowsocks SIP008 协议 - 生成 JSON 配置",
+    "author": "XBoard Team"
+}

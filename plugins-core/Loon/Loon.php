@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Protocols;
+namespace Plugin\Loon;
 
 use App\Support\AbstractProtocol;
 use App\Models\Server;

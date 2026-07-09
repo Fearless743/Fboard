@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Protocols;
+namespace Plugin\QuantumultX;
 
 use App\Utils\Helper;
 use App\Support\AbstractProtocol;

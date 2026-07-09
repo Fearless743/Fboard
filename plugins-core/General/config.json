@@ -1,0 +1,8 @@
+{
+    "name": "General Protocol",
+    "code": "general",
+    "type": "protocol",
+    "version": "1.0.0",
+    "description": "通用/兜底协议 - 生成标准 URI 格式配置",
+    "author": "XBoard Team"
+}

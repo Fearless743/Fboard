@@ -552,6 +552,8 @@ class GiftCardController extends Controller
     {
         $validatedData = $request->validate([
             'id' => 'required|integer|exists:v2_gift_card_code,id',
+            'code' => 'sometimes|string|max:32',
+            'template_id' => 'sometimes|integer|exists:v2_gift_card_template,id',
             'expires_at' => 'sometimes|nullable|integer',
             'max_usage' => 'sometimes|integer|min:1|max:1000',
             'status' => 'sometimes|integer|in:0,1,2,3',
@@ -617,6 +619,33 @@ class GiftCardController extends Controller
                 'error' => $e->getMessage(),
             ]);
             return $this->fail([500, '删除失败']);
+        }
+    }
+
+    /**
+     * 排序礼品卡模板
+     */
+    public function sortTemplates(Request $request)
+    {
+        $request->validate([
+            'ids' => 'required|array',
+            'ids.*' => 'integer|exists:v2_gift_card_template,id',
+        ]);
+
+        try {
+            DB::beginTransaction();
+            foreach ($request->input('ids') as $index => $id) {
+                GiftCardTemplate::where('id', $id)->update([
+                    'sort' => $index + 1,
+                    'updated_at' => time(),
+                ]);
+            }
+            DB::commit();
+            return $this->success(true);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('排序礼品卡模板失败', ['error' => $e->getMessage()]);
+            return $this->fail([500, '排序失败']);
         }
     }
 }

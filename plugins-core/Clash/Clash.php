@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Protocols;
+namespace Plugin\Clash;
 
 use App\Models\Server;
 use Illuminate\Support\Facades\File;

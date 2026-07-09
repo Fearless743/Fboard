@@ -332,7 +332,7 @@ class PluginManager
 
         // 验证插件类型
         if (isset($config['type'])) {
-            $validTypes = ['feature', 'payment'];
+            $validTypes = ['feature', 'payment', 'protocol'];
             if (!in_array($config['type'], $validTypes)) {
                 return false;
             }
@@ -703,6 +703,41 @@ class PluginManager
     public function getEnabledPaymentPlugins(): array
     {
         return $this->getEnabledPluginsByType('payment');
+    }
+
+    /**
+     * install default protocol plugins from plugins-core/
+     */
+    public static function installDefaultProtocols(): void
+    {
+        $pluginManager = app(self::class);
+        $coreDir = base_path('plugins-core');
+
+        if (!File::isDirectory($coreDir)) {
+            return;
+        }
+
+        foreach (File::directories($coreDir) as $directory) {
+            $configFile = $directory . '/config.json';
+            if (!File::exists($configFile)) {
+                continue;
+            }
+            $config = json_decode(File::get($configFile), true);
+            $code = $config['code'] ?? null;
+            $type = $config['type'] ?? null;
+            if (!$code || $type !== 'protocol') {
+                continue;
+            }
+            if (!Plugin::where('code', $code)->exists()) {
+                try {
+                    $pluginManager->install($code);
+                    $pluginManager->enable($code);
+                    Log::info("Installed and enabled protocol plugin: {$code}");
+                } catch (\Exception $e) {
+                    Log::warning("Could not install protocol plugin {$code}: " . $e->getMessage());
+                }
+            }
+        }
     }
 
     /**

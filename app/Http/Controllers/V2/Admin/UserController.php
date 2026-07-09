@@ -683,6 +683,31 @@ class UserController extends Controller
         return $this->success(true);
     }
 
+    public function inviteList(Request $request)
+    {
+        $request->validate([
+            'user_id' => 'required|integer|exists:App\Models\User,id'
+        ]);
+
+        $current = (int) $request->input('current', 1);
+        $pageSize = (int) $request->input('pageSize', 10);
+        $userId = (int) $request->input('user_id');
+
+        $invitedUsers = User::where('invite_user_id', $userId)
+            ->orderBy('created_at', 'DESC')
+            ->paginate($pageSize, ['id', 'email', 'commission_balance', 'created_at'], 'page', $current);
+
+        $invitedUsers->getCollection()->transform(function ($user) {
+            return [
+                'invitee_email' => $user->email,
+                'commission_balance' => $user->commission_balance / 100,
+                'created_at' => $user->created_at,
+            ];
+        });
+
+        return $this->paginate($invitedUsers);
+    }
+
     // Delete user and related data.
     public function destroy(Request $request)
     {

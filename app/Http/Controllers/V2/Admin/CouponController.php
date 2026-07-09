@@ -53,6 +53,16 @@ class CouponController extends Controller
     {
         $params = $request->validate([
             'id' => 'required|numeric',
+            'name' => 'nullable|string',
+            'type' => 'nullable|in:1,2',
+            'value' => 'nullable|integer',
+            'code' => 'nullable|string',
+            'limit_use' => 'nullable|integer',
+            'limit_use_with_user' => 'nullable|integer',
+            'started_at' => 'nullable|integer',
+            'ended_at' => 'nullable|integer',
+            'limit_plan_ids' => 'nullable|array',
+            'limit_period' => 'nullable|array',
             'show' => 'nullable|boolean'
         ], [
             'id.required' => '优惠券ID不能为空',

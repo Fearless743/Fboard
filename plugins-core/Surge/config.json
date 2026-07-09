@@ -1,0 +1,8 @@
+{
+    "name": "Surge Protocol",
+    "code": "surge",
+    "type": "protocol",
+    "version": "1.0.0",
+    "description": "Surge 协议 - 生成 .conf 配置",
+    "author": "XBoard Team"
+}

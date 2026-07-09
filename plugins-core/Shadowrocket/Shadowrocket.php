@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Protocols;
+namespace Plugin\Shadowrocket;
 
 use App\Utils\Helper;
 use App\Support\AbstractProtocol;

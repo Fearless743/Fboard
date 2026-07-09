@@ -3,71 +3,109 @@
 namespace App\Support;
 
 use Illuminate\Contracts\Container\Container;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Str;
 
 class ProtocolManager
 {
-    /**
-     * @var Container Laravel容器实例
-     */
-    protected $container;
+    protected Container $container;
 
-    /**
-     * @var array 缓存的协议类列表
-     */
-    protected $protocolClasses = [];
+    protected array $protocolClasses = [];
 
-    /**
-     * 构造函数
-     *
-     * @param Container $container
-     */
+    protected bool $registered = false;
+
+    protected array $pluginScanPaths = [];
+
     public function __construct(Container $container)
     {
         $this->container = $container;
+        $this->pluginScanPaths = [
+            base_path('plugins-core'),
+            base_path('plugins'),
+        ];
     }
 
-    /**
-     * 发现并注册所有协议类
-     *
-     * @return self
-     */
-    public function registerAllProtocols()
+    public function registerAllProtocols(): self
     {
-        if (empty($this->protocolClasses)) {
-            $files = glob(app_path('Protocols') . '/*.php');
-
-            foreach ($files as $file) {
-                $className = 'App\\Protocols\\' . basename($file, '.php');
-
-                if (class_exists($className) && is_subclass_of($className, AbstractProtocol::class)) {
-                    $this->protocolClasses[] = $className;
-                }
-            }
+        if ($this->registered) {
+            return $this;
         }
+
+        $this->protocolClasses = [];
+
+        $this->discoverFromPlugins();
+        $this->discoverFromHook();
+
+        $this->registered = true;
 
         return $this;
     }
 
-    /**
-     * 获取所有注册的协议类
-     *
-     * @return array
-     */
-    public function getProtocolClasses()
+    protected function discoverFromPlugins(): void
     {
-        if (empty($this->protocolClasses)) {
+        foreach ($this->pluginScanPaths as $pluginsDir) {
+            if (!is_dir($pluginsDir)) {
+                continue;
+            }
+            $directories = glob($pluginsDir . '/*', GLOB_ONLYDIR);
+            foreach ($directories as $dir) {
+                $configFile = $dir . '/config.json';
+                if (!File::exists($configFile)) {
+                    continue;
+                }
+                $config = json_decode(File::get($configFile), true);
+                if (($config['type'] ?? '') !== 'protocol') {
+                    continue;
+                }
+                $dirName = basename($dir);
+                $namespace = 'Plugin\\' . Str::studly($dirName);
+
+                $phpFiles = glob($dir . '/*.php');
+                foreach ($phpFiles as $phpFile) {
+                    $className = basename($phpFile, '.php');
+                    if ($className === 'Plugin') {
+                        continue;
+                    }
+                    require_once $phpFile;
+                    $fqcn = $namespace . '\\' . $className;
+                    if (is_subclass_of($fqcn, AbstractProtocol::class)) {
+                        if (!in_array($fqcn, $this->protocolClasses, true)) {
+                            $this->protocolClasses[] = $fqcn;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    protected function discoverFromHook(): void
+    {
+        $extraClasses = \App\Services\Plugin\HookManager::filter('protocols.register', []);
+        foreach ($extraClasses as $className) {
+            if (!in_array($className, $this->protocolClasses, true)
+                && class_exists($className)
+                && is_subclass_of($className, AbstractProtocol::class)) {
+                $this->protocolClasses[] = $className;
+            }
+        }
+    }
+
+    public function reset(): self
+    {
+        $this->registered = false;
+        $this->protocolClasses = [];
+        return $this;
+    }
+
+    public function getProtocolClasses(): array
+    {
+        if (!$this->registered) {
             $this->registerAllProtocols();
         }
-
         return $this->protocolClasses;
     }
 
-    /**
-     * 获取所有协议的标识
-     *
-     * @return array
-     */
-    public function getAllFlags()
+    public function getAllFlags(): array
     {
         return collect($this->getProtocolClasses())
             ->map(function ($class) {
@@ -76,11 +114,9 @@ class ProtocolManager
                     if (!$reflection->isInstantiable()) {
                         return [];
                     }
-                    // 'flags' is a public property with a default value in AbstractProtocol
                     $instanceForFlags = $reflection->newInstanceWithoutConstructor();
                     return $instanceForFlags->flags;
                 } catch (\ReflectionException $e) {
-                    // Log or handle error if a class is problematic
                     report($e);
                     return [];
                 }
@@ -91,15 +127,8 @@ class ProtocolManager
             ->all();
     }
 
-    /**
-     * 根据标识匹配合适的协议处理器类名
-     *
-     * @param string $flag 请求标识
-     * @return string|null 协议类名或null
-     */
     public function matchProtocolClassName(string $flag): ?string
     {
-        // 按照相反顺序，使最新定义的协议有更高优先级
         foreach (array_reverse($this->getProtocolClasses()) as $protocolClassString) {
             try {
                 $reflection = new \ReflectionClass($protocolClassString);
@@ -108,30 +137,20 @@ class ProtocolManager
                     continue;
                 }
 
-                // 'flags' is a public property in AbstractProtocol
                 $instanceForFlags = $reflection->newInstanceWithoutConstructor();
                 $flags = $instanceForFlags->flags;
 
                 if (collect($flags)->contains(fn($f) => stripos($flag, (string) $f) !== false)) {
-                    return $protocolClassString; // 返回类名字符串
+                    return $protocolClassString;
                 }
             } catch (\ReflectionException $e) {
-                report($e); // Consider logging this error
+                report($e);
                 continue;
             }
         }
         return null;
     }
 
-    /**
-     * 根据标识匹配合适的协议处理器实例 (原有逻辑，如果还需要的话)
-     *
-     * @param string $flag 请求标识
-     * @param array $user 用户信息
-     * @param array $servers 服务器列表
-     * @param array $clientInfo 客户端信息
-     * @return AbstractProtocol|null
-     */
     public function matchProtocol($flag, $user, $servers, $clientInfo = [])
     {
         $protocolClassName = $this->matchProtocolClassName($flag);
@@ -140,23 +159,14 @@ class ProtocolManager
                 'user' => $user,
                 'servers' => $servers,
                 'clientName' => $clientInfo['name'] ?? null,
-                'clientVersion' => $clientInfo['version'] ?? null
+                'clientVersion' => $clientInfo['version'] ?? null,
             ]);
         }
         return null;
     }
 
-    /**
-     * 创建协议实例的通用方法，兼容不同版本的Laravel容器
-     * 
-     * @param string $class 类名
-     * @param array $parameters 构造参数
-     * @return object 实例
-     */
     protected function makeProtocolInstance($class, array $parameters)
     {
-        // Laravel's make method can accept an array of parameters as its second argument.
-        // These will be used when resolving the class's dependencies.
         return $this->container->make($class, $parameters);
     }
 }

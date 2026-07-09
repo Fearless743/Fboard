@@ -27,6 +27,7 @@ class Plugin extends Model
 
     const TYPE_FEATURE = 'feature';
     const TYPE_PAYMENT = 'payment';
+    const TYPE_PROTOCOL = 'protocol';
 
     // 默认不可删除的插件列表
     const PROTECTED_PLUGINS = [

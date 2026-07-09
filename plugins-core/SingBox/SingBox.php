@@ -1,5 +1,5 @@
 <?php
-namespace App\Protocols;
+namespace Plugin\SingBox;
 
 use App\Utils\Helper;
 use Illuminate\Support\Arr;

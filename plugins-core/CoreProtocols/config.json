@@ -1,0 +1,8 @@
+{
+    "name": "Core Protocols",
+    "code": "core_protocols",
+    "type": "protocol",
+    "version": "1.0.0",
+    "description": "系统内置协议类型定义 - 包含 Shadowsocks、VMess、VLESS、Trojan、Hysteria、TUIC、AnyTLS、SOCKS、NaïveProxy、HTTP、Mieru",
+    "author": "XBoard Team"
+}

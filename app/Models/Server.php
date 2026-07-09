@@ -6,9 +6,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\App;
 use App\Utils\CacheKey;
 use App\Utils\Helper;
 use App\Models\User;
+use App\Services\ProtocolDefinitionRegistry;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 
 /**
@@ -96,19 +98,10 @@ class Server extends Model
         'hysteria2' => self::TYPE_HYSTERIA,
     ];
 
-    public const VALID_TYPES = [
-        self::TYPE_HYSTERIA,
-        self::TYPE_VLESS,
-        self::TYPE_TROJAN,
-        self::TYPE_VMESS,
-        self::TYPE_TUIC,
-        self::TYPE_SHADOWSOCKS,
-        self::TYPE_ANYTLS,
-        self::TYPE_SOCKS,
-        self::TYPE_NAIVE,
-        self::TYPE_HTTP,
-        self::TYPE_MIERU,
-    ];
+    public static function getValidTypes(): array
+    {
+        return app(ProtocolDefinitionRegistry::class)->getValidTypes();
+    }
 
     protected $table = 'v2_server';
 
@@ -135,193 +128,34 @@ class Server extends Model
         'machine_id' => 'integer',
     ];
 
-    private const MULTIPLEX_CONFIGURATION = [
-        'multiplex' => [
-            'type' => 'object',
-            'fields' => [
-                'enabled' => ['type' => 'boolean', 'default' => false],
-                'protocol' => ['type' => 'string', 'default' => 'yamux'],
-                'max_connections' => ['type' => 'integer', 'default' => null],
-                // 'min_streams' => ['type' => 'integer', 'default' => null],
-                // 'max_streams' => ['type' => 'integer', 'default' => null],
-                'padding' => ['type' => 'boolean', 'default' => false],
-                'brutal' => [
-                    'type' => 'object',
-                    'fields' => [
-                        'enabled' => ['type' => 'boolean', 'default' => false],
-                        'up_mbps' => ['type' => 'integer', 'default' => null],
-                        'down_mbps' => ['type' => 'integer', 'default' => null],
-                    ]
-                ]
-            ]
-        ]
-    ];
+    public static function getProtocolConfigurations(): array
+    {
+        $registry = app(ProtocolDefinitionRegistry::class);
+        $configs = [];
 
-    private const REALITY_CONFIGURATION = [
-        'reality_settings' => [
-            'type' => 'object',
-            'fields' => [
-                'server_name' => ['type' => 'string', 'default' => null],
-                'server_port' => ['type' => 'string', 'default' => null],
-                'public_key' => ['type' => 'string', 'default' => null],
-                'private_key' => ['type' => 'string', 'default' => null],
-                'short_id' => ['type' => 'string', 'default' => null],
-                'allow_insecure' => ['type' => 'boolean', 'default' => false],
-            ]
-        ]
-    ];
+        foreach ($registry->getAll() as $type => $definition) {
+            $configs[$type] = self::convertConfigFieldsToCastingFormat($definition->configFields);
+        }
 
-    private const UTLS_CONFIGURATION = [
-        'utls' => [
-            'type' => 'object',
-            'fields' => [
-                'enabled' => ['type' => 'boolean', 'default' => false],
-                'fingerprint' => ['type' => 'string', 'default' => 'chrome'],
-            ]
-        ]
-    ];
+        return $configs;
+    }
 
-    private const ECH_CONFIGURATION = [
-        'ech' => [
-            'type' => 'object',
-            'fields' => [
-                'enabled' => ['type' => 'boolean', 'default' => false],
-                'config' => ['type' => 'string', 'default' => null],
-                'query_server_name' => ['type' => 'string', 'default' => null],
-                'key' => ['type' => 'string', 'default' => null],
-                'key_path' => ['type' => 'string', 'default' => null],
-                'config_path' => ['type' => 'string', 'default' => null],
-            ]
-        ]
-    ];
-
-    private const TLS_SETTINGS_CONFIGURATION = [
-        'type' => 'object',
-        'fields' => [
-            'server_name' => ['type' => 'string', 'default' => null],
-            'allow_insecure' => ['type' => 'boolean', 'default' => false],
-            ...self::ECH_CONFIGURATION,
-        ]
-    ];
-
-    private const TLS_CONFIGURATION = [
-        'type' => 'object',
-        'fields' => [
-            'server_name' => ['type' => 'string', 'default' => null],
-            'allow_insecure' => ['type' => 'boolean', 'default' => false],
-            ...self::ECH_CONFIGURATION,
-        ]
-    ];
-
-    private const PROTOCOL_CONFIGURATIONS = [
-        self::TYPE_TROJAN => [
-            'tls' => ['type' => 'integer', 'default' => 1],
-            'network' => ['type' => 'string', 'default' => null],
-            'network_settings' => ['type' => 'array', 'default' => null],
-            'server_name' => ['type' => 'string', 'default' => null],
-            'allow_insecure' => ['type' => 'boolean', 'default' => false],
-            'tls_settings' => self::TLS_SETTINGS_CONFIGURATION,
-            ...self::REALITY_CONFIGURATION,
-            ...self::MULTIPLEX_CONFIGURATION,
-            ...self::UTLS_CONFIGURATION
-        ],
-        self::TYPE_VMESS => [
-            'tls' => ['type' => 'integer', 'default' => 0],
-            'network' => ['type' => 'string', 'default' => null],
-            'rules' => ['type' => 'array', 'default' => null],
-            'network_settings' => ['type' => 'array', 'default' => null],
-            'tls_settings' => self::TLS_SETTINGS_CONFIGURATION,
-            ...self::MULTIPLEX_CONFIGURATION,
-            ...self::UTLS_CONFIGURATION
-        ],
-        self::TYPE_VLESS => [
-            'tls' => ['type' => 'integer', 'default' => 0],
-            'tls_settings' => self::TLS_SETTINGS_CONFIGURATION,
-            'flow' => ['type' => 'string', 'default' => null],
-            'encryption' => [
-                'type' => 'object',
-                'default' => null,
-                'fields' => [
-                    'enabled' => ['type' => 'boolean', 'default' => false],
-                    'encryption' => ['type' => 'string', 'default' => null],  // 客户端公钥
-                    'decryption' => ['type' => 'string', 'default' => null],   // 服务端私钥
-                ]
-            ],
-            'network' => ['type' => 'string', 'default' => null],
-            'network_settings' => ['type' => 'array', 'default' => null],
-            ...self::REALITY_CONFIGURATION,
-            ...self::MULTIPLEX_CONFIGURATION,
-            ...self::UTLS_CONFIGURATION
-        ],
-        self::TYPE_SHADOWSOCKS => [
-            'cipher' => ['type' => 'string', 'default' => null],
-            'obfs' => ['type' => 'string', 'default' => null],
-            'obfs_settings' => ['type' => 'array', 'default' => null],
-            'plugin' => ['type' => 'string', 'default' => null],
-            'plugin_opts' => ['type' => 'string', 'default' => null]
-        ],
-        self::TYPE_HYSTERIA => [
-            'version' => ['type' => 'integer', 'default' => 2],
-            'bandwidth' => [
-                'type' => 'object',
-                'fields' => [
-                    'up' => ['type' => 'integer', 'default' => null],
-                    'down' => ['type' => 'integer', 'default' => null]
-                ]
-            ],
-            'obfs' => [
-                'type' => 'object',
-                'fields' => [
-                    'open' => ['type' => 'boolean', 'default' => false],
-                    'type' => ['type' => 'string', 'default' => 'salamander'],
-                    'password' => ['type' => 'string', 'default' => null]
-                ]
-            ],
-            'tls' => self::TLS_CONFIGURATION,
-            'hop_interval' => ['type' => 'integer', 'default' => null]
-        ],
-        self::TYPE_TUIC => [
-            'version' => ['type' => 'integer', 'default' => 5],
-            'congestion_control' => ['type' => 'string', 'default' => 'cubic'],
-            'alpn' => ['type' => 'array', 'default' => ['h3']],
-            'udp_relay_mode' => ['type' => 'string', 'default' => 'native'],
-            'tls' => self::TLS_CONFIGURATION
-        ],
-        self::TYPE_ANYTLS => [
-            'padding_scheme' => [
-                'type' => 'array',
-                'default' => [
-                    "stop=8",
-                    "0=30-30",
-                    "1=100-400",
-                    "2=400-500,c,500-1000,c,500-1000,c,500-1000,c,500-1000",
-                    "3=9-9,500-1000",
-                    "4=500-1000",
-                    "5=500-1000",
-                    "6=500-1000",
-                    "7=500-1000"
-                ]
-            ],
-            'tls' => self::TLS_CONFIGURATION
-        ],
-        self::TYPE_SOCKS => [
-            'tls' => ['type' => 'integer', 'default' => 0],
-            'tls_settings' => self::TLS_SETTINGS_CONFIGURATION
-        ],
-        self::TYPE_NAIVE => [
-            'tls' => ['type' => 'integer', 'default' => 0],
-            'tls_settings' => self::TLS_SETTINGS_CONFIGURATION
-        ],
-        self::TYPE_HTTP => [
-            'tls' => ['type' => 'integer', 'default' => 0],
-            'tls_settings' => self::TLS_SETTINGS_CONFIGURATION
-        ],
-        self::TYPE_MIERU => [
-            'transport' => ['type' => 'string', 'default' => 'TCP'],
-            'traffic_pattern' => ['type' => 'string', 'default' => ''],
-            ...self::MULTIPLEX_CONFIGURATION,
-        ]
-    ];
+    private static function convertConfigFieldsToCastingFormat(array $fields): array
+    {
+        $result = [];
+        foreach ($fields as $key => $field) {
+            if (isset($field['type'])) {
+                $result[$key] = [
+                    'type' => $field['type'],
+                    'default' => $field['default'] ?? null,
+                ];
+                if ($field['type'] === 'object' && isset($field['fields'])) {
+                    $result[$key]['fields'] = $field['fields'];
+                }
+            }
+        }
+        return $result;
+    }
 
     private function castValueWithConfig($value, array $config)
     {
@@ -354,7 +188,7 @@ class Server extends Model
     public function getProtocolSettingsAttribute($value)
     {
         $settings = json_decode($value, true) ?? [];
-        $configs = self::PROTOCOL_CONFIGURATIONS[$this->type] ?? [];
+        $configs = self::getProtocolConfigurations()[$this->type] ?? [];
         return $this->castSettingsWithConfig($settings, $configs);
     }
 
@@ -364,7 +198,7 @@ class Server extends Model
             $value = json_decode($value, true);
         }
 
-        $configs = self::PROTOCOL_CONFIGURATIONS[$this->type] ?? [];
+        $configs = self::getProtocolConfigurations()[$this->type] ?? [];
         $castedSettings = $this->castSettingsWithConfig($value ?? [], $configs);
 
         $this->attributes['protocol_settings'] = json_encode($castedSettings);
@@ -397,7 +231,7 @@ class Server extends Model
     
     public static function isValidType(?string $type): bool
     {
-        return $type ? in_array(self::normalizeType($type), self::VALID_TYPES, true) : true;
+        return $type ? in_array(self::normalizeType($type), self::getValidTypes(), true) : true;
     }
 
     public function getAvailableStatusAttribute(): int
@@ -410,6 +244,68 @@ class Server extends Model
             return self::STATUS_ONLINE_NO_PUSH;
         }
         return self::STATUS_ONLINE;
+    }
+
+    /**
+     * 获取合并后的有效配置（子节点继承父节点配置）
+     */
+    public function getEffectiveAttribute(): self
+    {
+        if (!$this->parent_id || !$this->parent) {
+            return $this;
+        }
+        $parent = $this->parent;
+        $merged = clone $parent;
+        $merged->id = $this->id;
+        $merged->name = $this->name;
+        $merged->host = $this->host;
+        $merged->port = $this->port;
+        $merged->server_port = $this->server_port ?? $parent->server_port;
+        $merged->group_ids = $this->group_ids ?? $parent->group_ids;
+        $merged->tags = $this->tags ?? $parent->tags;
+        $merged->parent_id = $this->parent_id;
+        $merged->show = $this->show;
+        $merged->sort = $this->sort ?? $parent->sort;
+        $merged->machine_id = $this->machine_id ?? $parent->machine_id;
+
+        // 合并 protocol_settings：子节点覆盖父节点
+        $merged->protocol_settings = array_merge(
+            $parent->protocol_settings ?? [],
+            $this->protocol_settings ?? []
+        );
+        return $merged;
+    }
+
+    /**
+     * 创建虚拟节点（继承父节点配置）
+     */
+    public static function createVirtual(array $data): self
+    {
+        $parentId = $data['parent_id'] ?? null;
+        if (!$parentId || !($parent = self::find($parentId))) {
+            throw new \InvalidArgumentException('父节点不存在');
+        }
+
+        $data['type'] = 'virtual';
+        $data['protocol_settings'] = $parent->protocol_settings;
+        $data['rate'] = $parent->rate;
+        $data['show'] = $data['show'] ?? $parent->show;
+        $data['listen_address'] = $data['listen_address'] ?? $parent->listen_address;
+        $data['server_port'] = $data['server_port'] ?? $parent->server_port;
+        $data['banned'] = $data['banned'] ?? $parent->banned ?? false;
+        $data['traffic_limit'] = $data['traffic_limit'] ?? $parent->traffic_limit ?? 0;
+        $data['sort'] = $parent->sort ?? 0;
+
+        return self::create($data);
+    }
+
+    /**
+     * 获取虚拟节点列表（从 protocol_settings.virtual_nodes JSON 字段）
+     */
+    public function getVirtualNodes(): array
+    {
+        $settings = $this->protocol_settings ?? [];
+        return $settings['virtual_nodes'] ?? [];
     }
 
     public function parent(): BelongsTo

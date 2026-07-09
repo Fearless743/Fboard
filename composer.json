@@ -60,7 +60,7 @@
         "psr-4": {
             "App\\": "app/",
             "Library\\": "library/",
-            "Plugin\\": "plugins/"
+            "Plugin\\": ["plugins/", "plugins-core/"]
         },
         "classmap": [
             "database/seeders",

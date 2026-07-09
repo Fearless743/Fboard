@@ -1,0 +1,8 @@
+{
+    "name": "Clash Meta Protocol",
+    "code": "clash_meta",
+    "type": "protocol",
+    "version": "1.0.0",
+    "description": "Clash Meta 协议 - 生成 Meta 内核 YAML 配置",
+    "author": "XBoard Team"
+}

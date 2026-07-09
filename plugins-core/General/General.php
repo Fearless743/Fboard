@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Protocols;
+namespace Plugin\General;
 
 use App\Models\Server;
 use App\Utils\Helper;
@@ -155,21 +155,20 @@ class General extends AbstractProtocol
     public static function buildVless($uuid, $server)
     {
         $protocol_settings = $server['protocol_settings'];
-        $host = $server['host']; //节点地址
-        $port = $server['port']; //节点端口
-        $name = $server['name']; //节点名称
+        $host = $server['host'];
+        $port = $server['port'];
+        $name = $server['name'];
 
         $config = [
-            'mode' => 'multi', //grpc传输模式
-            'security' => '', //传输层安全 tls/reality
+            'mode' => 'multi',
+            'security' => '',
             'encryption' => match (data_get($protocol_settings, 'encryption.enabled')) {
                 true => data_get($protocol_settings, 'encryption.encryption', 'none'),
                 default => 'none'
             },
-            'type' => data_get($server, 'protocol_settings.network'), //传输协议
+            'type' => data_get($server, 'protocol_settings.network'),
             'flow' => data_get($protocol_settings, 'flow'),
         ];
-        // 处理TLS
         switch (data_get($server, 'protocol_settings.tls')) {
             case 1:
                 $config['security'] = "tls";
@@ -183,7 +182,7 @@ class General extends AbstractProtocol
                     $config['allowInsecure'] = '1';
                 }
                 break;
-            case 2: //reality
+            case 2:
                 $config['security'] = "reality";
                 $config['pbk'] = data_get($protocol_settings, 'reality_settings.public_key');
                 $config['sid'] = data_get($protocol_settings, 'reality_settings.short_id');
@@ -197,7 +196,6 @@ class General extends AbstractProtocol
             default:
                 break;
         }
-        // 处理传输协议
         switch (data_get($server, 'protocol_settings.network')) {
             case 'ws':
                 if ($path = data_get($protocol_settings, 'network_settings.path'))
@@ -252,7 +250,7 @@ class General extends AbstractProtocol
         $tlsMode = (int) data_get($protocol_settings, 'tls', 1);
 
         switch ($tlsMode) {
-            case 2: // Reality
+            case 2:
                 $array['security'] = 'reality';
                 $array['pbk'] = data_get($protocol_settings, 'reality_settings.public_key');
                 $array['sid'] = data_get($protocol_settings, 'reality_settings.short_id');
@@ -261,7 +259,7 @@ class General extends AbstractProtocol
                     $array['fp'] = $fp;
                 }
                 break;
-            default: // Standard TLS
+            default:
                 $array['allowInsecure'] = (bool) data_get($protocol_settings, 'tls_settings.allow_insecure', false);
                 if ($serverName = data_get($protocol_settings, 'tls_settings.server_name')) {
                     $array['peer'] = $serverName;
@@ -282,7 +280,6 @@ class General extends AbstractProtocol
                     $array['host'] = $host;
                 break;
             case 'grpc':
-                // Follow V2rayN family standards
                 $array['type'] = 'grpc';
                 if ($serviceName = data_get($protocol_settings, 'network_settings.serviceName'))
                     $array['serviceName'] = $serviceName;
@@ -373,17 +370,15 @@ class General extends AbstractProtocol
         $name = rawurlencode($server['name']);
         $addr = Helper::wrapIPv6($server['host']);
         $port = $server['port'];
-        $uuid = $password; // v2rayN格式里，uuid和password都是密码部分
+        $uuid = $password;
         $pass = $password;
 
         $queryParams = [];
 
-        // 填充sni参数
         if ($sni = data_get($protocol_settings, 'tls.server_name')) {
             $queryParams['sni'] = $sni;
         }
 
-        // alpn参数，支持多值时用逗号连接
         if ($alpn = data_get($protocol_settings, 'alpn')) {
             if (is_array($alpn)) {
                 $queryParams['alpn'] = implode(',', $alpn);
@@ -392,11 +387,9 @@ class General extends AbstractProtocol
             }
         }
 
-        // congestion_controller参数，默认cubic
         $congestion = data_get($protocol_settings, 'congestion_control', 'cubic');
         $queryParams['congestion_control'] = $congestion;
 
-        // udp_relay_mode参数，默认native
         $udpRelay = data_get($protocol_settings, 'udp_relay_mode', 'native');
         $queryParams['udp-relay-mode'] = $udpRelay;
 
@@ -406,8 +399,6 @@ class General extends AbstractProtocol
 
         $query = http_build_query($queryParams);
 
-        // 构造完整URI，格式：
-        // Tuic://uuid:password@host:port?sni=xxx&alpn=xxx&congestion_controller=xxx&udp_relay_mode=xxx#别名
         $uri = "tuic://{$uuid}:{$pass}@{$addr}:{$port}";
 
         if (!empty($query)) {

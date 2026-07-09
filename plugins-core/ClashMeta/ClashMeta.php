@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Protocols;
+namespace Plugin\ClashMeta;
 
 use App\Models\Server;
 use App\Utils\Helper;

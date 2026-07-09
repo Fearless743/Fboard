@@ -1,0 +1,8 @@
+{
+    "name": "Clash Protocol",
+    "code": "clash",
+    "type": "protocol",
+    "version": "1.0.0",
+    "description": "Clash 协议 - 生成 YAML 配置",
+    "author": "XBoard Team"
+}

@@ -16,12 +16,51 @@ class ManageController extends Controller
 {
     public function getNodes(Request $request)
     {
-        $servers = ServerService::getAllServers()->map(function ($item) {
+        $current = $request->input('current', 1);
+        $pageSize = $request->input('pageSize', 20);
+        $search = $request->input('search', '');
+        $typeFilter = $request->input('type', '');
+        $showVirtual = $request->input('show_virtual', false);
+
+        $query = Server::orderBy('sort', 'ASC');
+
+        // 默认排除虚拟节点
+        if (!$showVirtual) {
+            $query->where('type', '!=', 'virtual');
+        }
+
+        // 类型过滤
+        if ($typeFilter) {
+            $query->where('type', $typeFilter);
+        }
+
+        // 搜索过滤
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('host', 'like', "%{$search}%")
+                  ->orWhere('id', 'like', "%{$search}%");
+            });
+        }
+
+        $servers = $query->paginate($pageSize, ['*'], 'page', $current);
+
+        $servers->getCollection()->transform(function ($item) {
             $item['groups'] = ServerGroup::whereIn('id', $item['group_ids'] ?? [])->get(['name', 'id']);
             $item['parent'] = $item->parent;
             return $item;
         });
-        return $this->success($servers);
+
+        return $this->paginate($servers);
+    }
+
+    /**
+     * 获取用于排序的精简节点列表（仅 id/name/sort/type 四字段，含虚拟节点）
+     */
+    public function getSortNodes()
+    {
+        $nodes = Server::orderBy('sort', 'ASC')->get(['id', 'name', 'sort', 'type']);
+        return $this->success($nodes);
     }
 
     public function sort(Request $request)
@@ -287,6 +326,81 @@ class ManageController extends Controller
     }
 
     /**
+     * 创建子节点（继承父节点配置）
+     */
+    public function createChildNode(Request $request)
+    {
+        $request->validate([
+            'parent_id' => 'required|integer|exists:v2_server,id',
+            'name' => 'required|string|max:255',
+            'host' => 'required|string',
+            'port' => 'required|integer',
+            'group_ids' => 'nullable|array',
+            'tags' => 'nullable|array',
+            'show' => 'boolean',
+        ]);
+
+        try {
+            $server = Server::createVirtual($request->all());
+            return $this->success($server);
+        } catch (\Exception $e) {
+            Log::error('创建子节点失败', ['error' => $e->getMessage()]);
+            return $this->fail([500, '创建失败']);
+        }
+    }
+
+    /**
+     * 获取虚拟子节点列表
+     */
+    public function getChildren(int $id)
+    {
+        $children = Server::where('parent_id', $id)->get(['id', 'name', 'host', 'port', 'show']);
+        return $this->success($children);
+    }
+
+    /**
+     * 获取虚拟节点列表
+     */
+    public function getVirtualNodes(int $id)
+    {
+        $server = Server::find($id);
+        if (!$server) {
+            return $this->fail([404, '节点不存在']);
+        }
+        return $this->success($server->getVirtualNodes());
+    }
+
+    /**
+     * 保存虚拟节点列表
+     */
+    public function saveVirtualNodes(int $id, Request $request)
+    {
+        $server = Server::find($id);
+        if (!$server) {
+            return $this->fail([404, '节点不存在']);
+        }
+
+        $request->validate([
+            'virtual_nodes' => 'array',
+            'virtual_nodes.*.host' => 'required|string',
+            'virtual_nodes.*.port' => 'required|integer',
+            'virtual_nodes.*.group_ids' => 'nullable|array',
+            'virtual_nodes.*.tags' => 'nullable|array',
+        ]);
+
+        try {
+            $settings = $server->protocol_settings ?? [];
+            $settings['virtual_nodes'] = array_values($request->input('virtual_nodes', []));
+            $server->protocol_settings = $settings;
+            $server->save();
+            return $this->success($settings['virtual_nodes']);
+        } catch (\Exception $e) {
+            Log::error('保存虚拟节点失败', ['error' => $e->getMessage()]);
+            return $this->fail([500, '保存失败']);
+        }
+    }
+
+    /**
      * Generate ECH (Encrypted Client Hello) key pair.
      * Returns PEM-encoded ECH key (server-side) and ECH config (client-side).
      */
@@ -336,6 +450,21 @@ class ManageController extends Controller
         return $this->success([
             'key' => $keyPem,
             'config' => $configPem,
+        ]);
+    }
+
+    /**
+     * 生成 Reality x25519 密钥对
+     */
+    public function generateRealityKey()
+    {
+        $keypair = sodium_crypto_box_keypair();
+        $secretKey = sodium_crypto_box_secretkey($keypair);
+        $publicKey = sodium_crypto_box_publickey($keypair);
+
+        return $this->success([
+            'public_key' => base64_encode($publicKey),
+            'private_key' => base64_encode($secretKey),
         ]);
     }
 }

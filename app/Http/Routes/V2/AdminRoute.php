@@ -4,6 +4,7 @@ namespace App\Http\Routes\V2;
 use App\Http\Controllers\V2\Admin\ConfigController;
 use App\Http\Controllers\V2\Admin\MailTemplateController;
 use App\Http\Controllers\V2\Admin\PlanController;
+use App\Http\Controllers\V2\Admin\ProtocolDefinitionController;
 use App\Http\Controllers\V2\Admin\Server\GroupController;
 use App\Http\Controllers\V2\Admin\Server\RouteController;
 use App\Http\Controllers\V2\Admin\Server\ManageController;
@@ -84,8 +85,13 @@ class AdminRoute
                 'prefix' => 'server/manage'
             ], function ($router) {
                 $router->get('/getNodes', [ManageController::class, 'getNodes']);
+                $router->get('/get-sort-nodes', [ManageController::class, 'getSortNodes']);
                 $router->post('/update', [ManageController::class, 'update']);
                 $router->post('/save', [ManageController::class, 'save']);
+                $router->post('/create-child-node', [ManageController::class, 'createChildNode']);
+                $router->post('/save-virtual-nodes/{id}', [ManageController::class, 'saveVirtualNodes']);
+                $router->get('/get-virtual-nodes/{id}', [ManageController::class, 'getVirtualNodes']);
+                $router->get('/get-children/{id}', [ManageController::class, 'getChildren']);
                 $router->post('/drop', [ManageController::class, 'drop']);
                 $router->post('/copy', [ManageController::class, 'copy']);
                 $router->post('/sort', [ManageController::class, 'sort']);
@@ -94,6 +100,18 @@ class AdminRoute
                 $router->post('/resetTraffic', [ManageController::class, 'resetTraffic']);
                 $router->post('/batchResetTraffic', [ManageController::class, 'batchResetTraffic']);
                 $router->get('/generateEchKey', [ManageController::class, 'generateEchKey']);
+                $router->get('/generate-reality-key', [ManageController::class, 'generateRealityKey']);
+            });
+
+            // 协议定义接口（插件协议动态注册）
+            $router->group([
+                'prefix' => 'server/protocols'
+            ], function ($router) {
+                $router->get('/definitions', [ProtocolDefinitionController::class, 'index']);
+                $router->get('/types', [ProtocolDefinitionController::class, 'types']);
+                $router->get('/definition/{type}', [ProtocolDefinitionController::class, 'show']);
+                $router->get('/definition/{type}/fields', [ProtocolDefinitionController::class, 'configFields']);
+                $router->get('/definition/{type}/validation', [ProtocolDefinitionController::class, 'validationRules']);
             });
 
             // 机器管理接口
@@ -135,6 +153,7 @@ class AdminRoute
                 $router->post('/ban', [UserController::class, 'ban']);
                 $router->post('/resetSecret', [UserController::class, 'resetSecret']);
                 $router->post('/setInviteUser', [UserController::class, 'setInviteUser']);
+                $router->get('/inviteList', [UserController::class, 'inviteList']);
                 $router->post('/destroy', [UserController::class, 'destroy']);
             });
 
@@ -194,6 +213,7 @@ class AdminRoute
                 $router->post('/create-template', [GiftCardController::class, 'createTemplate']);
                 $router->post('/update-template', [GiftCardController::class, 'updateTemplate']);
                 $router->post('/delete-template', [GiftCardController::class, 'deleteTemplate']);
+                $router->post('/sort-templates', [GiftCardController::class, 'sortTemplates']);
 
                 // Code management
                 $router->post('/generate-codes', [GiftCardController::class, 'generateCodes']);

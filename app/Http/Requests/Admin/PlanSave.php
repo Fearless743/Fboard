@@ -35,6 +35,9 @@ class PlanSave extends FormRequest
             'device_limit' => 'integer|nullable|min:0',
             'capacity_limit' => 'integer|nullable|min:0',
             'tags' => 'array|nullable',
+            'show' => 'integer|in:0,1',
+            'sell' => 'integer|in:0,1',
+            'renew' => 'integer|in:0,1',
         ];
     }
 

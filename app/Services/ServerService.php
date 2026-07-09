@@ -393,6 +393,12 @@ class ServerService
             }
         }
 
+        // Allow plugins to extend or override the server config
+        $pluginConfig = HookManager::filter('protocols.server_config', [], $node);
+        if (!empty($pluginConfig)) {
+            $response = array_merge($response, $pluginConfig);
+        }
+
         return $response;
     }
 

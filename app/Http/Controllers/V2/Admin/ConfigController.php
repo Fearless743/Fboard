@@ -131,13 +131,6 @@ class ConfigController extends Controller
                 'default_remind_traffic' => (bool) admin_setting('default_remind_traffic', 1),
                 'subscribe_path' => admin_setting('subscribe_path', 's'),
             ],
-            'frontend' => [
-                'frontend_theme' => admin_setting('frontend_theme', 'Xboard'),
-                'frontend_theme_sidebar' => admin_setting('frontend_theme_sidebar', 'light'),
-                'frontend_theme_header' => admin_setting('frontend_theme_header', 'dark'),
-                'frontend_theme_color' => admin_setting('frontend_theme_color', 'default'),
-                'frontend_background_url' => admin_setting('frontend_background_url'),
-            ],
             'server' => [
                 'server_token' => admin_setting('server_token'),
                 'server_pull_interval' => admin_setting('server_pull_interval', 60),

@@ -1,0 +1,8 @@
+{
+    "name": "Stash Protocol",
+    "code": "stash",
+    "type": "protocol",
+    "version": "1.0.0",
+    "description": "Stash 协议 - 生成 YAML 配置",
+    "author": "XBoard Team"
+}

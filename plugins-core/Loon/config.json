@@ -1,0 +1,8 @@
+{
+    "name": "Loon Protocol",
+    "code": "loon",
+    "type": "protocol",
+    "version": "1.0.0",
+    "description": "Loon 协议 - 生成逗号分隔配置",
+    "author": "XBoard Team"
+}

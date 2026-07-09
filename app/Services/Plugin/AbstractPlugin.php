@@ -90,6 +90,23 @@ abstract class AbstractPlugin
     }
 
     /**
+     * 注册协议定义
+     * 插件可调用此方法在 boot() 中注册协议类型定义，
+     * 前端将自动获取协议类型及配置字段用于动态渲染表单。
+     */
+    protected function registerProtocolDefinition(string $type, string $name, array $configFields, array $validationRules = []): void
+    {
+        $this->filter('protocols.definitions', function ($definitions) use ($type, $name, $configFields, $validationRules) {
+            $definitions[$type] = [
+                'name' => $name,
+                'config_fields' => $configFields,
+                'validation_rules' => $validationRules,
+            ];
+            return $definitions;
+        });
+    }
+
+    /**
      * 移除事件监听器
      */
     protected function removeListener(string $hook): void

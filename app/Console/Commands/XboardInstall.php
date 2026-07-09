@@ -176,6 +176,7 @@ class XboardInstall extends Command
             }
             $this->info('正在安装默认插件...');
             PluginManager::installDefaultPlugins();
+            PluginManager::installDefaultProtocols();
             $this->info('默认插件安装完成');
 
             $this->info('🎉：一切就绪');

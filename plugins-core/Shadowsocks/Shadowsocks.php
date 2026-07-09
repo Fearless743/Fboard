@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Protocols;
+namespace Plugin\Shadowsocks;
 
 use App\Support\AbstractProtocol;
 use App\Models\Server;

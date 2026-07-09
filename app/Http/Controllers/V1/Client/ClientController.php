@@ -4,10 +4,10 @@ namespace App\Http\Controllers\V1\Client;
 
 use App\Http\Controllers\Controller;
 use App\Models\Server;
-use App\Protocols\General;
 use App\Services\Plugin\HookManager;
 use App\Services\ServerService;
 use App\Services\UserService;
+use App\Support\AbstractProtocol;
 use App\Utils\Helper;
 use Illuminate\Http\Request;
 
@@ -64,7 +64,7 @@ class ClientController extends Controller
         $filterKeywords = $this->parseFilterKeywords($request->input('filter'));
 
         $protocolClassName = app('protocols.manager')->matchProtocolClassName($clientInfo['flag'])
-            ?? General::class;
+            ?? $this->getFallbackProtocolClass();
 
         $serversFiltered = $this->filterServers(
             servers: $servers,
@@ -93,7 +93,7 @@ class ClientController extends Controller
     private function parseRequestedTypes(?string $typeInputString): array
     {
         if (blank($typeInputString) || $typeInputString === 'all') {
-            return Server::VALID_TYPES;
+            return Server::getValidTypes();
         }
 
         $requested = collect(preg_split('/[|,｜]+/', $typeInputString))
@@ -101,7 +101,7 @@ class ClientController extends Controller
             ->filter() // Remove empty strings that might result from multiple delimiters
             ->all();
 
-        return array_values(array_intersect($requested, Server::VALID_TYPES));
+        return array_values(array_intersect($requested, Server::getValidTypes()));
     }
 
     /**
@@ -218,6 +218,25 @@ class ClientController extends Controller
         array_unshift($servers, array_merge($servers[0], [
             'name' => "剩余流量：{$remainingTraffic}",
         ]));
+    }
+
+    private function getFallbackProtocolClass(): string
+    {
+        $classes = app('protocols.manager')->getProtocolClasses();
+        foreach ($classes as $class) {
+            if (is_subclass_of($class, AbstractProtocol::class)) {
+                try {
+                    $ref = new \ReflectionClass($class);
+                    $inst = $ref->newInstanceWithoutConstructor();
+                    if (in_array('general', $inst->flags, true)) {
+                        return $class;
+                    }
+                } catch (\ReflectionException $e) {
+                    continue;
+                }
+            }
+        }
+        return $classes[0] ?? '';
     }
 
     private function addPrefixToServerName(array $servers): array

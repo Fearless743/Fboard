@@ -1,6 +1,6 @@
 services:
   xboard:
-    image: ghcr.io/cedar2025/xboard:latest
+    image: ghcr.io/fearless743/fboard:latest
     restart: unless-stopped
     network_mode: host
     volumes:

@@ -138,6 +138,7 @@ class ConfigController extends Controller
                 'device_limit_mode' => (int) admin_setting('device_limit_mode', 0),
                 'server_ws_enable' => (bool) admin_setting('server_ws_enable', 1),
                 'server_ws_url' => admin_setting('server_ws_url', ''),
+                'node_install_script_url' => admin_setting('node_install_script_url', ''),
             ],
             'email' => [
                 'email_host' => admin_setting('email_host'),

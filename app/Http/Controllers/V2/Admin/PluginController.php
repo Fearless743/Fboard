@@ -41,26 +41,31 @@ class PluginController extends Controller
                     'label' => '支付方式',
                     'description' => '提供支付接口的插件，如支付宝、微信支付等',
                     'icon' => '💳'
+                ],
+                [
+                    'value' => Plugin::TYPE_PROTOCOL,
+                    'label' => '协议',
+                    'description' => '提供协议支持的插件，如Clash、Sing-Box等',
+                    'icon' => '🔌'
                 ]
             ]
         ]);
     }
 
     /**
-     * 获取插件列表
+     * 获取插件列表（分页）
      */
     public function index(Request $request)
     {
         $type = $request->query('type');
+        $page = max(1, (int) $request->query('page', 1));
+        $pageSize = max(1, min(100, (int) $request->query('pageSize', 20)));
 
-        $installedPlugins = Plugin::when($type, function ($query) use ($type) {
-            return $query->byType($type);
-        })
-            ->get()
+        $installedPlugins = Plugin::all()
             ->keyBy('code')
             ->toArray();
 
-        $plugins = [];
+        $allPlugins = [];
         $seenCodes = [];
 
         foreach ($this->pluginManager->getPluginPaths() as $pluginPath) {
@@ -90,11 +95,11 @@ class PluginController extends Controller
                 }
 
                 $installed = isset($installedPlugins[$code]);
-                $pluginConfig = $installed ? $this->configService->getConfig($code) : ($config['config'] ?? []);
+                $pluginConfigDef = $config['config'] ?? [];
+                $hasConfig = is_array($pluginConfigDef) ? count($pluginConfigDef) > 0 : false;
                 $readmeFile = collect(['README.md', 'readme.md'])
                     ->map(fn($f) => $directory . '/' . $f)
                     ->first(fn($path) => File::exists($path));
-                $readmeContent = $readmeFile ? File::get($readmeFile) : '';
                 $needUpgrade = false;
                 if ($installed) {
                     $installedVersion = $installedPlugins[$code]['version'] ?? null;
@@ -104,7 +109,19 @@ class PluginController extends Controller
                     }
                 }
                 $isCore = $this->pluginManager->isCorePlugin($code);
-                $plugins[] = [
+                // 检查是否有 HTML 静态文件（public/ 目录下）
+                $hasStaticFiles = false;
+                $publicDir = $directory . '/public';
+                if (File::exists($publicDir)) {
+                    $publicFiles = File::allFiles($publicDir);
+                    foreach ($publicFiles as $pf) {
+                        if (in_array(strtolower($pf->getExtension()), ['html', 'htm'])) {
+                            $hasStaticFiles = true;
+                            break;
+                        }
+                    }
+                }
+                $allPlugins[] = [
                     'code' => $config['code'],
                     'name' => $config['name'],
                     'version' => $config['version'],
@@ -115,17 +132,26 @@ class PluginController extends Controller
                     'is_enabled' => $installed ? $installedPlugins[$code]['is_enabled'] : false,
                     'is_protected' => $isCore,
                     'can_be_deleted' => !$isCore,
-                    'config' => $pluginConfig,
-                    'readme' => $readmeContent,
+                    'has_config' => $hasConfig,
                     'need_upgrade' => $needUpgrade,
+                    'has_readme' => $readmeFile !== null,
+                    'has_static_files' => $hasStaticFiles,
                     'admin_menus' => $config['admin_menus'] ?? null,
                     'admin_crud' => $config['admin_crud'] ?? null,
                 ];
             }
         }
 
+        $total = count($allPlugins);
+        $offset = ($page - 1) * $pageSize;
+        $items = array_slice($allPlugins, $offset, $pageSize);
+
         return response()->json([
-            'data' => $plugins
+            'data' => $items,
+            'total' => $total,
+            'current_page' => $page,
+            'per_page' => $pageSize,
+            'last_page' => max(1, (int) ceil($total / $pageSize)),
         ]);
     }
 
@@ -342,5 +368,58 @@ class PluginController extends Controller
                 'message' => '插件删除失败：' . $e->getMessage()
             ], 400);
         }
+    }
+
+    /**
+     * 获取插件文档（README）
+     */
+    public function getReadme(Request $request)
+    {
+        $request->validate([
+            'code' => 'required|string'
+        ]);
+
+        $code = $request->input('code');
+
+        foreach ($this->pluginManager->getPluginPaths() as $pluginPath) {
+            if (!File::exists($pluginPath)) {
+                continue;
+            }
+            $directories = File::directories($pluginPath);
+            foreach ($directories as $directory) {
+                $configFile = $directory . '/config.json';
+                if (!File::exists($configFile)) {
+                    continue;
+                }
+                $config = json_decode(File::get($configFile), true);
+                if (!$config || !isset($config['code']) || $config['code'] !== $code) {
+                    continue;
+                }
+                $readmeFile = collect(['README.md', 'readme.md'])
+                    ->map(fn($f) => $directory . '/' . $f)
+                    ->first(fn($path) => File::exists($path));
+                $content = $readmeFile ? File::get($readmeFile) : '';
+                return response()->json(['data' => $content]);
+            }
+        }
+
+        return response()->json(['data' => '']);
+    }
+
+    /**
+     * 获取插件的已发布静态文件列表
+     */
+    public function staticFiles(Request $request)
+    {
+        $request->validate([
+            'code' => 'required|string'
+        ]);
+
+        $code = $request->input('code');
+        $files = $this->pluginManager->getStaticFiles($code);
+
+        return response()->json([
+            'data' => $files
+        ]);
     }
 }

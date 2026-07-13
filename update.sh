@@ -19,13 +19,13 @@ add_safe_directory() {
 }
 
 add_safe_directory "$repo_root"
-add_safe_directory "$repo_root/public/assets/admin"
 
 git fetch --all && git reset --hard origin/master && git pull origin master
 rm -rf composer.lock composer.phar
 wget https://github.com/composer/composer/releases/latest/download/composer.phar -O composer.phar
 php composer.phar update -vvv
-git submodule update --init --recursive --force
+# 注意：若管理后台页面空白/异常，请手动构建 admin：
+# cd <fboard-admin-dir> && bun install && bun run build
 php artisan xboard:update
 
 if [ -f "/etc/init.d/bt" ] || [ -f "/.dockerenv" ]; then

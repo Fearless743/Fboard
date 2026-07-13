@@ -16,38 +16,37 @@ class ManageController extends Controller
 {
     public function getNodes(Request $request)
     {
-        $current = $request->input('current', 1);
-        $pageSize = $request->input('pageSize', 20);
-        $search = $request->input('search', '');
-        $typeFilter = $request->input('type', '');
-        $showVirtual = $request->input('show_virtual', false);
+        $current = $request->input("current", 1);
+        $pageSize = $request->input("pageSize", 20);
+        $search = $request->input("search", "");
+        $typeFilter = $request->input("type", "");
 
-        $query = Server::orderBy('sort', 'ASC');
-
-        // 默认排除虚拟节点
-        if (!$showVirtual) {
-            $query->where('type', '!=', 'virtual');
-        }
+        $query = Server::orderBy("sort", "ASC");
 
         // 类型过滤
         if ($typeFilter) {
-            $query->where('type', $typeFilter);
+            $query->where("type", $typeFilter);
         }
+
+        $query->whereNot("type", "virtual");
 
         // 搜索过滤
         if ($search) {
             $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('host', 'like', "%{$search}%")
-                  ->orWhere('id', 'like', "%{$search}%");
+                $q->where("name", "like", "%{$search}%")
+                    ->orWhere("host", "like", "%{$search}%")
+                    ->orWhere("id", "like", "%{$search}%");
             });
         }
 
-        $servers = $query->paginate($pageSize, ['*'], 'page', $current);
+        $servers = $query->paginate($pageSize, ["*"], "page", $current);
 
         $servers->getCollection()->transform(function ($item) {
-            $item['groups'] = ServerGroup::whereIn('id', $item['group_ids'] ?? [])->get(['name', 'id']);
-            $item['parent'] = $item->parent;
+            $item["groups"] = ServerGroup::whereIn(
+                "id",
+                $item["group_ids"] ?? [],
+            )->get(["name", "id"]);
+            $item["parent"] = $item->parent;
             return $item;
         });
 
@@ -59,31 +58,38 @@ class ManageController extends Controller
      */
     public function getSortNodes()
     {
-        $nodes = Server::orderBy('sort', 'ASC')->get(['id', 'name', 'sort', 'type']);
+        $nodes = Server::orderBy("sort", "ASC")->get([
+            "id",
+            "parent_id",
+            "name",
+            "sort",
+            "type",
+        ]);
         return $this->success($nodes);
     }
 
     public function sort(Request $request)
     {
-        ini_set('post_max_size', '1m');
+        ini_set("post_max_size", "1m");
         $params = $request->validate([
-            '*.id' => 'numeric',
-            '*.order' => 'numeric'
+            "*.id" => "numeric",
+            "*.order" => "numeric",
         ]);
 
         try {
             DB::beginTransaction();
             collect($params)->each(function ($item) {
-                if (isset($item['id']) && isset($item['order'])) {
-                    Server::where('id', $item['id'])->update(['sort' => $item['order']]);
+                if (isset($item["id"]) && isset($item["order"])) {
+                    Server::where("id", $item["id"])->update([
+                        "sort" => $item["order"],
+                    ]);
                 }
             });
             DB::commit();
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error($e);
-            return $this->fail([500, '保存失败']);
-
+            return $this->fail([500, "保存失败"]);
         }
         return $this->success(true);
     }
@@ -91,17 +97,17 @@ class ManageController extends Controller
     public function save(ServerSave $request)
     {
         $params = $request->validated();
-        if ($request->input('id')) {
-            $server = Server::find($request->input('id'));
+        if ($request->input("id")) {
+            $server = Server::find($request->input("id"));
             if (!$server) {
-                return $this->fail([400202, '服务器不存在']);
+                return $this->fail([400202, "服务器不存在"]);
             }
             try {
                 $server->update($params);
                 return $this->success(true);
             } catch (\Exception $e) {
                 Log::error($e);
-                return $this->fail([500, '保存失败']);
+                return $this->fail([500, "保存失败"]);
             }
         }
 
@@ -110,36 +116,36 @@ class ManageController extends Controller
             return $this->success(true);
         } catch (\Exception $e) {
             Log::error($e);
-            return $this->fail([500, '创建失败']);
+            return $this->fail([500, "创建失败"]);
         }
     }
 
     public function update(Request $request)
     {
         $params = $request->validate([
-            'id' => 'required|integer',
-            'show' => 'nullable|integer',
-            'machine_id' => 'nullable|integer',
-            'enabled' => 'nullable|boolean',
+            "id" => "required|integer",
+            "show" => "nullable|integer",
+            "machine_id" => "nullable|integer",
+            "enabled" => "nullable|boolean",
         ]);
 
         $server = Server::find($request->id);
         if (!$server) {
-            return $this->fail([400202, '服务器不存在']);
+            return $this->fail([400202, "服务器不存在"]);
         }
 
-        if (array_key_exists('show', $params)) {
-            $server->show = (int) $params['show'];
+        if (array_key_exists("show", $params)) {
+            $server->show = (int) $params["show"];
         }
-        if (array_key_exists('machine_id', $params)) {
-            $server->machine_id = $params['machine_id'] ?: null;
+        if (array_key_exists("machine_id", $params)) {
+            $server->machine_id = $params["machine_id"] ?: null;
         }
-        if (array_key_exists('enabled', $params)) {
-            $server->enabled = (bool) $params['enabled'];
+        if (array_key_exists("enabled", $params)) {
+            $server->enabled = (bool) $params["enabled"];
         }
 
         if (!$server->save()) {
-            return $this->fail([500, '保存失败']);
+            return $this->fail([500, "保存失败"]);
         }
 
         return $this->success(true);
@@ -153,14 +159,14 @@ class ManageController extends Controller
     public function drop(Request $request)
     {
         $request->validate([
-            'id' => 'required|integer',
+            "id" => "required|integer",
         ]);
         $server = Server::find($request->id);
         if (!$server) {
-            return $this->fail([400202, '服务器不存在']);
+            return $this->fail([400202, "服务器不存在"]);
         }
         if ($server->delete() === false) {
-            return $this->fail([500, '删除失败']);
+            return $this->fail([500, "删除失败"]);
         }
 
         return $this->success(true);
@@ -174,24 +180,24 @@ class ManageController extends Controller
     public function batchDelete(Request $request)
     {
         $request->validate([
-            'ids' => 'required|array',
-            'ids.*' => 'integer',
+            "ids" => "required|array",
+            "ids.*" => "integer",
         ]);
 
-        $ids = $request->input('ids');
+        $ids = $request->input("ids");
         if (empty($ids)) {
-            return $this->fail([400, '请选择要删除的节点']);
+            return $this->fail([400, "请选择要删除的节点"]);
         }
 
         try {
-            $deleted = Server::whereIn('id', $ids)->delete();
+            $deleted = Server::whereIn("id", $ids)->delete();
             if ($deleted === false) {
-                return $this->fail([500, '批量删除失败']);
+                return $this->fail([500, "批量删除失败"]);
             }
             return $this->success(true);
         } catch (\Exception $e) {
             Log::error($e);
-            return $this->fail([500, '批量删除失败']);
+            return $this->fail([500, "批量删除失败"]);
         }
     }
 
@@ -203,24 +209,26 @@ class ManageController extends Controller
     public function resetTraffic(Request $request)
     {
         $request->validate([
-            'id' => 'required|integer',
+            "id" => "required|integer",
         ]);
 
         $server = Server::find($request->id);
         if (!$server) {
-            return $this->fail([400202, '服务器不存在']);
+            return $this->fail([400202, "服务器不存在"]);
         }
 
         try {
             $server->u = 0;
             $server->d = 0;
             $server->save();
-            
-            Log::info("Server {$server->id} ({$server->name}) traffic reset by admin");
+
+            Log::info(
+                "Server {$server->id} ({$server->name}) traffic reset by admin",
+            );
             return $this->success(true);
         } catch (\Exception $e) {
             Log::error($e);
-            return $this->fail([500, '重置失败']);
+            return $this->fail([500, "重置失败"]);
         }
     }
 
@@ -232,26 +240,28 @@ class ManageController extends Controller
     public function batchResetTraffic(Request $request)
     {
         $request->validate([
-            'ids' => 'required|array',
-            'ids.*' => 'integer',
+            "ids" => "required|array",
+            "ids.*" => "integer",
         ]);
 
-        $ids = $request->input('ids');
+        $ids = $request->input("ids");
         if (empty($ids)) {
-            return $this->fail([400, '请选择要重置的节点']);
+            return $this->fail([400, "请选择要重置的节点"]);
         }
 
         try {
-            Server::whereIn('id', $ids)->update([
-                'u' => 0,
-                'd' => 0,
+            Server::whereIn("id", $ids)->update([
+                "u" => 0,
+                "d" => 0,
             ]);
-            
-            Log::info("Servers " . implode(',', $ids) . " traffic reset by admin");
+
+            Log::info(
+                "Servers " . implode(",", $ids) . " traffic reset by admin",
+            );
             return $this->success(true);
         } catch (\Exception $e) {
             Log::error($e);
-            return $this->fail([500, '批量重置失败']);
+            return $this->fail([500, "批量重置失败"]);
         }
     }
 
@@ -261,35 +271,38 @@ class ManageController extends Controller
     public function batchUpdate(Request $request)
     {
         $params = $request->validate([
-            'ids' => 'required|array',
-            'ids.*' => 'integer',
-            'show' => 'nullable|integer|in:0,1',
-            'enabled' => 'nullable|boolean',
-            'machine_id' => 'nullable|integer',
+            "ids" => "required|array",
+            "ids.*" => "integer",
+            "show" => "nullable|integer|in:0,1",
+            "enabled" => "nullable|boolean",
+            "machine_id" => "nullable|integer",
         ]);
 
-        $ids = $params['ids'];
+        $ids = $params["ids"];
         if (empty($ids)) {
-            return $this->fail([400, '请选择要更新的节点']);
+            return $this->fail([400, "请选择要更新的节点"]);
         }
 
         $update = [];
-        if (array_key_exists('show', $params) && $params['show'] !== null) {
-            $update['show'] = (int) $params['show'];
+        if (array_key_exists("show", $params) && $params["show"] !== null) {
+            $update["show"] = (int) $params["show"];
         }
-        if (array_key_exists('enabled', $params) && $params['enabled'] !== null) {
-            $update['enabled'] = (bool) $params['enabled'];
+        if (
+            array_key_exists("enabled", $params) &&
+            $params["enabled"] !== null
+        ) {
+            $update["enabled"] = (bool) $params["enabled"];
         }
-        if (array_key_exists('machine_id', $params)) {
-            $update['machine_id'] = $params['machine_id'] ?: null;
+        if (array_key_exists("machine_id", $params)) {
+            $update["machine_id"] = $params["machine_id"] ?: null;
         }
 
         if (empty($update)) {
-            return $this->fail([400, '没有可更新的字段']);
+            return $this->fail([400, "没有可更新的字段"]);
         }
 
         try {
-            $servers = Server::whereIn('id', $ids)->get();
+            $servers = Server::whereIn("id", $ids)->get();
             DB::transaction(function () use ($servers, $update) {
                 /** @var Server $server */
                 foreach ($servers as $server) {
@@ -299,7 +312,7 @@ class ManageController extends Controller
             return $this->success(true);
         } catch (\Exception $e) {
             Log::error($e);
-            return $this->fail([500, '批量更新失败']);
+            return $this->fail([500, "批量更新失败"]);
         }
     }
 
@@ -310,9 +323,9 @@ class ManageController extends Controller
      */
     public function copy(Request $request)
     {
-        $server = Server::find($request->input('id'));
+        $server = Server::find($request->input("id"));
         if (!$server) {
-            return $this->fail([400202, '服务器不存在']);
+            return $this->fail([400202, "服务器不存在"]);
         }
 
         $copiedServer = $server->replicate();
@@ -331,30 +344,79 @@ class ManageController extends Controller
     public function createChildNode(Request $request)
     {
         $request->validate([
-            'parent_id' => 'required|integer|exists:v2_server,id',
-            'name' => 'required|string|max:255',
-            'host' => 'required|string',
-            'port' => 'required|integer',
-            'group_ids' => 'nullable|array',
-            'tags' => 'nullable|array',
-            'show' => 'boolean',
+            "parent_id" => "required|integer|exists:v2_server,id",
+            "name" => "required|string|max:255",
+            "host" => "required|string",
+            "port" => "required|integer",
+            "group_ids" => "nullable|array",
+            "tags" => "nullable|array",
+            "show" => "boolean",
         ]);
 
         try {
             $server = Server::createVirtual($request->all());
             return $this->success($server);
         } catch (\Exception $e) {
-            Log::error('创建子节点失败', ['error' => $e->getMessage()]);
-            return $this->fail([500, '创建失败']);
+            Log::error("创建子节点失败", ["error" => $e->getMessage()]);
+            return $this->fail([500, "创建失败"]);
         }
     }
 
     /**
-     * 获取虚拟子节点列表
+     * 更新子节点
+     */
+    public function updateChildNode(Request $request)
+    {
+        $request->validate([
+            "id" => "required|integer|exists:v2_server,id",
+            "name" => "required|string|max:255",
+            "host" => "required|string",
+            "port" => "required|integer",
+            "group_ids" => "nullable|array",
+            "tags" => "nullable|array",
+            "show" => "boolean",
+        ]);
+
+        try {
+            $server = Server::find($request->input("id"));
+            if (!$server || $server->type !== "virtual") {
+                return $this->fail([400, "子节点不存在"]);
+            }
+            $server->update(
+                $request->only([
+                    "name",
+                    "host",
+                    "port",
+                    "group_ids",
+                    "tags",
+                    "show",
+                ]),
+            );
+            return $this->success($server);
+        } catch (\Exception $e) {
+            Log::error("更新子节点失败", ["error" => $e->getMessage()]);
+            return $this->fail([500, "更新失败"]);
+        }
+    }
+
+    /**
+     * 获取虚拟子节点列表（返回完整字段供编辑）
      */
     public function getChildren(int $id)
     {
-        $children = Server::where('parent_id', $id)->get(['id', 'name', 'host', 'port', 'show']);
+        $children = Server::where("parent_id", $id)
+            ->where("type", "virtual")
+            ->get([
+                "id",
+                "name",
+                "host",
+                "port",
+                "server_port",
+                "group_ids",
+                "tags",
+                "show",
+                "sort",
+            ]);
         return $this->success($children);
     }
 
@@ -365,38 +427,40 @@ class ManageController extends Controller
     {
         $server = Server::find($id);
         if (!$server) {
-            return $this->fail([404, '节点不存在']);
+            return $this->fail([404, "节点不存在"]);
         }
         return $this->success($server->getVirtualNodes());
     }
 
     /**
-     * 保存虚拟节点列表
+     * 保存虚拟节点列表（旧方案，保留兼容）
      */
     public function saveVirtualNodes(int $id, Request $request)
     {
         $server = Server::find($id);
         if (!$server) {
-            return $this->fail([404, '节点不存在']);
+            return $this->fail([404, "节点不存在"]);
         }
 
         $request->validate([
-            'virtual_nodes' => 'array',
-            'virtual_nodes.*.host' => 'required|string',
-            'virtual_nodes.*.port' => 'required|integer',
-            'virtual_nodes.*.group_ids' => 'nullable|array',
-            'virtual_nodes.*.tags' => 'nullable|array',
+            "virtual_nodes" => "array",
+            "virtual_nodes.*.host" => "required|string",
+            "virtual_nodes.*.port" => "required|integer",
+            "virtual_nodes.*.group_ids" => "nullable|array",
+            "virtual_nodes.*.tags" => "nullable|array",
         ]);
 
         try {
             $settings = $server->protocol_settings ?? [];
-            $settings['virtual_nodes'] = array_values($request->input('virtual_nodes', []));
+            $settings["virtual_nodes"] = array_values(
+                $request->input("virtual_nodes", []),
+            );
             $server->protocol_settings = $settings;
             $server->save();
-            return $this->success($settings['virtual_nodes']);
+            return $this->success($settings["virtual_nodes"]);
         } catch (\Exception $e) {
-            Log::error('保存虚拟节点失败', ['error' => $e->getMessage()]);
-            return $this->fail([500, '保存失败']);
+            Log::error("保存虚拟节点失败", ["error" => $e->getMessage()]);
+            return $this->fail([500, "保存失败"]);
         }
     }
 
@@ -406,9 +470,11 @@ class ManageController extends Controller
      */
     public function generateEchKey(Request $request)
     {
-        $publicName = $request->input('public_name', 'ech.example.com');
+        $publicName = $request->input("public_name", "ech.example.com");
         if (strlen($publicName) < 1 || strlen($publicName) > 253) {
-            throw new ApiException('public_name must be a valid domain (1-253 bytes)');
+            throw new ApiException(
+                "public_name must be a valid domain (1-253 bytes)",
+            );
         }
 
         // Generate X25519 key pair
@@ -418,38 +484,45 @@ class ManageController extends Controller
         $configId = random_int(0, 255);
 
         // Build ECHConfigContents (draft-ietf-tls-esni-18)
-        $contents = '';
-        $contents .= pack('C', $configId);                // config_id
-        $contents .= pack('n', 0x0020);                   // kem_id: DHKEM(X25519)
-        $contents .= pack('n', 32) . $publicKey;          // public_key (length-prefixed)
+        $contents = "";
+        $contents .= pack("C", $configId); // config_id
+        $contents .= pack("n", 0x0020); // kem_id: DHKEM(X25519)
+        $contents .= pack("n", 32) . $publicKey; // public_key (length-prefixed)
         // cipher_suites: 2 suites × 4 bytes = 8 bytes
-        $contents .= pack('n', 8);                        // cipher_suites byte length
-        $contents .= pack('nn', 0x0001, 0x0001);          // HKDF-SHA256 + AES-128-GCM
-        $contents .= pack('nn', 0x0001, 0x0003);          // HKDF-SHA256 + ChaCha20Poly1305
-        $contents .= pack('C', 0);                        // max_name_length
-        $contents .= pack('C', strlen($publicName)) . $publicName;
-        $contents .= pack('n', 0);                        // extensions: empty
+        $contents .= pack("n", 8); // cipher_suites byte length
+        $contents .= pack("nn", 0x0001, 0x0001); // HKDF-SHA256 + AES-128-GCM
+        $contents .= pack("nn", 0x0001, 0x0003); // HKDF-SHA256 + ChaCha20Poly1305
+        $contents .= pack("C", 0); // max_name_length
+        $contents .= pack("C", strlen($publicName)) . $publicName;
+        $contents .= pack("n", 0); // extensions: empty
 
         // ECHConfig = version(2) + length(2) + contents
-        $echConfig = pack('n', 0xfe0d) . pack('n', strlen($contents)) . $contents;
+        $echConfig =
+            pack("n", 0xfe0d) . pack("n", strlen($contents)) . $contents;
 
         // ECHConfigList = total_length(2) + configs
-        $echConfigList = pack('n', strlen($echConfig)) . $echConfig;
+        $echConfigList = pack("n", strlen($echConfig)) . $echConfig;
 
         // ECH Keys = private_key_len(2) + key(32) + config_len(2) + config
-        $echKeysPayload = pack('n', 32) . $privateKey . pack('n', strlen($echConfig)) . $echConfig;
+        $echKeysPayload =
+            pack("n", 32) .
+            $privateKey .
+            pack("n", strlen($echConfig)) .
+            $echConfig;
 
-        $keyPem = "-----BEGIN ECH KEYS-----\n"
-            . chunk_split(base64_encode($echKeysPayload), 64, "\n")
-            . "-----END ECH KEYS-----";
+        $keyPem =
+            "-----BEGIN ECH KEYS-----\n" .
+            chunk_split(base64_encode($echKeysPayload), 64, "\n") .
+            "-----END ECH KEYS-----";
 
-        $configPem = "-----BEGIN ECH CONFIGS-----\n"
-            . chunk_split(base64_encode($echConfigList), 64, "\n")
-            . "-----END ECH CONFIGS-----";
+        $configPem =
+            "-----BEGIN ECH CONFIGS-----\n" .
+            chunk_split(base64_encode($echConfigList), 64, "\n") .
+            "-----END ECH CONFIGS-----";
 
         return $this->success([
-            'key' => $keyPem,
-            'config' => $configPem,
+            "key" => $keyPem,
+            "config" => $configPem,
         ]);
     }
 
@@ -463,8 +536,8 @@ class ManageController extends Controller
         $publicKey = sodium_crypto_box_publickey($keypair);
 
         return $this->success([
-            'public_key' => base64_encode($publicKey),
-            'private_key' => base64_encode($secretKey),
+            "public_key" => base64_encode($publicKey),
+            "private_key" => base64_encode($secretKey),
         ]);
     }
 }

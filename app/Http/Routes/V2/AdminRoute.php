@@ -89,6 +89,7 @@ class AdminRoute
                 $router->post('/update', [ManageController::class, 'update']);
                 $router->post('/save', [ManageController::class, 'save']);
                 $router->post('/create-child-node', [ManageController::class, 'createChildNode']);
+                $router->post('/update-child-node', [ManageController::class, 'updateChildNode']);
                 $router->post('/save-virtual-nodes/{id}', [ManageController::class, 'saveVirtualNodes']);
                 $router->get('/get-virtual-nodes/{id}', [ManageController::class, 'getVirtualNodes']);
                 $router->get('/get-children/{id}', [ManageController::class, 'getChildren']);
@@ -177,8 +178,9 @@ class AdminRoute
                 'prefix' => 'notice'
             ], function ($router) {
                 $router->get('/fetch', [NoticeController::class, 'fetch']);
+                $router->get('/detail', [NoticeController::class, 'detail']);
                 $router->post('/save', [NoticeController::class, 'save']);
-                $router->post('/update', [NoticeController::class, 'update']);
+                $router->post('/update', [NoticeController::class, 'save']);
                 $router->post('/drop', [NoticeController::class, 'drop']);
                 $router->post('/show', [NoticeController::class, 'show']);
                 $router->post('/sort', [NoticeController::class, 'sort']);
@@ -302,6 +304,8 @@ class AdminRoute
                 $router->get('config', [\App\Http\Controllers\V2\Admin\PluginController::class, 'getConfig']);
                 $router->post('config', [\App\Http\Controllers\V2\Admin\PluginController::class, 'updateConfig']);
                 $router->post('upgrade', [\App\Http\Controllers\V2\Admin\PluginController::class, 'upgrade']);
+                $router->get('readme', [\App\Http\Controllers\V2\Admin\PluginController::class, 'getReadme']);
+                $router->get('staticFiles', [\App\Http\Controllers\V2\Admin\PluginController::class, 'staticFiles']);
             });
 
             // 流量重置管理

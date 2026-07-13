@@ -169,7 +169,12 @@ sh update.sh
 ## Troubleshooting
 
 ### Common Issues
-1. **Empty Admin Dashboard**: If the admin panel is blank, run `git submodule update --init --recursive --force` to restore the theme files.
+1. **Empty Admin Dashboard**: If the admin panel is blank, the admin SPA was not built. Clone the admin repo and build it:
+   ```bash
+   git clone https://github.com/Fearless743/Fboard-admin /path/to/admin
+   cd /path/to/admin && bun install && bun run build
+   ```
+   The build output will be placed in `public/assets/admin/`.
 2. Changes to admin path require service restart to take effect
 3. Any code changes after enabling Octane require restart to take effect
 3. When PHP extension installation fails, check if PHP version is correct

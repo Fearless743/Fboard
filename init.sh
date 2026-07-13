@@ -3,7 +3,8 @@
 rm -rf composer.phar
 wget https://github.com/composer/composer/releases/latest/download/composer.phar -O composer.phar
 php composer.phar install -vvv
-git submodule update --init --recursive --force
+# 注意：若管理后台页面空白/异常，请手动构建 admin：
+# cd <fboard-admin-dir> && bun install && bun run build
 php artisan xboard:install
 
 if [ -f "/etc/init.d/bt" ] || [ -f "/.dockerenv" ]; then

@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\CouponGenerate;
 use App\Http\Requests\Admin\CouponSave;
 use App\Models\Coupon;
+use App\Services\Plugin\HookManager;
 use App\Utils\Helper;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -68,6 +69,12 @@ class CouponController extends Controller
             'id.required' => '优惠券ID不能为空',
             'id.numeric' => '优惠券ID必须为数字'
         ]);
+
+        HookManager::call('admin.coupon.update.before', [
+            'params' => $params,
+            'request' => $request,
+        ]);
+
         try {
             DB::beginTransaction();
             $coupon = Coupon::find($request->input('id'));
@@ -76,7 +83,16 @@ class CouponController extends Controller
             }
             $coupon->update($params);
             DB::commit();
+
+            HookManager::call('admin.coupon.update.after', [
+                'coupon' => $coupon,
+                'params' => $params,
+                'request' => $request,
+            ]);
+
+            return $this->success(true);
         } catch (\Exception $e) {
+            DB::rollBack();
             \Log::error($e);
             return $this->fail([500, '保存失败']);
         }
@@ -94,36 +110,73 @@ class CouponController extends Controller
         if (!$coupon) {
             return $this->fail([400202, '优惠券不存在']);
         }
+
+        $originalShow = $coupon->show;
         $coupon->show = !$coupon->show;
         if (!$coupon->save()) {
             return $this->fail([500, '保存失败']);
         }
+
+        HookManager::call('admin.coupon.show.toggle', [
+            'coupon' => $coupon,
+            'original_show' => $originalShow,
+            'new_show' => $coupon->show,
+            'request' => $request,
+        ]);
+
         return $this->success(true);
     }
 
     public function generate(CouponGenerate $request)
     {
         if ($request->input('generate_count')) {
+            HookManager::call('admin.coupon.generate.before', [
+                'request' => $request,
+            ]);
+
             $this->multiGenerate($request);
+
+            HookManager::call('admin.coupon.generate.after', [
+                'count' => $request->input('generate_count'),
+                'request' => $request,
+            ]);
+
             return;
         }
 
         $params = $request->validated();
+
+        HookManager::call('admin.coupon.generate.before', [
+            'params' => $params,
+            'request' => $request,
+        ]);
+
         if (!$request->input('id')) {
             if (!isset($params['code'])) {
                 $params['code'] = Helper::randomChar(8);
             }
-            if (!Coupon::create($params)) {
+            $coupon = Coupon::create($params);
+            if (!$coupon) {
                 return $this->fail([500, '创建失败']);
             }
         } else {
             try {
-                Coupon::find($request->input('id'))->update($params);
+                $coupon = Coupon::find($request->input('id'));
+                if (!$coupon) {
+                    return $this->fail([400202, '优惠券不存在']);
+                }
+                $coupon->update($params);
             } catch (\Exception $e) {
                 \Log::error($e);
                 return $this->fail([500, '保存失败']);
             }
         }
+
+        HookManager::call('admin.coupon.generate.after', [
+            'coupon' => $coupon ?? null,
+            'params' => $params,
+            'request' => $request,
+        ]);
 
         return $this->success(true);
     }
@@ -187,9 +240,20 @@ class CouponController extends Controller
         if (!$coupon) {
             return $this->fail([400202, '优惠券不存在']);
         }
+
+        HookManager::call('admin.coupon.drop.before', [
+            'coupon' => $coupon,
+            'request' => $request,
+        ]);
+
         if (!$coupon->delete()) {
             return $this->fail([500, '删除失败']);
         }
+
+        HookManager::call('admin.coupon.drop.after', [
+            'coupon' => $coupon,
+            'request' => $request,
+        ]);
 
         return $this->success(true);
     }

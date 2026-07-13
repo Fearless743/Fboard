@@ -12,11 +12,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $ticket_id
  * @property int $user_id
  * @property string $message
+ * @property bool $is_bot 是否为机器人自动回复
  * @property \Illuminate\Support\Carbon $created_at
  * @property \Illuminate\Support\Carbon $updated_at
  * @property-read \App\Models\Ticket $ticket 关联的工单
  * @property-read bool $is_from_user 消息是否由工单发起人发送
  * @property-read bool $is_from_admin 消息是否由管理员发送
+ * @property-read bool $is_from_bot 消息是否为机器人回复
  */
 class TicketMessage extends Model
 {
@@ -25,10 +27,11 @@ class TicketMessage extends Model
     protected $guarded = ['id'];
     protected $casts = [
         'created_at' => 'timestamp',
-        'updated_at' => 'timestamp'
+        'updated_at' => 'timestamp',
+        'is_bot' => 'boolean',
     ];
 
-    protected $appends = ['is_from_user', 'is_from_admin'];
+    protected $appends = ['is_from_user', 'is_from_admin', 'is_from_bot'];
     protected $hidden = ['ticket'];
 
     /**
@@ -53,5 +56,13 @@ class TicketMessage extends Model
     public function getIsFromAdminAttribute(): bool
     {
         return $this->ticket && $this->ticket->user_id !== $this->user_id;
+    }
+
+    /**
+     * 判断消息是否为机器人自动回复
+     */
+    public function getIsFromBotAttribute(): bool
+    {
+        return (bool) $this->is_bot;
     }
 }

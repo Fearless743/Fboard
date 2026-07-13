@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ServerSave;
 use App\Models\Server;
 use App\Models\ServerGroup;
+use App\Services\Plugin\HookManager;
 use App\Services\ServerService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -76,6 +77,11 @@ class ManageController extends Controller
             "*.order" => "numeric",
         ]);
 
+        HookManager::call('admin.server.sort.before', [
+            'params' => $params,
+            'request' => $request,
+        ]);
+
         try {
             DB::beginTransaction();
             collect($params)->each(function ($item) {
@@ -91,6 +97,12 @@ class ManageController extends Controller
             Log::error($e);
             return $this->fail([500, "保存失败"]);
         }
+
+        HookManager::call('admin.server.sort.after', [
+            'params' => $params,
+            'request' => $request,
+        ]);
+
         return $this->success(true);
     }
 
@@ -102,8 +114,22 @@ class ManageController extends Controller
             if (!$server) {
                 return $this->fail([400202, "服务器不存在"]);
             }
+
+            HookManager::call('admin.server.save.before', [
+                'server' => $server,
+                'params' => $params,
+                'request' => $request,
+            ]);
+
             try {
                 $server->update($params);
+
+                HookManager::call('admin.server.save.after', [
+                    'server' => $server,
+                    'params' => $params,
+                    'request' => $request,
+                ]);
+
                 return $this->success(true);
             } catch (\Exception $e) {
                 Log::error($e);
@@ -111,8 +137,21 @@ class ManageController extends Controller
             }
         }
 
+        HookManager::call('admin.server.save.before', [
+            'server' => null,
+            'params' => $params,
+            'request' => $request,
+        ]);
+
         try {
-            Server::create($params);
+            $server = Server::create($params);
+
+            HookManager::call('admin.server.save.after', [
+                'server' => $server,
+                'params' => $params,
+                'request' => $request,
+            ]);
+
             return $this->success(true);
         } catch (\Exception $e) {
             Log::error($e);
@@ -134,6 +173,12 @@ class ManageController extends Controller
             return $this->fail([400202, "服务器不存在"]);
         }
 
+        HookManager::call('admin.server.update.before', [
+            'server' => $server,
+            'params' => $params,
+            'request' => $request,
+        ]);
+
         if (array_key_exists("show", $params)) {
             $server->show = (int) $params["show"];
         }
@@ -147,6 +192,12 @@ class ManageController extends Controller
         if (!$server->save()) {
             return $this->fail([500, "保存失败"]);
         }
+
+        HookManager::call('admin.server.update.after', [
+            'server' => $server,
+            'params' => $params,
+            'request' => $request,
+        ]);
 
         return $this->success(true);
     }
@@ -165,9 +216,20 @@ class ManageController extends Controller
         if (!$server) {
             return $this->fail([400202, "服务器不存在"]);
         }
+
+        HookManager::call('admin.server.drop.before', [
+            'server' => $server,
+            'request' => $request,
+        ]);
+
         if ($server->delete() === false) {
             return $this->fail([500, "删除失败"]);
         }
+
+        HookManager::call('admin.server.drop.after', [
+            'server' => $server,
+            'request' => $request,
+        ]);
 
         return $this->success(true);
     }
@@ -189,11 +251,22 @@ class ManageController extends Controller
             return $this->fail([400, "请选择要删除的节点"]);
         }
 
+        HookManager::call('admin.server.batch_delete.before', [
+            'ids' => $ids,
+            'request' => $request,
+        ]);
+
         try {
             $deleted = Server::whereIn("id", $ids)->delete();
             if ($deleted === false) {
                 return $this->fail([500, "批量删除失败"]);
             }
+
+            HookManager::call('admin.server.batch_delete.after', [
+                'ids' => $ids,
+                'request' => $request,
+            ]);
+
             return $this->success(true);
         } catch (\Exception $e) {
             Log::error($e);
@@ -301,6 +374,12 @@ class ManageController extends Controller
             return $this->fail([400, "没有可更新的字段"]);
         }
 
+        HookManager::call('admin.server.batch_update.before', [
+            'ids' => $ids,
+            'update' => $update,
+            'request' => $request,
+        ]);
+
         try {
             $servers = Server::whereIn("id", $ids)->get();
             DB::transaction(function () use ($servers, $update) {
@@ -309,6 +388,13 @@ class ManageController extends Controller
                     $server->update($update);
                 }
             });
+
+            HookManager::call('admin.server.batch_update.after', [
+                'ids' => $ids,
+                'update' => $update,
+                'request' => $request,
+            ]);
+
             return $this->success(true);
         } catch (\Exception $e) {
             Log::error($e);

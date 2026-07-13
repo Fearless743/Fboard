@@ -306,6 +306,7 @@ class AdminRoute
                 $router->post('upgrade', [\App\Http\Controllers\V2\Admin\PluginController::class, 'upgrade']);
                 $router->get('readme', [\App\Http\Controllers\V2\Admin\PluginController::class, 'getReadme']);
                 $router->get('staticFiles', [\App\Http\Controllers\V2\Admin\PluginController::class, 'staticFiles']);
+                $router->post('action', [\App\Http\Controllers\V2\Admin\PluginController::class, 'executeAction']);
             });
 
             // 流量重置管理

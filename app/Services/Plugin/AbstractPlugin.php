@@ -125,6 +125,38 @@ abstract class AbstractPlugin
     }
 
     /**
+     * 注册插件动作按钮
+     * 插件可在 boot() 中调用此方法注册自定义操作按钮，点击后执行回调函数。
+     * 按钮将显示在管理后台插件列表页的已启用插件卡片上。
+     *
+     * @param string $name 动作标识（蛇形命名，如 'sync_users'）
+     * @param string $label 按钮显示文本（如 '同步用户'）
+     * @param callable $handler 回调函数，接收 array $params 参数，返回 array
+     * @param array $options 可选配置：
+     *   - 'icon' => string, 图标 emoji（默认 '⚡'）
+     *   - 'confirm' => string|null, 确认弹窗提示文本（null 则不确认直接执行）
+     *   - 'color' => string, 按钮颜色样式（'default'|'destructive'|'outline'）
+     * @return void
+     */
+    protected function registerAction(string $name, string $label, callable $handler, array $options = []): void
+    {
+        // 注册动作元数据（供前端展示）
+        $this->filter('plugin.actions', function ($actions) use ($name, $label, $options) {
+            $actions[$this->pluginCode][] = [
+                'name' => $name,
+                'label' => $label,
+                'icon' => $options['icon'] ?? '⚡',
+                'confirm' => $options['confirm'] ?? null,
+                'color' => $options['color'] ?? 'default',
+            ];
+            return $actions;
+        });
+
+        // 注册动作执行句柄（filter 以便返回结果）
+        $this->filter('plugin.action.execute.' . $this->pluginCode . '.' . $name, $handler);
+    }
+
+    /**
      * 注册插件命令目录
      */
     public function registerCommands(): void

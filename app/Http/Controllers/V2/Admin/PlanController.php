@@ -7,6 +7,7 @@ use App\Http\Requests\Admin\PlanSave;
 use App\Models\Order;
 use App\Models\Plan;
 use App\Models\User;
+use App\Services\Plugin\HookManager;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -48,13 +49,19 @@ class PlanController extends Controller
     public function save(PlanSave $request)
     {
         $params = $request->validated();
-        
+
         if ($request->input('id')) {
             $plan = Plan::find($request->input('id'));
             if (!$plan) {
                 return $this->fail([400202, '该订阅不存在']);
             }
-            
+
+            HookManager::call('admin.plan.save.before', [
+                'plan' => $plan,
+                'params' => $params,
+                'request' => $request,
+            ]);
+
             DB::beginTransaction();
             try {
                 if ($request->input('force_update')) {
@@ -67,6 +74,13 @@ class PlanController extends Controller
                 }
                 $plan->update($params);
                 DB::commit();
+
+                HookManager::call('admin.plan.save.after', [
+                    'plan' => $plan,
+                    'params' => $params,
+                    'request' => $request,
+                ]);
+
                 return $this->success(true);
             } catch (\Exception $e) {
                 DB::rollBack();
@@ -74,9 +88,24 @@ class PlanController extends Controller
                 return $this->fail([500, '保存失败']);
             }
         }
-        if (!Plan::create($params)) {
+
+        HookManager::call('admin.plan.save.before', [
+            'plan' => null,
+            'params' => $params,
+            'request' => $request,
+        ]);
+
+        $plan = Plan::create($params);
+        if (!$plan) {
             return $this->fail([500, '创建失败']);
         }
+
+        HookManager::call('admin.plan.save.after', [
+            'plan' => $plan,
+            'params' => $params,
+            'request' => $request,
+        ]);
+
         return $this->success(true);
     }
 
@@ -88,13 +117,25 @@ class PlanController extends Controller
         if (User::where('plan_id', $request->input('id'))->first()) {
             return $this->fail([400201, '该订阅下存在用户无法删除']);
         }
-        
+
         $plan = Plan::find($request->input('id'));
         if (!$plan) {
             return $this->fail([400202, '该订阅不存在']);
         }
-        
-        return $this->success($plan->delete());
+
+        HookManager::call('admin.plan.drop.before', [
+            'plan' => $plan,
+            'request' => $request,
+        ]);
+
+        $result = $plan->delete();
+
+        HookManager::call('admin.plan.drop.after', [
+            'plan' => $plan,
+            'request' => $request,
+        ]);
+
+        return $this->success($result);
     }
 
     public function update(Request $request)
@@ -110,12 +151,24 @@ class PlanController extends Controller
             return $this->fail([400202, '该订阅不存在']);
         }
 
+        HookManager::call('admin.plan.update.before', [
+            'plan' => $plan,
+            'params' => $updateData,
+            'request' => $request,
+        ]);
+
         try {
             $plan->update($updateData);
         } catch (\Exception $e) {
             Log::error($e);
             return $this->fail([500, '保存失败']);
         }
+
+        HookManager::call('admin.plan.update.after', [
+            'plan' => $plan,
+            'params' => $updateData,
+            'request' => $request,
+        ]);
 
         return $this->success(true);
     }
@@ -124,6 +177,11 @@ class PlanController extends Controller
     {
         $params = $request->validate([
             'ids' => 'required|array'
+        ]);
+
+        HookManager::call('admin.plan.sort.before', [
+            'params' => $params,
+            'request' => $request,
         ]);
 
         try {
@@ -139,6 +197,12 @@ class PlanController extends Controller
             Log::error($e);
             return $this->fail([500, '保存失败']);
         }
+
+        HookManager::call('admin.plan.sort.after', [
+            'params' => $params,
+            'request' => $request,
+        ]);
+
         return $this->success(true);
     }
 }

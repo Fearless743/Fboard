@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ConfigSave;
 use App\Models\SubscribeTemplate;
 use App\Services\MailService;
+use App\Services\Plugin\HookManager;
 use App\Services\TelegramService;
 use App\Services\ThemeService;
 use App\Utils\Dict;
@@ -206,6 +207,11 @@ class ConfigController extends Controller
     {
         $data = $request->validated();
 
+        HookManager::call('admin.config.save.before', [
+            'data' => $data,
+            'request' => $request,
+        ]);
+
         $templateKeys = [
             'subscribe_template_singbox' => 'singbox',
             'subscribe_template_clash' => 'clash',
@@ -226,6 +232,11 @@ class ConfigController extends Controller
             }
             admin_setting([$k => $v]);
         }
+
+        HookManager::call('admin.config.save.after', [
+            'data' => $data,
+            'request' => $request,
+        ]);
 
         return $this->success(true);
     }

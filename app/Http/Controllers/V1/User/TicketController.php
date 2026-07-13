@@ -103,6 +103,10 @@ class TicketController extends Controller
         if (!$ticket->save()) {
             return $this->fail([500, __('Close failed')]);
         }
+        HookManager::call('ticket.close.after', [
+            'ticket' => $ticket,
+            'request' => $request,
+        ]);
         return $this->success(true);
     }
 

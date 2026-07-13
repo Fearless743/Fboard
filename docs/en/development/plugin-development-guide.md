@@ -138,23 +138,122 @@ $enabled = $this->isPluginEnabled();
 
 XBoard has built-in hooks for many business-critical nodes. Plugin developers can flexibly extend through `filter` or `listen` methods. Here are the most commonly used and valuable hooks:
 
-| Hook Name                 | Type   | Typical Parameters       | Description      |
-| ------------------------- | ------ | ----------------------- | ---------------- |
-| user.register.before      | action | Request                 | Before user registration |
-| user.register.after       | action | User                    | After user registration |
-| user.login.after          | action | User                    | After user login |
-| user.password.reset.after | action | User                    | After password reset |
-| order.cancel.before       | action | Order                   | Before order cancellation |
-| order.cancel.after        | action | Order                   | After order cancellation |
-| payment.notify.before     | action | method, uuid, request   | Before payment callback |
-| payment.notify.verified   | action | array                   | Payment callback verification successful |
-| payment.notify.failed     | action | method, uuid, request   | Payment callback verification failed |
-| traffic.reset.after       | action | User                    | After traffic reset |
-| ticket.create.after       | action | Ticket                  | After ticket creation |
-| ticket.reply.user.after   | action | Ticket                  | After user replies to ticket |
-| ticket.close.after        | action | Ticket                  | After ticket closure |
-
-> ⚡️ The hook system will continue to expand. Developers can always follow this documentation and the `php artisan hook:list` command to get the latest supported hooks.
+| Hook Name | Type | Typical Parameters | Description |
+|-----------|------|-------------------|-------------|
+| **👤 User** | | | |
+| user.register.before | action | Request | Before user registration |
+| user.register.after | action | User | After user registration |
+| user.login.after | action | User | After user login |
+| user.password.reset.after | action | User | After password reset |
+| user.change_password.after | action | User, Request | After user changes password |
+| user.update.before | action | User, params, Request | Before user updates settings |
+| user.update.after | action | User, params, Request | After user updates settings |
+| user.reset_security.after | action | User, old_uuid, old_token, Request | After user resets subscription info |
+| user.transfer.after | action | User, amount, Request | After user transfers commission to balance |
+| user.info.response | filter | User, Request | Modify user info API response |
+| user.subscribe.response | filter | User | Modify user subscription response |
+| user.knowledge.resource | filter | data, request, resource | Modify knowledge resource output |
+| **📋 Admin - User Management** | | | |
+| admin.user.secret.reset | action | user, request | After admin resets user secret |
+| admin.user.fetch.query | filter | query, request | Modify admin user list query |
+| admin.user.transform | filter | user, model | Modify admin user list item |
+| admin.user.detail | filter | user, request | Modify admin user detail |
+| admin.user.update.params | filter | params, request, user | Modify admin update user params |
+| admin.user.update.before | action | user, params, request | Before admin updates user |
+| admin.user.update.after | action | user, params, request | After admin updates user |
+| admin.user.update.rules | filter | rules, request | Modify admin user update validation rules |
+| admin.user.update.messages | filter | messages, request | Modify admin user update validation messages |
+| admin.user.destroy.before | action | user, request | Before admin deletes user |
+| admin.user.destroy.after | action | user, request | After admin deletes user |
+| **📦 Admin - Plan Management** | | | |
+| admin.plan.save.before | action | plan, params, request | Before creating/updating plan |
+| admin.plan.save.after | action | plan, params, request | After creating/updating plan |
+| admin.plan.update.before | action | plan, params, request | Before toggling plan show/renew/sell |
+| admin.plan.update.after | action | plan, params, request | After toggling plan show/renew/sell |
+| admin.plan.drop.before | action | plan, request | Before deleting plan |
+| admin.plan.drop.after | action | plan, request | After deleting plan |
+| admin.plan.sort.before | action | params, request | Before sorting plans |
+| admin.plan.sort.after | action | params, request | After sorting plans |
+| **🖥️ Admin - Server Management** | | | |
+| admin.server.save.before | action | server, params, request | Before creating/updating server |
+| admin.server.save.after | action | server, params, request | After creating/updating server |
+| admin.server.update.before | action | server, params, request | Before toggling server show/enabled |
+| admin.server.update.after | action | server, params, request | After toggling server show/enabled |
+| admin.server.drop.before | action | server, request | Before deleting server |
+| admin.server.drop.after | action | server, request | After deleting server |
+| admin.server.sort.before | action | params, request | Before sorting servers |
+| admin.server.sort.after | action | params, request | After sorting servers |
+| admin.server.batch_delete.before | action | ids, request | Before batch deleting servers |
+| admin.server.batch_delete.after | action | ids, request | After batch deleting servers |
+| admin.server.batch_update.before | action | ids, update, request | Before batch updating servers |
+| admin.server.batch_update.after | action | ids, update, request | After batch updating servers |
+| **💰 Admin - Coupon Management** | | | |
+| admin.coupon.update.before | action | params, request | Before updating coupon |
+| admin.coupon.update.after | action | coupon, params, request | After updating coupon |
+| admin.coupon.generate.before | action | params/request, request | Before generating coupon(s) |
+| admin.coupon.generate.after | action | coupon/count, params, request | After generating coupon(s) |
+| admin.coupon.show.toggle | action | coupon, original_show, new_show, request | After toggling coupon show status |
+| admin.coupon.drop.before | action | coupon, request | Before deleting coupon |
+| admin.coupon.drop.after | action | coupon, request | After deleting coupon |
+| **💳 Admin - Payment Management** | | | |
+| admin.payment.save.before | action | params, request | Before creating/updating payment |
+| admin.payment.save.after | action | payment, params, request | After creating/updating payment |
+| admin.payment.show.toggle | action | payment, original_enable, new_enable, request | After toggling payment enable status |
+| admin.payment.drop.before | action | payment, request | Before deleting payment |
+| admin.payment.drop.after | action | payment, request | After deleting payment |
+| admin.payment.sort.before | action | request | Before sorting payments |
+| admin.payment.sort.after | action | request | After sorting payments |
+| **⚙️ Admin - System Config** | | | |
+| admin.config.save.before | action | data, request | Before saving system settings |
+| admin.config.save.after | action | data, request | After saving system settings |
+| **🎫 Ticket** | | | |
+| ticket.create.after | action | Ticket | After ticket creation |
+| ticket.reply.user.after | action | Ticket | After user replies to ticket |
+| ticket.reply.admin.after | action | Ticket, TicketMessage | After admin replies to ticket |
+| admin.ticket.close.before | action | ticket, request | Before admin closes ticket |
+| admin.ticket.close.after | action | ticket, request | After admin closes ticket |
+| **🛒 Order** | | | |
+| order.create.before | action | user, plan, period, coupon | Before order creation |
+| order.create.after | action | Order | After order creation |
+| order.open.before | action | Order | Before order activation |
+| order.open.after | action | Order | After order activation |
+| order.paid.before | action | Order | Before marking order as paid |
+| order.paid.after | action | Order | After marking order as paid |
+| order.cancel.before | action | Order | Before order cancellation |
+| order.cancel.after | action | Order | After order cancellation |
+| **💵 Payment** | | | |
+| payment.notify.before | action | method, uuid, request | Before payment callback |
+| payment.notify.verified | action | array | Payment callback verification successful |
+| payment.notify.failed | action | method, uuid, request | Payment callback verification failed |
+| payment.notify.success | action | Order | After successful payment |
+| available_payment_methods | filter | methods | Modify available payment methods |
+| **🔗 Subscription** | | | |
+| client.subscribe.before | action | | Before subscription generation |
+| client.subscribe.servers | filter | servers, user, request | Modify servers before protocol processing |
+| client.subscribe.unavailable | action | | When subscription is unavailable |
+| subscribe.url | filter | url | Modify subscription URL |
+| guest_comm_config | filter | config | Modify guest common config |
+| **🔌 Protocol** | | | |
+| protocols.register | filter | [] | Register protocol handler classes |
+| protocols.definitions | filter | [] | Register/modify protocol type definitions |
+| protocols.server_config | filter | [], node | Modify server config for protocol |
+| protocol.servers.filtered | filter | servers | Modify filtered servers before handle() |
+| **📊 Traffic** | | | |
+| traffic.process.before | filter | server, protocol, data | Before traffic data processing |
+| traffic.reset.after | action | User | After user traffic reset |
+| traffic.batch_reset.before | action | batch_size | Before batch traffic reset |
+| traffic.batch_reset.after | action | result | After batch traffic reset |
+| **🤖 Telegram** | | | |
+| telegram.message.before | action | [msg] | Before processing Telegram message |
+| telegram.message.handle | filter | false, [msg] | Handle Telegram message |
+| telegram.message.unhandled | action | [msg] | When Telegram message is not handled |
+| telegram.message.after | action | [msg] | After processing Telegram message |
+| telegram.message.error | action | [msg, exception] | When Telegram message processing errors |
+| telegram.bot.commands | filter | [] | Register Telegram bot commands |
+| **🎟️ Coupon** | | | |
+| coupon.used | action | coupon, order | After coupon is applied to an order |
+| **🔑 Server** | | | |
+| server.users.get | filter | users, node | Modify node's accessible user list |
 
 ### Filter Hooks
 
@@ -179,6 +278,72 @@ $this->listen('user.created', function ($user) {
     $this->doSomething($user);
 });
 ```
+
+### 🤖 Bot Reply Service
+
+Plugins can use the built-in `TicketService::replyByBot()` to automatically reply to tickets. Messages replied this way are marked with `is_bot = true` and the admin panel will display a **Bot** badge next to them.
+
+```php
+use App\Services\TicketService;
+
+// In plugin boot() or hook callback
+$ticketService = app(TicketService::class);
+$ticketService->replyByBot(
+    ticketId: $ticketId,
+    message: 'Your issue has been automatically resolved.'
+);
+```
+
+Optionally specify a custom bot user ID (defaults to `0`):
+
+```php
+$ticketService->replyByBot(
+    ticketId: $ticketId,
+    message: '...',
+    botUserId: 1
+);
+```
+
+> 💡 Combine with hooks like `ticket.create.after` or `ticket.reply.user.after` to trigger automatic replies when a ticket is created or a user responds.
+
+### ⚡ Plugin Action Buttons
+
+Plugins can register clickable action buttons that appear in the admin plugin management page. When clicked, the defined callback function is executed.
+
+```php
+public function boot(): void
+{
+    $this->registerAction(
+        name: 'sync_users',
+        label: 'Sync Users',
+        handler: function (array $params = []) {
+            // Execute your logic here
+            \Log::info('Syncing users...');
+            return ['synced' => 10];
+        },
+        options: [
+            'icon'    => '🔄',              // Emoji icon (default: ⚡)
+            'confirm' => 'Sync all users?', // null = execute immediately
+            'color'   => 'default',         // default | destructive | outline
+        ],
+    );
+}
+```
+
+Parameters:
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `name` | string | Unique action identifier (snake_case) |
+| `label` | string | Button text displayed in admin panel |
+| `handler` | callable | Callback that receives `array $params` |
+| `options.icon` | string | Emoji icon shown on the button |
+| `options.confirm` | string|null | Confirmation dialog text; `null` = no confirm |
+| `options.color` | string | Button style: `default`, `destructive`, or `outline` |
+
+> 💡 The action button only appears when the plugin is **enabled**. The handler receives an empty `$params` array by default — useful for future extensibility.
+
+---
 
 ## 📝 Real Example: Telegram Login Plugin
 
@@ -392,11 +557,28 @@ class YourController extends Controller
 
 Supported configuration types:
 
-- `string` - String
-- `number` - Number
-- `boolean` - Boolean
-- `json` - Array
-- `yaml`
+- `string` - Single-line text input
+- `text` - Multi-line text input
+- `number` - Number input
+- `boolean` - Switch
+- `select` - Static options defined by `options`
+- `plan` - Subscription plan selector; stores the selected plan ID, or `0` for no plan
+- `json` - JSON CodeMirror editor with syntax highlighting and validation before saving
+- `yaml` - YAML CodeMirror editor with syntax highlighting
+
+Plan selector example:
+
+```json
+{
+    "plan_id": {
+        "type": "plan",
+        "default": 0,
+        "label": "Gift Plan",
+        "placeholder": "Select a plan",
+        "description": "The plan granted after the operation succeeds"
+    }
+}
+```
 
 ## 🎯 Best Practices
 

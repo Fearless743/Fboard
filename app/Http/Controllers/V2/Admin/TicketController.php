@@ -4,6 +4,7 @@ namespace App\Http\Controllers\V2\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Ticket;
+use App\Services\Plugin\HookManager;
 use App\Services\TicketService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
@@ -130,11 +131,25 @@ class TicketController extends Controller
         ]);
         try {
             $ticket = Ticket::findOrFail($request->input('id'));
-            $ticket->status = Ticket::STATUS_CLOSED;
-            $ticket->save();
-            return $this->success(true);
         } catch (ModelNotFoundException $e) {
             return $this->fail([400202, '工单不存在']);
+        }
+
+        HookManager::call('admin.ticket.close.before', [
+            'ticket' => $ticket,
+            'request' => $request,
+        ]);
+
+        try {
+            $ticket->status = Ticket::STATUS_CLOSED;
+            $ticket->save();
+
+            HookManager::call('admin.ticket.close.after', [
+                'ticket' => $ticket,
+                'request' => $request,
+            ]);
+
+            return $this->success(true);
         } catch (\Exception $e) {
             return $this->fail([500101, '关闭失败']);
         }

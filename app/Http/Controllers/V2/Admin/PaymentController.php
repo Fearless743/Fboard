@@ -6,6 +6,7 @@ use App\Exceptions\ApiException;
 use App\Http\Controllers\Controller;
 use App\Models\Payment;
 use App\Services\PaymentService;
+use App\Services\Plugin\HookManager;
 use App\Utils\Helper;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -52,9 +53,19 @@ class PaymentController extends Controller
         $payment = Payment::find($request->input('id'));
         if (!$payment)
             return $this->fail([400202, '支付方式不存在']);
+
+        $originalEnable = $payment->enable;
         $payment->enable = !$payment->enable;
         if (!$payment->save())
             return $this->fail([500, '保存失败']);
+
+        HookManager::call('admin.payment.show.toggle', [
+            'payment' => $payment,
+            'original_enable' => $originalEnable,
+            'new_enable' => $payment->enable,
+            'request' => $request,
+        ]);
+
         return $this->success(true);
     }
 
@@ -79,6 +90,12 @@ class PaymentController extends Controller
             'handling_fee_fixed.integer' => '固定手续费格式有误',
             'handling_fee_percent.between' => '百分比手续费范围须在0-100之间'
         ]);
+
+        HookManager::call('admin.payment.save.before', [
+            'params' => $params,
+            'request' => $request,
+        ]);
+
         if ($request->input('id')) {
             $payment = Payment::find($request->input('id'));
             if (!$payment)
@@ -89,12 +106,27 @@ class PaymentController extends Controller
                 Log::error($e);
                 return $this->fail([500, '保存失败']);
             }
+
+            HookManager::call('admin.payment.save.after', [
+                'payment' => $payment,
+                'params' => $params,
+                'request' => $request,
+            ]);
+
             return $this->success(true);
         }
         $params['uuid'] = Helper::randomChar(8);
-        if (!Payment::create($params)) {
+        $payment = Payment::create($params);
+        if (!$payment) {
             return $this->fail([500, '保存失败']);
         }
+
+        HookManager::call('admin.payment.save.after', [
+            'payment' => $payment,
+            'params' => $params,
+            'request' => $request,
+        ]);
+
         return $this->success(true);
     }
 
@@ -103,7 +135,20 @@ class PaymentController extends Controller
         $payment = Payment::find($request->input('id'));
         if (!$payment)
             return $this->fail([400202, '支付方式不存在']);
-        return $this->success($payment->delete());
+
+        HookManager::call('admin.payment.drop.before', [
+            'payment' => $payment,
+            'request' => $request,
+        ]);
+
+        $result = $payment->delete();
+
+        HookManager::call('admin.payment.drop.after', [
+            'payment' => $payment,
+            'request' => $request,
+        ]);
+
+        return $this->success($result);
     }
 
 
@@ -115,6 +160,11 @@ class PaymentController extends Controller
             'ids.required' => '参数有误',
             'ids.array' => '参数有误'
         ]);
+
+        HookManager::call('admin.payment.sort.before', [
+            'request' => $request,
+        ]);
+
         try {
             DB::beginTransaction();
             foreach ($request->input('ids') as $k => $v) {
@@ -127,6 +177,10 @@ class PaymentController extends Controller
             DB::rollBack();
             return $this->fail([500, '保存失败']);
         }
+
+        HookManager::call('admin.payment.sort.after', [
+            'request' => $request,
+        ]);
 
         return $this->success(true);
     }

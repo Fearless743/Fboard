@@ -36,10 +36,10 @@ use Illuminate\Database\Eloquent\Casts\Attribute;
  * @property array|null $protocol_settings 协议设置
  * @property int $created_at
  * @property int $updated_at
- * 
+ *
  * @property-read Server|null $parent 父节点
  * @property-read \Illuminate\Database\Eloquent\Collection<int, StatServer> $stats 节点统计
- * 
+ *
  * @property-read int|null $last_check_at 最后检查时间（Unix时间戳）
  * @property-read int|null $last_push_at 最后推送时间（Unix时间戳）
  * @property-read int $online 在线用户数
@@ -54,24 +54,24 @@ use Illuminate\Database\Eloquent\Casts\Attribute;
  * @property int|null $d 下行流量
  * @property int|null $total 总流量
  * @property-read array|null $load_status 负载状态（包含CPU、内存、交换区、磁盘信息）
- * 
+ *
  * @property int $transfer_enable 流量上限，0或者null表示不限制
  * @property int $u 当前上传流量
  * @property int $d 当前下载流量
  */
 class Server extends Model
 {
-    public const TYPE_HYSTERIA = 'hysteria';
-    public const TYPE_VLESS = 'vless';
-    public const TYPE_TROJAN = 'trojan';
-    public const TYPE_VMESS = 'vmess';
-    public const TYPE_TUIC = 'tuic';
-    public const TYPE_SHADOWSOCKS = 'shadowsocks';
-    public const TYPE_ANYTLS = 'anytls';
-    public const TYPE_SOCKS = 'socks';
-    public const TYPE_NAIVE = 'naive';
-    public const TYPE_HTTP = 'http';
-    public const TYPE_MIERU = 'mieru';
+    public const TYPE_HYSTERIA = "hysteria";
+    public const TYPE_VLESS = "vless";
+    public const TYPE_TROJAN = "trojan";
+    public const TYPE_VMESS = "vmess";
+    public const TYPE_TUIC = "tuic";
+    public const TYPE_SHADOWSOCKS = "shadowsocks";
+    public const TYPE_ANYTLS = "anytls";
+    public const TYPE_SOCKS = "socks";
+    public const TYPE_NAIVE = "naive";
+    public const TYPE_HTTP = "http";
+    public const TYPE_MIERU = "mieru";
     public const STATUS_OFFLINE = 0;
     public const STATUS_ONLINE_NO_PUSH = 1;
     public const STATUS_ONLINE = 2;
@@ -79,23 +79,23 @@ class Server extends Model
     public const CHECK_INTERVAL = 300; // 5 minutes in seconds
 
     private const CIPHER_CONFIGURATIONS = [
-        '2022-blake3-aes-128-gcm' => [
-            'serverKeySize' => 16,
-            'userKeySize' => 16,
+        "2022-blake3-aes-128-gcm" => [
+            "serverKeySize" => 16,
+            "userKeySize" => 16,
         ],
-        '2022-blake3-aes-256-gcm' => [
-            'serverKeySize' => 32,
-            'userKeySize' => 32,
+        "2022-blake3-aes-256-gcm" => [
+            "serverKeySize" => 32,
+            "userKeySize" => 32,
         ],
-        '2022-blake3-chacha20-poly1305' => [
-            'serverKeySize' => 32,
-            'userKeySize' => 32,
-        ]
+        "2022-blake3-chacha20-poly1305" => [
+            "serverKeySize" => 32,
+            "userKeySize" => 32,
+        ],
     ];
 
     public const TYPE_ALIASES = [
-        'v2ray' => self::TYPE_VMESS,
-        'hysteria2' => self::TYPE_HYSTERIA,
+        "v2ray" => self::TYPE_VMESS,
+        "hysteria2" => self::TYPE_HYSTERIA,
     ];
 
     public static function getValidTypes(): array
@@ -103,29 +103,29 @@ class Server extends Model
         return app(ProtocolDefinitionRegistry::class)->getValidTypes();
     }
 
-    protected $table = 'v2_server';
+    protected $table = "v2_server";
 
-    protected $guarded = ['id'];
+    protected $guarded = ["id"];
     protected $casts = [
-        'group_ids' => 'array',
-        'route_ids' => 'array',
-        'tags' => 'array',
-        'protocol_settings' => 'array',
-        'custom_outbounds' => 'array',
-        'custom_routes' => 'array',
-        'cert_config' => 'array',
-        'last_check_at' => 'integer',
-        'last_push_at' => 'integer',
-        'show' => 'boolean',
-        'enabled' => 'boolean',
-        'created_at' => 'timestamp',
-        'updated_at' => 'timestamp',
-        'rate_time_ranges' => 'array',
-        'rate_time_enable' => 'boolean',
-        'transfer_enable' => 'integer',
-        'u' => 'integer',
-        'd' => 'integer',
-        'machine_id' => 'integer',
+        "group_ids" => "array",
+        "route_ids" => "array",
+        "tags" => "array",
+        "protocol_settings" => "array",
+        "custom_outbounds" => "array",
+        "custom_routes" => "array",
+        "cert_config" => "array",
+        "last_check_at" => "integer",
+        "last_push_at" => "integer",
+        "show" => "boolean",
+        "enabled" => "boolean",
+        "created_at" => "timestamp",
+        "updated_at" => "timestamp",
+        "rate_time_ranges" => "array",
+        "rate_time_enable" => "boolean",
+        "transfer_enable" => "integer",
+        "u" => "integer",
+        "d" => "integer",
+        "machine_id" => "integer",
     ];
 
     public static function getProtocolConfigurations(): array
@@ -134,23 +134,26 @@ class Server extends Model
         $configs = [];
 
         foreach ($registry->getAll() as $type => $definition) {
-            $configs[$type] = self::convertConfigFieldsToCastingFormat($definition->configFields);
+            $configs[$type] = self::convertConfigFieldsToCastingFormat(
+                $definition->configFields,
+            );
         }
 
         return $configs;
     }
 
-    private static function convertConfigFieldsToCastingFormat(array $fields): array
-    {
+    private static function convertConfigFieldsToCastingFormat(
+        array $fields,
+    ): array {
         $result = [];
         foreach ($fields as $key => $field) {
-            if (isset($field['type'])) {
+            if (isset($field["type"])) {
                 $result[$key] = [
-                    'type' => $field['type'],
-                    'default' => $field['default'] ?? null,
+                    "type" => $field["type"],
+                    "default" => $field["default"] ?? null,
                 ];
-                if ($field['type'] === 'object' && isset($field['fields'])) {
-                    $result[$key]['fields'] = $field['fields'];
+                if ($field["type"] === "object" && isset($field["fields"])) {
+                    $result[$key]["fields"] = $field["fields"];
                 }
             }
         }
@@ -159,24 +162,26 @@ class Server extends Model
 
     private function castValueWithConfig($value, array $config)
     {
-        if ($value === null && $config['type'] !== 'object') {
-            return $config['default'] ?? null;
+        if ($value === null && $config["type"] !== "object") {
+            return $config["default"] ?? null;
         }
 
-        return match ($config['type']) {
-            'integer' => (int) $value,
-            'boolean' => (bool) $value,
-            'string' => (string) $value,
-            'array' => (array) $value,
-            'object' => is_array($value) ?
-            $this->castSettingsWithConfig($value, $config['fields']) :
-            $config['default'] ?? null,
-            default => $value
+        return match ($config["type"]) {
+            "integer" => (int) $value,
+            "boolean" => (bool) $value,
+            "string" => (string) $value,
+            "array" => (array) $value,
+            "object" => is_array($value)
+                ? $this->castSettingsWithConfig($value, $config["fields"])
+                : $config["default"] ?? null,
+            default => $value,
         };
     }
 
-    private function castSettingsWithConfig(array $settings, array $configs): array
-    {
+    private function castSettingsWithConfig(
+        array $settings,
+        array $configs,
+    ): array {
         $result = [];
         foreach ($configs as $key => $config) {
             $value = $settings[$key] ?? null;
@@ -201,7 +206,36 @@ class Server extends Model
         $configs = self::getProtocolConfigurations()[$this->type] ?? [];
         $castedSettings = $this->castSettingsWithConfig($value ?? [], $configs);
 
-        $this->attributes['protocol_settings'] = json_encode($castedSettings);
+        $this->attributes["protocol_settings"] = json_encode($castedSettings);
+    }
+
+    /**
+     * 统一将 group_ids 序列化为字符串数组，避免 JSON_CONTAINS 因类型不匹配导致查询失败。
+     *
+     * MySQL JSON_CONTAINS 对类型严格敏感：
+     *   - 数据库存为 [16,15,14,12] (整型) 时，传 "(string) 14" 不会命中
+     *   - 数据库存为 ["16","15","14","12"] (字符串) 时，传 "(int) 14" 不会命中
+     * 通过在 setter 中统一转为字符串，确保后续 whereJsonContains((string) $id) 能稳定命中。
+     */
+    public function setGroupIdsAttribute($value)
+    {
+        if (is_null($value)) {
+            $this->attributes["group_ids"] = null;
+            return;
+        }
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+            $value = is_array($decoded) ? $decoded : [$value];
+        }
+        $normalized = array_values(
+            array_unique(
+                array_map(
+                    fn($id) => (string) $id,
+                    is_array($value) ? $value : [$value],
+                ),
+            ),
+        );
+        $this->attributes["group_ids"] = json_encode($normalized);
     }
 
     public function generateServerPassword(User $user): string
@@ -210,37 +244,49 @@ class Server extends Model
             return $user->uuid;
         }
 
-
-        $cipher = data_get($this, 'protocol_settings.cipher');
+        $cipher = data_get($this, "protocol_settings.cipher");
         if (!$cipher || !isset(self::CIPHER_CONFIGURATIONS[$cipher])) {
             return $user->uuid;
         }
 
         $config = self::CIPHER_CONFIGURATIONS[$cipher];
         // Use parent's created_at if this is a child node
-        $serverCreatedAt = $this->parent_id ? $this->parent->created_at : $this->created_at;
-        $serverKey = Helper::getServerKey($serverCreatedAt, $config['serverKeySize']);
-        $userKey = Helper::uuidToBase64($user->uuid, $config['userKeySize']);
+        $serverCreatedAt = $this->parent_id
+            ? $this->parent->created_at
+            : $this->created_at;
+        $serverKey = Helper::getServerKey(
+            $serverCreatedAt,
+            $config["serverKeySize"],
+        );
+        $userKey = Helper::uuidToBase64($user->uuid, $config["userKeySize"]);
         return "{$serverKey}:{$userKey}";
     }
 
-    public static function normalizeType(?string $type): string | null
+    public static function normalizeType(?string $type): string|null
     {
         return $type ? strtolower(self::TYPE_ALIASES[$type] ?? $type) : null;
     }
-    
+
     public static function isValidType(?string $type): bool
     {
-        return $type ? in_array(self::normalizeType($type), self::getValidTypes(), true) : true;
+        return $type
+            ? in_array(self::normalizeType($type), self::getValidTypes(), true)
+            : true;
     }
 
     public function getAvailableStatusAttribute(): int
     {
         $now = time();
-        if (!$this->last_check_at || ($now - self::CHECK_INTERVAL) >= $this->last_check_at) {
+        if (
+            !$this->last_check_at ||
+            $now - self::CHECK_INTERVAL >= $this->last_check_at
+        ) {
             return self::STATUS_OFFLINE;
         }
-        if (!$this->last_push_at || ($now - self::CHECK_INTERVAL) >= $this->last_push_at) {
+        if (
+            !$this->last_push_at ||
+            $now - self::CHECK_INTERVAL >= $this->last_push_at
+        ) {
             return self::STATUS_ONLINE_NO_PUSH;
         }
         return self::STATUS_ONLINE;
@@ -260,19 +306,11 @@ class Server extends Model
         $merged->name = $this->name;
         $merged->host = $this->host;
         $merged->port = $this->port;
-        $merged->server_port = $this->server_port ?? $parent->server_port;
-        $merged->group_ids = $this->group_ids ?? $parent->group_ids;
-        $merged->tags = $this->tags ?? $parent->tags;
-        $merged->parent_id = $this->parent_id;
+        $merged->server_port = $this->server_port;
+        $merged->group_ids = $this->group_ids;
+        $merged->tags = $this->tags;
         $merged->show = $this->show;
-        $merged->sort = $this->sort ?? $parent->sort;
-        $merged->machine_id = $this->machine_id ?? $parent->machine_id;
-
-        // 合并 protocol_settings：子节点覆盖父节点
-        $merged->protocol_settings = array_merge(
-            $parent->protocol_settings ?? [],
-            $this->protocol_settings ?? []
-        );
+        $merged->sort = $this->sort;
         return $merged;
     }
 
@@ -281,20 +319,22 @@ class Server extends Model
      */
     public static function createVirtual(array $data): self
     {
-        $parentId = $data['parent_id'] ?? null;
+        $parentId = $data["parent_id"] ?? null;
         if (!$parentId || !($parent = self::find($parentId))) {
-            throw new \InvalidArgumentException('父节点不存在');
+            throw new \InvalidArgumentException("父节点不存在");
         }
 
-        $data['type'] = 'virtual';
-        $data['protocol_settings'] = $parent->protocol_settings;
-        $data['rate'] = $parent->rate;
-        $data['show'] = $data['show'] ?? $parent->show;
-        $data['listen_address'] = $data['listen_address'] ?? $parent->listen_address;
-        $data['server_port'] = $data['server_port'] ?? $parent->server_port;
-        $data['banned'] = $data['banned'] ?? $parent->banned ?? false;
-        $data['traffic_limit'] = $data['traffic_limit'] ?? $parent->traffic_limit ?? 0;
-        $data['sort'] = $parent->sort ?? 0;
+        $data["type"] = "virtual";
+        $data["protocol_settings"] = $parent->protocol_settings;
+        $data["rate"] = $parent->rate;
+        $data["show"] = $data["show"] ?? $parent->show;
+        $data["listen_address"] =
+            $data["listen_address"] ?? $parent->listen_address;
+        $data["server_port"] = $data["server_port"] ?? $parent->server_port;
+        $data["banned"] = $data["banned"] ?? ($parent->banned ?? false);
+        $data["traffic_limit"] =
+            $data["traffic_limit"] ?? ($parent->traffic_limit ?? 0);
+        $data["sort"] = $parent->sort ?? 0;
 
         return self::create($data);
     }
@@ -305,32 +345,32 @@ class Server extends Model
     public function getVirtualNodes(): array
     {
         $settings = $this->protocol_settings ?? [];
-        return $settings['virtual_nodes'] ?? [];
+        return $settings["virtual_nodes"] ?? [];
     }
 
     public function parent(): BelongsTo
     {
-        return $this->belongsTo(self::class, 'parent_id', 'id');
+        return $this->belongsTo(self::class, "parent_id", "id");
     }
 
     public function stats(): HasMany
     {
-        return $this->hasMany(StatServer::class, 'server_id', 'id');
+        return $this->hasMany(StatServer::class, "server_id", "id");
     }
 
     public function machine(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
-        return $this->belongsTo(ServerMachine::class, 'machine_id');
+        return $this->belongsTo(ServerMachine::class, "machine_id");
     }
 
     public function groups()
     {
-        return ServerGroup::whereIn('id', $this->group_ids ?? [])->get();
+        return ServerGroup::whereIn("id", $this->group_ids ?? [])->get();
     }
 
     public function routes()
     {
-        return ServerRoute::whereIn('id', $this->route_ids)->get();
+        return ServerRoute::whereIn("id", $this->route_ids)->get();
     }
 
     /**
@@ -342,8 +382,10 @@ class Server extends Model
             get: function () {
                 $type = strtoupper($this->type);
                 $serverId = $this->parent_id ?: $this->id;
-                return Cache::get(CacheKey::get("SERVER_{$type}_LAST_CHECK_AT", $serverId));
-            }
+                return Cache::get(
+                    CacheKey::get("SERVER_{$type}_LAST_CHECK_AT", $serverId),
+                );
+            },
         );
     }
 
@@ -356,8 +398,10 @@ class Server extends Model
             get: function () {
                 $type = strtoupper($this->type);
                 $serverId = $this->parent_id ?: $this->id;
-                return Cache::get(CacheKey::get("SERVER_{$type}_LAST_PUSH_AT", $serverId));
-            }
+                return Cache::get(
+                    CacheKey::get("SERVER_{$type}_LAST_PUSH_AT", $serverId),
+                );
+            },
         );
     }
 
@@ -370,8 +414,10 @@ class Server extends Model
             get: function () {
                 $type = strtoupper($this->type);
                 $serverId = $this->parent_id ?: $this->id;
-                return Cache::get(CacheKey::get("SERVER_{$type}_ONLINE_USER", $serverId)) ?? 0;
-            }
+                return Cache::get(
+                    CacheKey::get("SERVER_{$type}_ONLINE_USER", $serverId),
+                ) ?? 0;
+            },
         );
     }
 
@@ -382,8 +428,8 @@ class Server extends Model
     {
         return Attribute::make(
             get: function () {
-                return (time() - 300 > $this->last_check_at) ? 0 : 1;
-            }
+                return time() - 300 > $this->last_check_at ? 0 : 1;
+            },
         );
     }
 
@@ -395,7 +441,7 @@ class Server extends Model
         return Attribute::make(
             get: function () {
                 return "{$this->type}-{$this->id}-{$this->updated_at}-{$this->is_online}";
-            }
+            },
         );
     }
 
@@ -410,7 +456,7 @@ class Server extends Model
                     return Helper::getServerKey($this->created_at, 16);
                 }
                 return null;
-            }
+            },
         );
     }
 
@@ -423,8 +469,10 @@ class Server extends Model
             get: function () {
                 $type = strtoupper($this->type);
                 $serverId = $this->parent_id ?: $this->id;
-                return Cache::get(CacheKey::get("SERVER_{$type}_METRICS", $serverId));
-            }
+                return Cache::get(
+                    CacheKey::get("SERVER_{$type}_METRICS", $serverId),
+                );
+            },
         );
     }
 
@@ -436,8 +484,8 @@ class Server extends Model
         return Attribute::make(
             get: function () {
                 $metrics = $this->metrics;
-                return $metrics['version'] ?? null;
-            }
+                return $metrics["version"] ?? null;
+            },
         );
     }
 
@@ -448,8 +496,8 @@ class Server extends Model
     {
         return Attribute::make(
             get: function () {
-                return $this->metrics['active_connections'] ?? 0;
-            }
+                return $this->metrics["active_connections"] ?? 0;
+            },
         );
     }
 
@@ -462,8 +510,10 @@ class Server extends Model
             get: function () {
                 $type = strtoupper($this->type);
                 $serverId = $this->parent_id ?: $this->id;
-                return Cache::get(CacheKey::get("SERVER_{$type}_LOAD_STATUS", $serverId));
-            }
+                return Cache::get(
+                    CacheKey::get("SERVER_{$type}_LOAD_STATUS", $serverId),
+                );
+            },
         );
     }
 
@@ -473,11 +523,14 @@ class Server extends Model
             return (float) $this->rate;
         }
 
-        $now = now()->format('H:i');
+        $now = now()->format("H:i");
         $ranges = $this->rate_time_ranges ?? [];
-        $matchedRange = collect($ranges)
-            ->first(fn($range) => $now >= $range['start'] && $now <= $range['end']);
-        
-        return $matchedRange ? (float) $matchedRange['rate'] : (float) $this->rate;
+        $matchedRange = collect($ranges)->first(
+            fn($range) => $now >= $range["start"] && $now <= $range["end"],
+        );
+
+        return $matchedRange
+            ? (float) $matchedRange["rate"]
+            : (float) $this->rate;
     }
 }

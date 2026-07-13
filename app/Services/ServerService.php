@@ -54,7 +54,12 @@ class ServerService
      */
     public static function getAvailableServers(User $user): array
     {
-        $servers = Server::whereJsonContains('group_ids', (string) $user->group_id)
+        $servers = Server::where(function ($query) use ($user) {
+                $groupId = (string) $user->group_id;
+                // 同时匹配字符串和整型两种存储形式，避免 JSON_CONTAINS 类型不匹配
+                $query->whereJsonContains('group_ids', $groupId)
+                      ->orWhereJsonContains('group_ids', (int) $groupId);
+            })
             ->where('show', true)
             ->where(function ($query) {
                 $query->whereNull('transfer_enable')
@@ -69,7 +74,6 @@ class ServerService
             // 虚拟节点继承父节点配置
             if ($server->type === 'virtual') {
                 $server = $server->getEffectiveAttribute();
-                $server->is_virtual = true;
             }
             // 判断动态端口
             if (str_contains($server->port, '-')) {

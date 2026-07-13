@@ -264,3 +264,4 @@ class ClientController extends Controller
         return $prefix . ($server['name'] ?? '');
     }
 }
+

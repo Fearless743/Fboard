@@ -66,6 +66,11 @@ class ServerService
             ->append(['last_check_at', 'last_push_at', 'online', 'is_online', 'available_status', 'cache_key', 'server_key']);
 
         $servers = collect($servers)->map(function ($server) use ($user) {
+            // 虚拟节点继承父节点配置
+            if ($server->type === 'virtual') {
+                $server = $server->getEffectiveAttribute();
+                $server->is_virtual = true;
+            }
             // 判断动态端口
             if (str_contains($server->port, '-')) {
                 $port = $server->port;

@@ -289,13 +289,67 @@ class PluginManager
     }
 
     /**
-     * 发布插件资源
+     * 获取插件的静态文件目录（public 目录）
+     */
+    public function getPluginPublicPath(string $pluginCode): string
+    {
+        return $this->getPluginPath($pluginCode) . '/public';
+    }
+
+    /**
+     * 获取插件中可用的 HTML 静态文件列表
+     * 安全限制：只返回 .html / .htm 文件，防路径遍历
+     */
+    public function getStaticFiles(string $pluginCode): array
+    {
+        // 插件代码仅允许小写字母、数字、下划线
+        if (!preg_match('/^[a-z0-9_]+$/', $pluginCode)) {
+            return [];
+        }
+
+        $sourcePath = $this->getPluginPath($pluginCode) . '/public';
+        if (!File::exists($sourcePath)) {
+            return [];
+        }
+
+        $allowedExtensions = ['html', 'htm'];
+        $files = [];
+        $allFiles = File::allFiles($sourcePath);
+        foreach ($allFiles as $file) {
+            $extension = strtolower($file->getExtension());
+            if (!in_array($extension, $allowedExtensions, true)) {
+                continue;
+            }
+
+            $relativePath = str_replace('\\', '/', $file->getRelativePathname());
+
+            if (str_contains($relativePath, '..')) {
+                continue;
+            }
+
+            $files[] = [
+                'name' => $file->getFilename(),
+                'path' => $relativePath,
+                'extension' => $extension,
+                'size' => $file->getSize(),
+                'last_modified' => $file->getMTime(),
+                'url' => '/plugins/' . $pluginCode . '/' . $relativePath,
+            ];
+        }
+
+        return $files;
+    }
+
+    /**
+     * 发布插件 resources/assets 资源
+     * 注意：public/ 目录的静态文件由路由直接代理提供，不复制
      */
     protected function publishAssets(string $pluginCode): void
     {
+        $publishPath = public_path('plugins/' . $pluginCode);
+
         $assetsPath = $this->getPluginPath($pluginCode) . '/resources/assets';
         if (File::exists($assetsPath)) {
-            $publishPath = public_path('plugins/' . $pluginCode);
             File::ensureDirectoryExists($publishPath);
             File::copyDirectory($assetsPath, $publishPath);
         }
@@ -506,6 +560,9 @@ class PluginManager
 
                 $plugin->update($oldVersion, $newVersion);
             }
+
+        // 升级时重新发布静态文件
+        $this->publishAssets($pluginCode);
 
         $dbPlugin->update([
             'version' => $newVersion,

@@ -16,8 +16,18 @@ class NoticeController extends Controller
         return $this->success(
             Notice::orderBy('sort', 'ASC')
                 ->orderBy('id', 'DESC')
-                ->get()
+                ->get(['id', 'title', 'show', 'tags', 'sort', 'created_at', 'updated_at'])
         );
+    }
+
+    public function detail(Request $request)
+    {
+        $request->validate(['id' => 'required|integer']);
+        $notice = Notice::find($request->input('id'));
+        if (!$notice) {
+            return $this->fail([404, '公告不存在']);
+        }
+        return $this->success($notice);
     }
 
     public function save(NoticeSave $request)

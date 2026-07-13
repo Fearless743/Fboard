@@ -122,7 +122,12 @@ The container always runs `php artisan xboard:update` (migrate + plugin install 
 ## Troubleshooting
 
 If you encounter any issues during installation or operation, please check:
-1. **Empty Admin Dashboard**: If the admin panel is blank, run `git submodule update --init --recursive --force` to restore the theme files.
+1. **Empty Admin Dashboard**: If the admin panel is blank, the admin SPA was not built. Clone the admin repo and build it:
+   ```bash
+   git clone https://github.com/Fearless743/Fboard-admin /path/to/admin
+   cd /path/to/admin && bun install && bun run build
+   ```
+   The build output will be placed in `public/assets/admin/`.
 2. System requirements are met
 3. All required ports are available
 3. Docker services are running properly

@@ -13,28 +13,33 @@ use Illuminate\Http\Request;
 class MachineController extends Controller
 {
     /**
-     * 获取机器列表（附带关联节点数）
+     * 获取机器列表（附带关联节点数，分页）
      */
     public function fetch(Request $request)
     {
+        $current = (int) $request->input('current', 1);
+        $pageSize = (int) $request->input('pageSize', 10);
+
         $machines = ServerMachine::withCount('servers')
             ->orderBy('id')
-            ->get()
-            ->map(function (ServerMachine $machine) {
-                return [
-                    'id' => $machine->id,
-                    'name' => $machine->name,
-                    'notes' => $machine->notes,
-                    'is_active' => $machine->is_active,
-                    'last_seen_at' => $machine->last_seen_at,
-                    'load_status' => $machine->load_status,
-                    'servers_count' => $machine->servers_count,
-                    'created_at' => $machine->created_at,
-                    'updated_at' => $machine->updated_at,
-                ];
-            });
+            ->paginate(perPage: $pageSize, page: $current);
 
-        return $this->success($machines);
+        $machines->getCollection()->transform(function (ServerMachine $machine) {
+            return [
+                'id' => $machine->id,
+                'name' => $machine->name,
+                'notes' => $machine->notes,
+                'is_active' => $machine->is_active,
+                'is_online' => $machine->last_seen_at && (time() - $machine->last_seen_at) < 300,
+                'last_seen_at' => $machine->last_seen_at,
+                'load_status' => $machine->load_status,
+                'servers_count' => $machine->servers_count,
+                'created_at' => $machine->created_at,
+                'updated_at' => $machine->updated_at,
+            ];
+        });
+
+        return $this->paginate($machines);
     }
 
     /**
@@ -202,7 +207,7 @@ class MachineController extends Controller
     private function buildInstallCommand(Request $request, ServerMachine $machine): string
     {
         $panelUrl = rtrim((string) (admin_setting('app_url') ?: $request->getSchemeAndHttpHost()), '/');
-        $installerUrl = 'https://raw.githubusercontent.com/cedar2025/xboard-node/dev/install.sh';
+        $installerUrl = admin_setting('node_install_script_url') ?: 'https://raw.githubusercontent.com/Fearless743/Fboard-Node/master/install.sh';
 
         return sprintf(
             'curl -fsSL %s | sudo bash -s -- --mode machine --panel %s --token %s --machine-id %d',

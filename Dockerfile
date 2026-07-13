@@ -20,7 +20,7 @@ RUN git clone --depth 1 --branch ${ADMIN_BRANCH_NAME} ${ADMIN_REPO_URL} . \
     && pnpm build
 
 # ---------------------------------------------------------------------------
-# Stage 2: PHP + Swoole runtime for the Xboard panel.
+# Stage 2: PHP + Swoole runtime for the Fboard panel.
 # ---------------------------------------------------------------------------
 FROM phpswoole/swoole:php8.2-alpine
 
@@ -42,7 +42,7 @@ COPY .docker /
 
 # Add build arguments
 ARG CACHEBUST=1
-ARG REPO_URL=https://github.com/cedar2025/Xboard
+ARG REPO_URL=https://github.com/Fearless743/Fboard
 ARG BRANCH_NAME=master
 ARG ADMIN_REPO_URL=https://github.com/Fearless743/Fboard-admin
 ARG ADMIN_BRANCH_NAME=master
@@ -51,12 +51,10 @@ RUN echo "Attempting to clone branch: ${BRANCH_NAME} from ${REPO_URL} with CACHE
     rm -rf ./* && \
     rm -rf .git && \
     git config --global --add safe.directory /www && \
-    git clone --depth 1 --branch ${BRANCH_NAME} ${REPO_URL} . && \
-    git submodule update --init --recursive --force && \
-    rm -rf public/assets/admin/.git public/assets/admin/* \
+    git clone --depth 1 --branch ${BRANCH_NAME} ${REPO_URL} . \
     && mkdir -p public/assets/admin
 
-# Overlay the freshly-built admin SPA on top of the upstream submodule slot.
+# Copy the freshly-built admin SPA from the build stage.
 COPY --from=admin-builder /out /www/public/assets/admin
 
 COPY .docker/supervisor/supervisord.conf /etc/supervisor/conf.d/supervisord.conf

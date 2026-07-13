@@ -93,6 +93,8 @@ jobs:
             CACHEBUST=${{ github.sha }}
             REPO_URL=https://github.com/${{ github.repository }}
             BRANCH_NAME=${{ github.ref_name }}
+            ADMIN_REPO_URL=https://github.com/Fearless743/Fboard-admin
+            ADMIN_BRANCH_NAME=${{ github.ref_name }}
           provenance: false
           outputs: type=registry,push=true
           allow: |

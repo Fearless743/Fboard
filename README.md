@@ -1,6 +1,9 @@
-# Xboard
+# Fboard
 
 <div align="center">
+
+> **Fboard 是基于 [Xboard](https://github.com/cedar2025/Xboard) 的二改项目**  
+> 在原版基础上进行了深度定制和功能增强
 
 [![Telegram](https://img.shields.io/badge/Telegram-Channel-blue)](https://t.me/XboardOfficial)
 ![PHP](https://img.shields.io/badge/PHP-8.2+-green.svg)

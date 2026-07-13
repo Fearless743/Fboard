@@ -36,6 +36,7 @@ class ConfigSave extends FormRequest
         'currency' => '',
         'currency_symbol' => '',
         'ticket_must_wait_reply' => '',
+        'maintenance_mode' => 'boolean',
         // subscribe
         'plan_change_enable' => '',
         'reset_traffic_method' => 'in:0,1,2,3,4',

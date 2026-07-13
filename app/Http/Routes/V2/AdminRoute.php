@@ -102,6 +102,9 @@ class AdminRoute
                 $router->post('/batchResetTraffic', [ManageController::class, 'batchResetTraffic']);
                 $router->get('/generateEchKey', [ManageController::class, 'generateEchKey']);
                 $router->get('/generate-reality-key', [ManageController::class, 'generateRealityKey']);
+                $router->post('/restart', [ManageController::class, 'restart']);
+                $router->post('/upgrade', [ManageController::class, 'upgrade']);
+                $router->post('/batchUpgrade', [ManageController::class, 'batchUpgrade']);
             });
 
             // 协议定义接口（插件协议动态注册）
@@ -127,6 +130,9 @@ class AdminRoute
                 $router->get('/installCommand', [MachineController::class, 'installCommand']);
                 $router->get('/nodes', [MachineController::class, 'nodes']);
                 $router->get('/history', [MachineController::class, 'history']);
+                $router->post('/upgrade', [MachineController::class, 'upgrade']);
+                $router->post('/restart', [MachineController::class, 'restart']);
+                $router->post('/batchUpgrade', [MachineController::class, 'batchUpgrade']);
             });
 
             // Order

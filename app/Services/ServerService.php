@@ -266,6 +266,7 @@ class ServerService
             'server_port' => (int) $serverPort,
             'network' => data_get($protocolSettings, 'network'),
             'networkSettings' => data_get($protocolSettings, 'network_settings') ?: null,
+            'maintenance_mode' => (bool) admin_setting('maintenance_mode', 0),
         ];
 
         $response = match ($nodeType) {

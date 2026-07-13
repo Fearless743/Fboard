@@ -20,6 +20,18 @@ class NodeSyncService
     }
 
     /**
+     * 获取维护期间可安全下发的用户快照。
+     */
+    private static function getUsersForSync(Server $server): array
+    {
+        if ((bool) admin_setting('maintenance_mode', 0)) {
+            return [];
+        }
+
+        return ServerService::getAvailableUsers($server)->toArray();
+    }
+
+    /**
      * Push node config update
      */
     public static function notifyConfigUpdated(int $nodeId): void
@@ -46,7 +58,7 @@ class NodeSyncService
             if (!self::isNodeOnline($server->id))
                 continue;
 
-            $users = ServerService::getAvailableUsers($server)->toArray();
+            $users = self::getUsersForSync($server);
             self::push($server->id, 'sync.users', ['users' => $users]);
         }
     }
@@ -63,6 +75,11 @@ class NodeSyncService
         foreach ($servers as $server) {
             if (!self::isNodeOnline($server->id))
                 continue;
+
+            if ((bool) admin_setting('maintenance_mode', 0)) {
+                self::push($server->id, 'sync.users', ['users' => []]);
+                continue;
+            }
 
             if ($user->isAvailable()) {
                 self::push($server->id, 'sync.user.delta', [
@@ -118,8 +135,23 @@ class NodeSyncService
 
         self::push($nodeId, 'sync.config', ['config' => ServerService::buildNodeConfig($node)]);
 
-        $users = ServerService::getAvailableUsers($node)->toArray();
+        $users = self::getUsersForSync($node);
         self::push($nodeId, 'sync.users', ['users' => $users]);
+    }
+
+    /**
+     * 向所有启用节点下发维护状态和兼容的用户快照。
+     */
+    public static function notifyMaintenanceModeChanged(): void
+    {
+        try {
+            Server::query()
+                ->where('enabled', true)
+                ->pluck('id')
+                ->each(fn($nodeId) => self::notifyFullSync((int) $nodeId));
+        } catch (\Throwable $e) {
+            Log::warning('[NodePush] maintenance mode sync failed: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -142,6 +174,46 @@ class NodeSyncService
 
         // Always publish via Redis so the WS process can update its in-memory registry
         self::pushMachine($machineId, 'sync.nodes', ['nodes' => $nodeList]);
+    }
+
+    /**
+     * Push upgrade command to a machine.
+     */
+    public static function notifyMachineUpgrade(int $machineId, string $version = 'latest'): void
+    {
+        self::pushMachine($machineId, 'sync.upgrade', ['version' => $version]);
+    }
+
+    /**
+     * Push restart command to a machine.
+     */
+    public static function notifyMachineRestart(int $machineId): void
+    {
+        self::pushMachine($machineId, 'sync.restart', []);
+    }
+
+    /**
+     * Push upgrade command to a node.
+     *
+     * This is retained for standalone nodes and legacy callers. Machine-bound
+     * nodes are routed through the machine-scoped job before reaching here.
+     */
+    public static function notifyNodeUpgrade(int $nodeId, string $version = 'latest'): void
+    {
+        self::push($nodeId, 'sync.upgrade', ['version' => $version]);
+    }
+
+    /**
+     * Push restart command to a node or its machine.
+     */
+    public static function notifyNodeRestart(Server $server): void
+    {
+        if ($server->machine_id !== null) {
+            self::notifyMachineRestart($server->machine_id);
+            return;
+        }
+
+        self::push($server->id, 'sync.restart', ['requested_node_id' => $server->id]);
     }
 
     /**

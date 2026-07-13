@@ -2,13 +2,15 @@
 
 namespace App\Http\Controllers\V2\Admin\Server;
 
-use App\Exceptions\ApiException;
 use App\Http\Controllers\Controller;
+use App\Jobs\MachineRestartJob;
+use App\Jobs\MachineUpgradeJob;
 use App\Models\Server;
 use App\Models\ServerMachine;
 use App\Models\ServerMachineLoadHistory;
 use App\Services\NodeSyncService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class MachineController extends Controller
 {
@@ -30,7 +32,7 @@ class MachineController extends Controller
                 'name' => $machine->name,
                 'notes' => $machine->notes,
                 'is_active' => $machine->is_active,
-                'is_online' => $machine->last_seen_at && (time() - $machine->last_seen_at) < 300,
+                'is_online' => $machine->isOnline(),
                 'last_seen_at' => $machine->last_seen_at,
                 'load_status' => $machine->load_status,
                 'servers_count' => $machine->servers_count,
@@ -202,6 +204,111 @@ class MachineController extends Controller
             ->values();
 
         return $this->success($history);
+    }
+
+    /**
+     * 升级指定机器上的 Fboard-Node 服务。
+     */
+    public function upgrade(Request $request)
+    {
+        $machine = $this->getOperableMachine($request);
+        if (!($machine instanceof ServerMachine)) {
+            return $machine;
+        }
+
+        MachineUpgradeJob::dispatch($machine->id);
+
+        Log::info('机器 Fboard-Node 升级任务已提交', [
+            'machine_id' => $machine->id,
+            'machine_name' => $machine->name,
+        ]);
+
+        return $this->success([
+            'submitted' => true,
+            'machine_id' => $machine->id,
+        ]);
+    }
+
+    /**
+     * 重启指定机器上的 Fboard-Node 服务。
+     */
+    public function restart(Request $request)
+    {
+        $machine = $this->getOperableMachine($request);
+        if (!($machine instanceof ServerMachine)) {
+            return $machine;
+        }
+
+        MachineRestartJob::dispatch($machine->id);
+
+        Log::info('机器 Fboard-Node 重启任务已提交', [
+            'machine_id' => $machine->id,
+            'machine_name' => $machine->name,
+        ]);
+
+        return $this->success([
+            'submitted' => true,
+            'machine_id' => $machine->id,
+        ]);
+    }
+
+    /**
+     * 一键升级所有在线机器上的 Fboard-Node 服务。
+     */
+    public function batchUpgrade()
+    {
+        $stats = [
+            'submitted' => 0,
+            'skipped' => [
+                'inactive' => 0,
+                'offline' => 0,
+            ],
+        ];
+
+        foreach (ServerMachine::orderBy('id')->get() as $machine) {
+            if (!$machine->is_active) {
+                $stats['skipped']['inactive']++;
+                continue;
+            }
+
+            if (!$machine->isOnline()) {
+                $stats['skipped']['offline']++;
+                continue;
+            }
+
+            MachineUpgradeJob::dispatch($machine->id);
+            $stats['submitted']++;
+        }
+
+        Log::info('批量机器 Fboard-Node 升级任务已提交', $stats);
+
+        return $this->success($stats);
+    }
+
+    /**
+     * 查找可接收机器级运维命令的机器。
+     * 机器级操作不依赖节点数量，机器本身就是升级/重启目标。
+     */
+    private function getOperableMachine(Request $request)
+    {
+        $params = $request->validate([
+            'id' => 'required|integer',
+        ]);
+
+        $machine = ServerMachine::find($params['id']);
+        if (!$machine) {
+            return $this->fail([400202, '服务器不存在']);
+        }
+
+        if (!$machine->is_active) {
+            return $this->fail([409001, '服务器已禁用']);
+        }
+
+        if (!$machine->isOnline()) {
+            return $this->fail([409002, '服务器当前离线，无法执行运维操作']);
+        }
+
+        return $machine;
     }
 
     private function buildInstallCommand(Request $request, ServerMachine $machine): string

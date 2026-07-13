@@ -28,7 +28,9 @@ class TrojanTidalabController extends Controller
             return $this->fail([400, '节点不存在']);
         }
         Cache::put(CacheKey::get('SERVER_TROJAN_LAST_CHECK_AT', $server->id), time(), 3600);
-        $users = ServerService::getAvailableUsers($server);
+        $users = (bool) admin_setting('maintenance_mode', 0)
+            ? collect()
+            : ServerService::getAvailableUsers($server);
         $result = [];
         foreach ($users as $user) {
             $user->trojan_user = [

@@ -5,6 +5,8 @@ namespace App\Http\Controllers\V2\Admin\Server;
 use App\Exceptions\ApiException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ServerSave;
+use App\Jobs\NodeRestartJob;
+use App\Jobs\NodeUpgradeJob;
 use App\Models\Server;
 use App\Models\ServerGroup;
 use App\Services\Plugin\HookManager;
@@ -48,6 +50,7 @@ class ManageController extends Controller
                 $item["group_ids"] ?? [],
             )->get(["name", "id"]);
             $item["parent"] = $item->parent;
+            $item->append('version');
             return $item;
         });
 
@@ -625,5 +628,67 @@ class ManageController extends Controller
             "public_key" => base64_encode($publicKey),
             "private_key" => base64_encode($secretKey),
         ]);
+    }
+
+    /**
+     * 兼容旧入口：重启独立节点，机器节点会转为机器级重启。
+     */
+    public function restart(Request $request)
+    {
+        $request->validate([
+            "id" => "required|integer",
+        ]);
+
+        $server = Server::find($request->id);
+        if (!$server) {
+            return $this->fail([400202, "服务器不存在"]);
+        }
+
+        if ($server->type === "virtual") {
+            return $this->fail([400, "虚拟节点不支持重启"]);
+        }
+
+        NodeRestartJob::dispatch($server->id);
+
+        Log::info("节点重启任务已提交", [
+            "node_id" => $server->id,
+            "node_name" => $server->name,
+        ]);
+        return $this->success(true);
+    }
+
+    /**
+     * 兼容旧入口：升级独立节点，机器节点会转为机器级升级。
+     */
+    public function upgrade(Request $request)
+    {
+        $request->validate([
+            "id" => "required|integer",
+        ]);
+
+        $server = Server::find($request->id);
+        if (!$server) {
+            return $this->fail([400202, "服务器不存在"]);
+        }
+
+        if ($server->type === "virtual") {
+            return $this->fail([400, "虚拟节点不支持升级"]);
+        }
+
+        NodeUpgradeJob::dispatch($request->id);
+
+        Log::info("Node upgrade dispatched", ["node_id" => $request->id, "node_name" => $server->name]);
+        return $this->success(true);
+    }
+
+    /**
+     * 兼容旧入口：按机器去重升级所有在线机器。
+     */
+    public function batchUpgrade()
+    {
+        NodeUpgradeJob::dispatch();
+
+        Log::info("Batch machine upgrade dispatched (legacy node route)");
+        return $this->success(true);
     }
 }

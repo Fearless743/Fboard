@@ -15,9 +15,8 @@ WORKDIR /build
 
 RUN git clone --depth 1 --branch ${ADMIN_BRANCH_NAME} ${ADMIN_REPO_URL} . \
     && corepack enable \
-    && echo 'onlyBuiltDependencies[]=esbuild' >> .npmrc \
-    && rm -f pnpm-lock.yaml \
-    && pnpm install \
+    && corepack prepare pnpm@10 --activate \
+    && pnpm install --frozen-lockfile \
     && sed -i 's|path.resolve(__dirname, "../Fboard/public/assets/admin")|"/out"|' vite.config.ts \
     && pnpm build
 

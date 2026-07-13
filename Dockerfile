@@ -8,7 +8,7 @@
 FROM node:20-alpine AS admin-builder
 
 ARG ADMIN_REPO_URL=https://github.com/Fearless743/Fboard-admin
-ARG ADMIN_BRANCH_NAME=master
+ARG ADMIN_BRANCH_NAME=main
 
 RUN apk add --no-cache git
 WORKDIR /build
@@ -45,7 +45,7 @@ ARG CACHEBUST=1
 ARG REPO_URL=https://github.com/Fearless743/Fboard
 ARG BRANCH_NAME=master
 ARG ADMIN_REPO_URL=https://github.com/Fearless743/Fboard-admin
-ARG ADMIN_BRANCH_NAME=master
+ARG ADMIN_BRANCH_NAME=main
 
 RUN echo "Attempting to clone branch: ${BRANCH_NAME} from ${REPO_URL} with CACHEBUST: ${CACHEBUST}" && \
     rm -rf ./* && \

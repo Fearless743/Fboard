@@ -4,6 +4,7 @@ namespace App\Http\Controllers\V2\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Plugin;
+use App\Services\Plugin\HookManager;
 use App\Services\Plugin\PluginManager;
 use App\Services\Plugin\PluginConfigService;
 use Illuminate\Http\Request;
@@ -138,6 +139,7 @@ class PluginController extends Controller
                     'has_static_files' => $hasStaticFiles,
                     'admin_menus' => $config['admin_menus'] ?? null,
                     'admin_crud' => $config['admin_crud'] ?? null,
+                    'actions' => $installed ? $this->getPluginActions($code) : [],
                 ];
             }
         }
@@ -368,6 +370,45 @@ class PluginController extends Controller
                 'message' => '插件删除失败：' . $e->getMessage()
             ], 400);
         }
+    }
+
+    /**
+     * 获取插件注册的动作按钮
+     */
+    protected function getPluginActions(string $code): array
+    {
+        $allActions = HookManager::filter('plugin.actions', []);
+        return $allActions[$code] ?? [];
+    }
+
+    /**
+     * 执行插件动作
+     */
+    public function executeAction(Request $request)
+    {
+        $request->validate([
+            'code' => 'required|string',
+            'action' => 'required|string',
+        ]);
+
+        $code = $request->input('code');
+        $actionName = $request->input('action');
+
+        $plugin = Plugin::where('code', $code)->first();
+        if (!$plugin || !$plugin->is_enabled) {
+            return response()->json(['message' => '插件未启用'], 400);
+        }
+
+        $result = HookManager::filter(
+            'plugin.action.execute.' . $code . '.' . $actionName,
+            [],
+            $request->input('params', [])
+        );
+
+        return response()->json([
+            'message' => $result['message'] ?? '执行成功',
+            'data' => $result,
+        ]);
     }
 
     /**

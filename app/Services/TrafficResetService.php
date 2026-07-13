@@ -264,6 +264,10 @@ class TrafficResetService
     $errors = [];
     $lastProcessedId = 0;
 
+    HookManager::call('traffic.batch_reset.before', [
+      'batch_size' => $batchSize,
+    ]);
+
     try {
       do {
         $users = User::where('next_reset_at', '<=', time())
@@ -362,6 +366,8 @@ class TrafficResetService
       'last_processed_id' => $lastProcessedId,
       'completed_at' => now()->toDateTimeString(),
     ];
+
+    HookManager::call('traffic.batch_reset.after', $result);
 
     return $result;
   }

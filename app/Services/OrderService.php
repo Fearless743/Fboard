@@ -288,6 +288,9 @@ class OrderService
         $order = $this->order;
         if ($order->status !== Order::STATUS_PENDING)
             return true;
+
+        HookManager::call('order.paid.before', $order);
+
         $order->status = Order::STATUS_PROCESSING;
         $order->paid_at = time();
         $order->callback_no = $callbackNo;
@@ -299,6 +302,9 @@ class OrderService
             Log::error($e);
             return false;
         }
+
+        HookManager::call('order.paid.after', $order);
+
         return true;
     }
 

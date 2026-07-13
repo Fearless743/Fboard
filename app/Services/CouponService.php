@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Exceptions\ApiException;
 use App\Models\Coupon;
 use App\Models\Order;
+use App\Services\Plugin\HookManager;
 use Illuminate\Support\Facades\DB;
 
 class CouponService
@@ -46,6 +47,12 @@ class CouponService
                 return false;
             }
         }
+
+        HookManager::call('coupon.used', [
+            'coupon' => $this->coupon,
+            'order' => $order,
+        ]);
+
         return true;
     }
 

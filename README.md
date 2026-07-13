@@ -43,18 +43,22 @@ docker compose up -d
 ## 📖 Documentation
 
 ### 🔄 Upgrade Notice
+
 > 🚨 **Important:** This version involves significant changes. Please strictly follow the upgrade documentation and backup your database before upgrading. Note that upgrading and migration are different processes, do not confuse them.
 
 ### Development Guides
+
 - [Plugin Development Guide](./docs/en/development/plugin-development-guide.md) - Complete guide for developing XBoard plugins
 
 ### Deployment Guides
+
 - [Deploy with 1Panel](./docs/en/installation/1panel.md)
 - [Deploy with Docker Compose](./docs/en/installation/docker-compose.md)
 - [Deploy with aaPanel](./docs/en/installation/aapanel.md)
 - [Deploy with aaPanel + Docker](./docs/en/installation/aapanel-docker.md) (Recommended)
 
 ### Migration Guides
+
 - [Migrate from v2board dev](./docs/en/migration/v2board-dev.md)
 - [Migrate from v2board 1.7.4](./docs/en/migration/v2board-1.7.4.md)
 - [Migrate from v2board 1.7.3](./docs/en/migration/v2board-1.7.3.md)
@@ -68,6 +72,7 @@ docker compose up -d
 - Caching: Redis + Octane Cache
 
 ## 📷 Preview
+
 ![Admin Preview](./docs/images/admin.png)
 
 ![User Preview](./docs/images/user.png)
@@ -85,6 +90,7 @@ TRC20: `TLypStEWsVrj6Wz9mCxbXffqgt5yz3Y4XB`
 ## 🌟 Maintenance Notice
 
 This project is currently under light maintenance. We will:
+
 - Fix critical bugs and security issues
 - Review and merge important pull requests
 - Provide necessary updates for compatibility
@@ -94,6 +100,7 @@ However, new feature development may be limited.
 ## 🔔 Important Notes
 
 1. Restart required after modifying admin path:
+
 ```bash
 docker compose restart
 ```
@@ -106,4 +113,4 @@ Issues and Pull Requests are welcome to help improve the project.
 
 ## 📈 Star History
 
-[![Stargazers over time](https://starchart.cc/cedar2025/Xboard.svg)](https://starchart.cc/cedar2025/Xboard)
+[![Stargazers over time](https://starchart.cc/Fearless743/FBoard.svg)](https://starchart.cc/Fearless743/FBoard)

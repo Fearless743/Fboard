@@ -38,6 +38,40 @@ class TicketService
         }
     }
 
+    /**
+     * 机器人自动回复工单
+     * 插件可通过 hook 调用此方法，使用预设的机器人 user_id 进行回复
+     */
+    public function replyByBot(int $ticketId, string $message, ?int $botUserId = null): ?TicketMessage
+    {
+        $ticket = Ticket::find($ticketId);
+        if (!$ticket) {
+            return null;
+        }
+
+        $botUserId = $botUserId ?? config('ticket.bot_user_id', 0);
+
+        try {
+            DB::beginTransaction();
+            $ticketMessage = TicketMessage::create([
+                'user_id' => $botUserId,
+                'ticket_id' => $ticket->id,
+                'message' => $message,
+                'is_bot' => true,
+            ]);
+            $ticket->reply_status = Ticket::REPLY_STATUS_REPLIED;
+            $ticket->last_reply_user_id = $botUserId;
+            if (!$ticketMessage || !$ticket->save()) {
+                throw new \Exception();
+            }
+            DB::commit();
+            return $ticketMessage;
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return null;
+        }
+    }
+
     public function replyByAdmin($ticketId, $message, $userId): void
     {
         $ticket = Ticket::where('id', $ticketId)->first();

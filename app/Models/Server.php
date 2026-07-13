@@ -429,6 +429,19 @@ class Server extends Model
     }
 
     /**
+     * 版本号访问器（从 metrics 缓存中读取）
+     */
+    protected function version(): Attribute
+    {
+        return Attribute::make(
+            get: function () {
+                $metrics = $this->metrics;
+                return $metrics['version'] ?? null;
+            }
+        );
+    }
+
+    /**
      * 在线连接数访问器
      */
     protected function onlineConn(): Attribute

@@ -28,7 +28,9 @@ class UniProxyController extends Controller
 
         ServerService::touchNode($node);
 
-        $response['users'] = ServerService::getAvailableUsers($node);
+        $response['users'] = (bool) admin_setting('maintenance_mode', 0)
+            ? collect()
+            : ServerService::getAvailableUsers($node);
 
         $eTag = sha1(json_encode($response));
         if (str_contains($request->header('If-None-Match', ''), $eTag)) {

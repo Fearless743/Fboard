@@ -62,4 +62,13 @@ class ServerMachine extends Model
     {
         return $this->forceFill(['last_seen_at' => now()->timestamp])->save();
     }
+
+    /**
+     * 判断机器是否在最近一个检查周期内上报心跳。
+     */
+    public function isOnline(int $timeout = Server::CHECK_INTERVAL): bool
+    {
+        return $this->last_seen_at !== null
+            && (time() - (int) $this->last_seen_at) < $timeout;
+    }
 }

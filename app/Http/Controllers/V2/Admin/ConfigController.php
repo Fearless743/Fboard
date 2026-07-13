@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ConfigSave;
 use App\Models\SubscribeTemplate;
 use App\Services\MailService;
+use App\Services\NodeSyncService;
 use App\Services\Plugin\HookManager;
 use App\Services\TelegramService;
 use App\Services\ThemeService;
@@ -118,6 +119,7 @@ class ConfigController extends Controller
                 'currency' => admin_setting('currency', 'CNY'),
                 'currency_symbol' => admin_setting('currency_symbol', '¥'),
                 'ticket_must_wait_reply' => (bool) admin_setting('ticket_must_wait_reply', 0),
+                'maintenance_mode' => (bool) admin_setting('maintenance_mode', 0),
             ],
             'subscribe' => [
                 'plan_change_enable' => (bool) admin_setting('plan_change_enable', 1),
@@ -231,6 +233,10 @@ class ConfigController extends Controller
                 $themeService->switch($v);
             }
             admin_setting([$k => $v]);
+        }
+
+        if (array_key_exists('maintenance_mode', $data)) {
+            NodeSyncService::notifyMaintenanceModeChanged();
         }
 
         HookManager::call('admin.config.save.after', [

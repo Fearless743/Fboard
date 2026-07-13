@@ -5,7 +5,7 @@
 # The resulting /out directory is consumed by the final stage so the runtime
 # image never has to ship Node.js or pnpm.
 # ---------------------------------------------------------------------------
-FROM node:20-alpine AS admin-builder
+FROM node:22-alpine AS admin-builder
 
 ARG ADMIN_REPO_URL=https://github.com/Fearless743/Fboard-admin
 ARG ADMIN_BRANCH_NAME=main

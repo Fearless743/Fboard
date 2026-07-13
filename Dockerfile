@@ -3,7 +3,7 @@
 # ---------------------------------------------------------------------------
 # Stage 1: build the admin SPA from the Fboard-admin source repository.
 # The resulting /out directory is consumed by the final stage so the runtime
-# image never has to ship Node.js or pnpm.
+# image never has to ship Node.js or bun.
 # ---------------------------------------------------------------------------
 FROM node:22-alpine AS admin-builder
 
@@ -14,11 +14,10 @@ RUN apk add --no-cache git
 WORKDIR /build
 
 RUN git clone --depth 1 --branch ${ADMIN_BRANCH_NAME} ${ADMIN_REPO_URL} . \
-    && corepack enable \
-    && corepack prepare pnpm@10 --activate \
-    && pnpm install --frozen-lockfile \
+    && npm install -g bun \
+    && bun install \
     && sed -i 's|path.resolve(__dirname, "../Fboard/public/assets/admin")|"/out"|' vite.config.ts \
-    && pnpm build
+    && bun run build
 
 # ---------------------------------------------------------------------------
 # Stage 2: PHP + Swoole runtime for the Fboard panel.

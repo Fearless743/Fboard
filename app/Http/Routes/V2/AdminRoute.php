@@ -110,6 +110,7 @@ class AdminRoute
                 $router->post('/batchResetTraffic', [ManageController::class, 'batchResetTraffic']);
                 $router->get('/generateEchKey', [ManageController::class, 'generateEchKey']);
                 $router->get('/generate-reality-key', [ManageController::class, 'generateRealityKey']);
+                $router->get('/generate-sudoku-key', [ManageController::class, 'generateSudokuKey']);
                 $router->post('/restart', [ManageController::class, 'restart']);
                 $router->post('/upgrade', [ManageController::class, 'upgrade']);
                 $router->post('/batchUpgrade', [ManageController::class, 'batchUpgrade']);

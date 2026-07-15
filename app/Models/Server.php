@@ -72,6 +72,7 @@ class Server extends Model
     public const TYPE_NAIVE = "naive";
     public const TYPE_HTTP = "http";
     public const TYPE_MIERU = "mieru";
+    public const TYPE_SUDOKU = "sudoku";
     public const STATUS_OFFLINE = 0;
     public const STATUS_ONLINE_NO_PUSH = 1;
     public const STATUS_ONLINE = 2;
@@ -240,6 +241,9 @@ class Server extends Model
 
     public function generateServerPassword(User $user): string
     {
+        if ($this->type === self::TYPE_SUDOKU) {
+            return $this->generateSudokuAvailableKey($user);
+        }
         if ($this->type !== self::TYPE_SHADOWSOCKS) {
             return $user->uuid;
         }
@@ -260,6 +264,23 @@ class Server extends Model
         );
         $userKey = Helper::uuidToBase64($user->uuid, $config["userKeySize"]);
         return "{$serverKey}:{$userKey}";
+    }
+
+
+    /**
+     * Deterministic Sudoku Available Private Key for a user.
+     * Compatible wire format with official split keys: hex(r||k) where master = r+k (mod L).
+     * UserHash = hex(sha256(raw_key_bytes)[:8]).
+     */
+    private function generateSudokuAvailableKey(User $user): string
+    {
+        $settings = $this->protocol_settings ?? [];
+        $masterPrivateHex = data_get($settings, 'master_private_key');
+        if (!$masterPrivateHex) {
+            // Fallback: cannot derive without master private; return uuid (will fail auth).
+            return $user->uuid;
+        }
+        return \App\Support\SudokuKey::deriveAvailablePrivateKey($masterPrivateHex, $user->uuid);
     }
 
     public static function normalizeType(?string $type): string|null

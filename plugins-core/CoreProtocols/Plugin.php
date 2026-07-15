@@ -19,6 +19,7 @@ class Plugin extends AbstractPlugin
         $this->registerNaive();
         $this->registerHTTP();
         $this->registerMieru();
+        $this->registerSudoku();
     }
 
     private function registerShadowsocks(): void
@@ -314,6 +315,57 @@ class Plugin extends AbstractPlugin
             ['transport' => 'required|string|in:TCP,UDP', 'traffic_pattern' => 'string'],
             self::getMultiplexValidationRules(),
         ), '[mieru]');
+    }
+
+
+    private function registerSudoku(): void
+    {
+        $this->registerProtocolDefinition('sudoku', 'Sudoku', [
+            'master_public_key' => ['type' => 'string', 'default' => null, 'label' => 'Master Public Key'],
+            'master_private_key' => ['type' => 'string', 'default' => null, 'label' => 'Master Private Key（仅面板保存，不下发节点）'],
+            'aead_method' => ['type' => 'string', 'default' => 'chacha20-poly1305', 'label' => 'AEAD', 'options' => [
+                'chacha20-poly1305' => 'ChaCha20-Poly1305',
+                'aes-128-gcm' => 'AES-128-GCM',
+                'none' => 'None（不推荐）',
+            ]],
+            'padding_min' => ['type' => 'integer', 'default' => 5, 'label' => '最小填充率(%)'],
+            'padding_max' => ['type' => 'integer', 'default' => 15, 'label' => '最大填充率(%)'],
+            'table_type' => ['type' => 'string', 'default' => 'prefer_entropy', 'label' => '表类型', 'options' => [
+                'prefer_entropy' => 'prefer_entropy',
+                'prefer_ascii' => 'prefer_ascii',
+                'up_ascii_down_entropy' => 'up_ascii_down_entropy',
+                'up_entropy_down_ascii' => 'up_entropy_down_ascii',
+            ]],
+            'enable_pure_downlink' => ['type' => 'boolean', 'default' => true, 'label' => '纯 Sudoku 下行'],
+            'custom_table' => ['type' => 'string', 'default' => null, 'label' => '自定义表布局'],
+            'custom_tables' => ['type' => 'array', 'default' => [], 'label' => '自定义表布局列表'],
+            'handshake_timeout' => ['type' => 'integer', 'default' => 5, 'label' => '握手超时(秒)'],
+            'fallback' => ['type' => 'string', 'default' => null, 'label' => '可疑回落地址 host:port'],
+            'multiplex' => ['type' => 'string', 'default' => 'off', 'label' => '多路复用', 'options' => [
+                'off' => 'off', 'auto' => 'auto', 'on' => 'on',
+            ]],
+            'httpmask' => ['type' => 'object', 'fields' => [
+                'disable' => ['type' => 'boolean', 'default' => false, 'label' => '禁用 HTTPMask'],
+                'mode' => ['type' => 'string', 'default' => 'legacy', 'label' => 'HTTPMask 模式', 'options' => [
+                    'legacy' => 'legacy', 'stream' => 'stream', 'poll' => 'poll', 'auto' => 'auto', 'ws' => 'ws',
+                ]],
+                'path_root' => ['type' => 'string', 'default' => null, 'label' => '路径前缀'],
+            ], 'label' => 'HTTPMask'],
+        ], [
+            'master_public_key' => 'required|string',
+            'master_private_key' => 'required|string',
+            'aead_method' => 'nullable|string|in:chacha20-poly1305,aes-128-gcm,none',
+            'padding_min' => 'nullable|integer|min:0|max:100',
+            'padding_max' => 'nullable|integer|min:0|max:100',
+            'table_type' => 'nullable|string|in:prefer_entropy,prefer_ascii,up_ascii_down_entropy,up_entropy_down_ascii',
+            'enable_pure_downlink' => 'nullable|boolean',
+            'custom_table' => 'nullable|string',
+            'custom_tables' => 'nullable|array',
+            'handshake_timeout' => 'nullable|integer|min:0',
+            'fallback' => 'nullable|string',
+            'multiplex' => 'nullable|string|in:off,auto,on',
+            'httpmask' => 'nullable|array',
+        ], '[sudoku]');
     }
 
     private static function getRealityFields(): array

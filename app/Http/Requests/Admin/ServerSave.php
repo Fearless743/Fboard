@@ -42,8 +42,12 @@ class ServerSave extends FormRequest
         ];
     }
 
-    private function getProtocolRules(string $type): array
+    private function getProtocolRules(?string $type): array
     {
+        if ($type === null || $type === '') {
+            return [];
+        }
+
         $registry = app(ProtocolDefinitionRegistry::class);
         $definition = $registry->get($type);
 
@@ -54,11 +58,52 @@ class ServerSave extends FormRequest
         return $definition->validationRules;
     }
 
+    /**
+     * Partial update rules for manage/update when only a few fields are sent
+     * (e.g. show toggle sends {id, show} without type/name/host).
+     */
+    private function getPartialUpdateRules(): array
+    {
+        return [
+            'id' => 'required|integer',
+            'show' => 'nullable',
+            'enabled' => 'nullable|boolean',
+            'name' => 'nullable|string',
+            'group_ids' => 'nullable|array',
+            'route_ids' => 'nullable|array',
+            'parent_id' => 'nullable|integer',
+            'machine_id' => 'nullable|integer',
+            'host' => 'nullable',
+            'port' => 'nullable',
+            'server_port' => 'nullable',
+            'tags' => 'nullable|array',
+            'excludes' => 'nullable|array',
+            'ips' => 'nullable|array',
+            'rate' => 'nullable|numeric',
+            'rate_time_enable' => 'nullable|boolean',
+            'rate_time_ranges' => 'nullable|array',
+            'custom_outbounds' => 'nullable|array',
+            'custom_routes' => 'nullable|array',
+            'cert_config' => 'nullable|array',
+            'protocol_settings' => 'nullable|array',
+            'transfer_enable' => 'nullable|integer|min:0',
+            'code' => 'nullable|string',
+            'spectific_key' => 'nullable|string',
+        ];
+    }
+
     public function rules(): array
     {
         $type = $this->input('type');
+
+        // manage/update is reused for partial field patches (show/enabled toggle).
+        // Full create/save always includes type; partial updates often do not.
+        if ($type === null || $type === '') {
+            return $this->getPartialUpdateRules();
+        }
+
         $rules = $this->getBaseRules();
-        $protocolRules = $this->getProtocolRules($type);
+        $protocolRules = $this->getProtocolRules(is_string($type) ? $type : null);
 
         foreach ($protocolRules as $field => $rule) {
             $rules['protocol_settings.' . $field] = $rule;

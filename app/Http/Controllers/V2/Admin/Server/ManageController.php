@@ -619,6 +619,18 @@ class ManageController extends Controller
     }
 
     /**
+     * 生成 Sudoku Master 密钥对（hex）
+     */
+    public function generateSudokuKey()
+    {
+        $pair = \App\Support\SudokuKey::generateMasterKeyPair();
+        return $this->success([
+            "master_public_key" => $pair["master_public_key"],
+            "master_private_key" => $pair["master_private_key"],
+        ]);
+    }
+
+    /**
      * 兼容旧入口：重启独立节点，机器节点会转为机器级重启。
      */
     public function restart(Request $request)

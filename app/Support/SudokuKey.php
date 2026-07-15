@@ -2,122 +2,118 @@
 
 namespace App\Support;
 
+use RuntimeException;
+
 /**
- * Sudoku key helpers.
+ * Sudoku ED25519 master/split key helpers (panel-native, no external binary).
  *
- * Delegates scalar arithmetic to tools/sudoku-key (Go + filippo.io/edwards25519)
- * so we stay wire-compatible with official master/split keys without GMP/BCMath.
+ * Wire format matches official SUDOKU-ASCII/sudoku:
+ * - Master private: 32-byte scalar (hex)
+ * - Master public:  compressed Edwards point P = x·B (hex)
+ * - Available private: 64-byte split r||k (hex) with x ≡ r+k (mod L)
+ * - UserHash: hex(sha256(raw available private key bytes)[:8])
  *
- * Binary resolution order:
- * 1) env FBOARD_SUDOKU_KEY_BIN
- * 2) base_path('bin/sudoku-key')
- * 3) base_path('tools/sudoku-key/sudoku-key')
+ * Uses paragonie/sodium_compat Curve25519/Ed25519 field arithmetic already
+ * vendored by the project (no GMP/BCMath, no external sudoku-key process).
  */
 class SudokuKey
 {
     public static function generateMasterKeyPair(): array
     {
-        $out = self::run(['-mode', 'keygen']);
+        // SetUniformBytes(64 random) -> canonical scalar
+        $seed = random_bytes(64);
+        $scalar = self::scalarReduce($seed);
+        $public = self::scalarBaseMult($scalar);
+
         return [
-            'master_private_key' => $out['master_private_key'] ?? '',
-            'master_public_key' => $out['master_public_key'] ?? '',
+            'master_private_key' => bin2hex($scalar),
+            'master_public_key' => bin2hex($public),
         ];
     }
 
     public static function deriveAvailablePrivateKey(string $masterPrivateHex, string $userUuid): string
     {
-        try {
-            $out = self::run([
-                '-mode', 'derive',
-                '-master-private', trim($masterPrivateHex),
-                '-uuid', $userUuid,
-            ]);
-            return $out['available_private_key'] ?? $userUuid;
-        } catch (\Throwable $e) {
+        $master = self::parseScalarBytes(trim($masterPrivateHex));
+        if ($master === null) {
             return $userUuid;
         }
+
+        // Deterministic r = reduce(SHA512("fboard-sudoku-v1" || master || uuid))
+        $digest = hash('sha512', 'fboard-sudoku-v1' . $master . $userUuid, true);
+        $r = self::scalarReduce($digest);
+        $k = self::scalarSub($master, $r);
+
+        return bin2hex($r . $k);
     }
 
     public static function userHashFromAvailableKey(string $availablePrivateHex): string
     {
-        try {
-            $out = self::run(['-mode', 'userhash', '-key', trim($availablePrivateHex)]);
-            return $out['user_hash'] ?? '';
-        } catch (\Throwable $e) {
-            $raw = @hex2bin(trim($availablePrivateHex));
-            if ($raw === false || $raw === '') {
-                return '';
-            }
-            return substr(hash('sha256', $raw), 0, 16);
+        $raw = @hex2bin(trim($availablePrivateHex));
+        if ($raw === false || $raw === '') {
+            return '';
         }
+
+        return substr(hash('sha256', $raw), 0, 16);
     }
 
     public static function recoverPublicKeyFromPrivate(string $privateHex): ?string
     {
-        try {
-            $out = self::run(['-mode', 'recover', '-key', trim($privateHex)]);
-            return $out['public_key'] ?? null;
-        } catch (\Throwable $e) {
+        $scalar = self::parseScalarBytes(trim($privateHex));
+        if ($scalar === null) {
             return null;
         }
+
+        return bin2hex(self::scalarBaseMult($scalar));
     }
 
-    private static function run(array $args): array
+    private static function parseScalarBytes(string $hex): ?string
     {
-        $bin = self::binaryPath();
-        if ($bin === null) {
-            throw new \RuntimeException('sudoku-key binary not found; build Fboard/tools/sudoku-key');
+        $raw = @hex2bin($hex);
+        if ($raw === false) {
+            return null;
         }
-        $cmd = escapeshellarg($bin);
-        foreach ($args as $a) {
-            $cmd .= ' ' . escapeshellarg($a);
+        if (strlen($raw) === 32) {
+            return $raw;
         }
-        $descriptor = [
-            0 => ['pipe', 'r'],
-            1 => ['pipe', 'w'],
-            2 => ['pipe', 'w'],
-        ];
-        $proc = proc_open($cmd, $descriptor, $pipes);
-        if (!is_resource($proc)) {
-            throw new \RuntimeException('failed to start sudoku-key');
+        if (strlen($raw) === 64) {
+            // split r||k -> r+k
+            return self::scalarAdd(substr($raw, 0, 32), substr($raw, 32, 32));
         }
-        fclose($pipes[0]);
-        $stdout = stream_get_contents($pipes[1]);
-        $stderr = stream_get_contents($pipes[2]);
-        fclose($pipes[1]);
-        fclose($pipes[2]);
-        $code = proc_close($proc);
-        if ($code !== 0) {
-            throw new \RuntimeException(trim($stderr) !== '' ? trim($stderr) : "sudoku-key exit $code");
-        }
-        $data = json_decode((string) $stdout, true);
-        if (!is_array($data)) {
-            throw new \RuntimeException('invalid sudoku-key json output');
-        }
-        return $data;
-    }
 
-    private static function binaryPath(): ?string
-    {
-        $env = getenv('FBOARD_SUDOKU_KEY_BIN');
-        if (is_string($env) && $env !== '' && is_executable($env)) {
-            return $env;
-        }
-        $candidates = [];
-        if (function_exists('base_path')) {
-            $candidates[] = base_path('bin/sudoku-key');
-            $candidates[] = base_path('tools/sudoku-key/sudoku-key');
-        }
-        // Fallback when base_path unavailable (CLI smoke tests)
-        $root = dirname(__DIR__, 2);
-        $candidates[] = $root . '/bin/sudoku-key';
-        $candidates[] = $root . '/tools/sudoku-key/sudoku-key';
-
-        foreach ($candidates as $path) {
-            if (is_string($path) && is_executable($path)) {
-                return $path;
-            }
-        }
         return null;
+    }
+
+    /** reduce 64-byte little-endian integer mod L -> 32-byte scalar */
+    private static function scalarReduce(string $bytes64): string
+    {
+        if (strlen($bytes64) < 64) {
+            $bytes64 = str_pad($bytes64, 64, "\0");
+        } elseif (strlen($bytes64) > 64) {
+            $bytes64 = substr($bytes64, 0, 64);
+        }
+
+        return \ParagonIE_Sodium_Core_Ed25519::sc_reduce($bytes64);
+    }
+
+    private static function scalarAdd(string $a, string $b): string
+    {
+        return \ParagonIE_Sodium_Core_Ed25519::scalar_add($a, $b);
+    }
+
+    private static function scalarSub(string $a, string $b): string
+    {
+        return \ParagonIE_Sodium_Core_Ed25519::scalar_sub($a, $b);
+    }
+
+    /** P = x * B (no clamp; x is already a canonical scalar) */
+    private static function scalarBaseMult(string $scalar32): string
+    {
+        if (strlen($scalar32) !== 32) {
+            throw new RuntimeException('sudoku scalar must be 32 bytes');
+        }
+
+        $p3 = \ParagonIE_Sodium_Core_Ed25519::ge_scalarmult_base($scalar32);
+
+        return \ParagonIE_Sodium_Core_Ed25519::ge_p3_tobytes($p3);
     }
 }

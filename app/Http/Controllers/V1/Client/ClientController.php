@@ -5,6 +5,7 @@ namespace App\Http\Controllers\V1\Client;
 use App\Http\Controllers\Controller;
 use App\Models\Server;
 use App\Services\Plugin\HookManager;
+use App\Services\ProtocolDefinitionRegistry;
 use App\Services\ServerService;
 use App\Services\UserService;
 use App\Support\AbstractProtocol;
@@ -13,23 +14,9 @@ use Illuminate\Http\Request;
 
 class ClientController extends Controller
 {
-    /**
-     * Protocol prefix mapping for server names
-     */
-    private const PROTOCOL_PREFIXES = [
-        'hysteria' => [
-            1 => '[Hy]',
-            2 => '[Hy2]'
-        ],
-        'vless' => '[vless]',
-        'shadowsocks' => '[ss]',
-        'vmess' => '[vmess]',
-        'trojan' => '[trojan]',
-        'tuic' => '[tuic]',
-        'socks' => '[socks]',
-        'anytls' => '[anytls]'
-    ];
-
+    public function __construct(
+        private readonly ProtocolDefinitionRegistry $protocolRegistry
+    ) {}
 
     public function subscribe(Request $request)
     {
@@ -255,13 +242,11 @@ class ClientController extends Controller
     private function getPrefixedServerName(array $server): string
     {
         $type = $server['type'] ?? '';
-        if (!isset(self::PROTOCOL_PREFIXES[$type])) {
+        $definition = $this->protocolRegistry->get($type);
+        if (!$definition) {
             return $server['name'] ?? '';
         }
-        $prefix = is_array(self::PROTOCOL_PREFIXES[$type])
-            ? self::PROTOCOL_PREFIXES[$type][$server['protocol_settings']['version'] ?? 1] ?? ''
-            : self::PROTOCOL_PREFIXES[$type];
-        return $prefix . ($server['name'] ?? '');
+        return $definition->getServerNamePrefix($server) . ($server['name'] ?? '');
     }
 }
 

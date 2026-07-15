@@ -93,14 +93,21 @@ abstract class AbstractPlugin
      * 注册协议定义
      * 插件可调用此方法在 boot() 中注册协议类型定义，
      * 前端将自动获取协议类型及配置字段用于动态渲染表单。
+     *
+     * @param string $type 协议类型标识
+     * @param string $name 协议显示名称
+     * @param array $configFields 配置字段定义
+     * @param array $validationRules 验证规则
+     * @param string|array|null $prefix 服务器名称前缀，字符串如 '[ss]'，或版本依赖数组如 [1 => '[Hy]', 2 => '[Hy2]']
      */
-    protected function registerProtocolDefinition(string $type, string $name, array $configFields, array $validationRules = []): void
+    protected function registerProtocolDefinition(string $type, string $name, array $configFields, array $validationRules = [], string|array|null $prefix = null): void
     {
-        $this->filter('protocols.definitions', function ($definitions) use ($type, $name, $configFields, $validationRules) {
+        $this->filter('protocols.definitions', function ($definitions) use ($type, $name, $configFields, $validationRules, $prefix) {
             $definitions[$type] = [
                 'name' => $name,
                 'config_fields' => $configFields,
                 'validation_rules' => $validationRules,
+                'prefix' => $prefix,
             ];
             return $definitions;
         });

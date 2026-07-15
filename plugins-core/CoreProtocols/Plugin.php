@@ -51,7 +51,7 @@ class Plugin extends AbstractPlugin
             'obfs_settings.host' => 'nullable|string',
             'plugin' => 'nullable|string|in:simple-obfs,v2ray-plugin,gost-plugin,shadow-tls,restls,kcptun',
             'plugin_opts' => 'nullable|string',
-        ]);
+        ], '[ss]');
     }
 
     private function registerVMess(): void
@@ -80,7 +80,7 @@ class Plugin extends AbstractPlugin
             self::getTlsSettingsValidationRules(),
             self::getMultiplexValidationRules(),
             self::getUtlsValidationRules(),
-        ));
+        ), '[vmess]');
     }
 
     private function registerVLESS(): void
@@ -99,7 +99,7 @@ class Plugin extends AbstractPlugin
                     'config_path' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置路径', 'show_when' => ['enabled' => 'true']],
                 ], 'label' => 'ECH配置'],
             ], 'label' => 'TLS设置'],
-            'flow' => ['type' => 'string', 'default' => null, 'label' => '流控', 'options' => [
+            'flow' => ['type' => 'string', 'default' => null, 'label' => '流控', 'show_when' => ['tls' => '2'], 'options' => [
                 '' => '无',
                 'xtls-rprx-direct' => 'xtls-rprx-direct',
                 'xtls-rprx-splice' => 'xtls-rprx-splice',
@@ -123,7 +123,7 @@ class Plugin extends AbstractPlugin
             self::getRealityValidationRules(),
             self::getMultiplexValidationRules(),
             self::getUtlsValidationRules(),
-        ));
+        ), '[vless]');
     }
 
     private function registerTrojan(): void
@@ -156,7 +156,7 @@ class Plugin extends AbstractPlugin
             self::getRealityValidationRules(),
             self::getMultiplexValidationRules(),
             self::getUtlsValidationRules(),
-        ));
+        ), '[trojan]');
     }
 
     private function registerHysteria(): void
@@ -190,7 +190,7 @@ class Plugin extends AbstractPlugin
              'obfs.open' => 'nullable|boolean', 'obfs.type' => 'string|nullable', 'obfs.password' => 'string|nullable',
              'bandwidth.up' => 'nullable|integer', 'bandwidth.down' => 'nullable|integer', 'hop_interval' => 'integer|nullable'],
             self::getTlsObjectValidationRules(),
-        ));
+        ), [1 => '[Hy]', 2 => '[Hy2]']);
     }
 
     private function registerTUIC(): void
@@ -217,7 +217,7 @@ class Plugin extends AbstractPlugin
             'congestion_control' => 'nullable|string|in:cubic,bbr,new_reno',
             'alpn' => 'nullable|array',
             'udp_relay_mode' => 'nullable|string|in:native,quic',
-        ]);
+        ], '[tuic]');
     }
 
     private function registerAnyTLS(): void
@@ -244,7 +244,7 @@ class Plugin extends AbstractPlugin
         ], array_merge(
             ['padding_scheme' => 'nullable|array'],
             self::getTlsObjectValidationRules(true),
-        ));
+        ), '[anytls]');
     }
 
     private function registerSOCKS(): void
@@ -263,7 +263,7 @@ class Plugin extends AbstractPlugin
                     'config_path' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置路径', 'show_when' => ['enabled' => 'true']],
                 ], 'label' => 'ECH配置'],
             ], 'label' => 'TLS设置'],
-        ], ['tls' => 'nullable|integer']);
+        ], ['tls' => 'nullable|integer'], '[socks]');
     }
 
     private function registerNaive(): void
@@ -282,7 +282,7 @@ class Plugin extends AbstractPlugin
                     'config_path' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置路径', 'show_when' => ['enabled' => 'true']],
                 ], 'label' => 'ECH配置'],
             ], 'label' => 'TLS设置'],
-        ], ['tls' => 'required|integer']);
+        ], ['tls' => 'required|integer'], '[naive]');
     }
 
     private function registerHTTP(): void
@@ -301,7 +301,7 @@ class Plugin extends AbstractPlugin
                     'config_path' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置路径', 'show_when' => ['enabled' => 'true']],
                 ], 'label' => 'ECH配置'],
             ], 'label' => 'TLS设置'],
-        ], ['tls' => 'required|integer']);
+        ], ['tls' => 'required|integer'], '[http]');
     }
 
     private function registerMieru(): void
@@ -313,7 +313,7 @@ class Plugin extends AbstractPlugin
         ], array_merge(
             ['transport' => 'required|string|in:TCP,UDP', 'traffic_pattern' => 'string'],
             self::getMultiplexValidationRules(),
-        ));
+        ), '[mieru]');
     }
 
     private static function getRealityFields(): array
@@ -403,7 +403,7 @@ class Plugin extends AbstractPlugin
     private static function getTlsSettingsValidationRules(bool $includeRoot = false): array
     {
         $rules = [
-            'tls_settings.server_name' => 'nullable|string',
+            'tls_settings.server_name' => 'required_if:protocol_settings.tls,1|nullable|string',
             'tls_settings.allow_insecure' => 'nullable|boolean',
             'tls_settings.ech' => 'nullable|array',
         ];

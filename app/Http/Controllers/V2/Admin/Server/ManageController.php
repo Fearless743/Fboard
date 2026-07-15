@@ -162,14 +162,9 @@ class ManageController extends Controller
         }
     }
 
-    public function update(Request $request)
+    public function update(ServerSave $request)
     {
-        $params = $request->validate([
-            "id" => "required|integer",
-            "show" => "nullable|integer",
-            "machine_id" => "nullable|integer",
-            "enabled" => "nullable|boolean",
-        ]);
+        $params = $request->validated();
 
         $server = Server::find($request->id);
         if (!$server) {
@@ -182,27 +177,20 @@ class ManageController extends Controller
             'request' => $request,
         ]);
 
-        if (array_key_exists("show", $params)) {
-            $server->show = (int) $params["show"];
-        }
-        if (array_key_exists("machine_id", $params)) {
-            $server->machine_id = $params["machine_id"] ?: null;
-        }
-        if (array_key_exists("enabled", $params)) {
-            $server->enabled = (bool) $params["enabled"];
-        }
+        try {
+            $server->update($params);
 
-        if (!$server->save()) {
+            HookManager::call('admin.server.update.after', [
+                'server' => $server,
+                'params' => $params,
+                'request' => $request,
+            ]);
+
+            return $this->success(true);
+        } catch (\Exception $e) {
+            Log::error($e);
             return $this->fail([500, "保存失败"]);
         }
-
-        HookManager::call('admin.server.update.after', [
-            'server' => $server,
-            'params' => $params,
-            'request' => $request,
-        ]);
-
-        return $this->success(true);
     }
 
     /**

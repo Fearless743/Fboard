@@ -18,7 +18,7 @@ class ProtocolDefinitionRegistry
         $this->definitions[$definition->type] = $definition;
     }
 
-    public function registerFromArray(string $type, string $name, array $configFields, array $validationRules = [], ?string $description = null): void
+    public function registerFromArray(string $type, string $name, array $configFields, array $validationRules = [], ?string $description = null, string|array|null $prefix = null): void
     {
         $this->register(new ProtocolDefinition(
             type: $type,
@@ -26,6 +26,7 @@ class ProtocolDefinitionRegistry
             configFields: $configFields,
             validationRules: $validationRules,
             description: $description,
+            prefix: $prefix,
         ));
     }
 
@@ -102,6 +103,7 @@ class ProtocolDefinitionRegistry
                     configFields: $data['config_fields'] ?? $data['configFields'] ?? [],
                     validationRules: $data['validation_rules'] ?? $data['validationRules'] ?? [],
                     description: $data['description'] ?? null,
+                    prefix: $data['prefix'] ?? null,
                 );
             }
         }

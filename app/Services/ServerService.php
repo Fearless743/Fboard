@@ -117,6 +117,17 @@ class ServerService
                 'device_limit'
             ])
             ->get();
+
+        // Sudoku nodes expect Available Private Key in uuid field for node auth.
+        if (($node->type ?? null) === Server::TYPE_SUDOKU || ($node->type ?? null) === 'sudoku') {
+            $users = $users->map(function ($user) use ($node) {
+                $userModel = new User();
+                $userModel->forceFill(['uuid' => $user->uuid]);
+                $user->uuid = $node->generateServerPassword($userModel);
+                return $user;
+            });
+        }
+
         return HookManager::filter('server.users.get', $users, $node);
     }
 
@@ -377,6 +388,26 @@ class ServerService
                 'server_port' => (int) $serverPort,
                 'transport' => data_get($protocolSettings, 'transport', 'TCP'),
                 'traffic_pattern' => $protocolSettings['traffic_pattern'],
+            ],
+            'sudoku' => [
+                ...$baseConfig,
+                'server_port' => (int) $serverPort,
+                'server_key' => data_get($protocolSettings, 'master_public_key'),
+                'sudoku_config' => [
+                    'aead_method' => data_get($protocolSettings, 'aead_method', 'chacha20-poly1305'),
+                    'padding_min' => data_get($protocolSettings, 'padding_min', 5),
+                    'padding_max' => data_get($protocolSettings, 'padding_max', 15),
+                    'table_type' => data_get($protocolSettings, 'table_type', 'prefer_entropy'),
+                    'enable_pure_downlink' => (bool) data_get($protocolSettings, 'enable_pure_downlink', true),
+                    'custom_table' => data_get($protocolSettings, 'custom_table'),
+                    'custom_tables' => data_get($protocolSettings, 'custom_tables', []),
+                    'handshake_timeout' => data_get($protocolSettings, 'handshake_timeout', 5),
+                    'disable_http_mask' => (bool) data_get($protocolSettings, 'httpmask.disable', false),
+                    'http_mask_mode' => data_get($protocolSettings, 'httpmask.mode', 'legacy'),
+                    'path_root' => data_get($protocolSettings, 'httpmask.path_root'),
+                    'fallback' => data_get($protocolSettings, 'fallback'),
+                    'multiplex' => data_get($protocolSettings, 'multiplex', 'off'),
+                ],
             ],
             default => [],
         };

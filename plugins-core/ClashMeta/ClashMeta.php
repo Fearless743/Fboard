@@ -25,6 +25,7 @@ class ClashMeta extends AbstractProtocol
         Server::TYPE_SOCKS,
         Server::TYPE_HTTP,
         Server::TYPE_MIERU,
+        Server::TYPE_SUDOKU,
     ];
 
     protected $protocolRequirements = [
@@ -192,6 +193,10 @@ class ClashMeta extends AbstractProtocol
             }
             if ($item['type'] === Server::TYPE_MIERU) {
                 array_push($proxy, self::buildMieru($item['password'], $item));
+                array_push($proxies, $item['name']);
+            }
+            if ($item['type'] === Server::TYPE_SUDOKU) {
+                array_push($proxy, self::buildSudoku($item['password'], $item));
                 array_push($proxies, $item['name']);
             }
         }
@@ -702,6 +707,46 @@ class ClashMeta extends AbstractProtocol
         if (isset($server['ports'])) {
             $array['port-range'] = $server['ports'];
         }
+
+        return $array;
+    }
+
+    public static function buildSudoku($password, $server)
+    {
+        $protocol_settings = data_get($server, 'protocol_settings', []);
+        $array = [
+            'name' => $server['name'],
+            'type' => 'sudoku',
+            'server' => $server['host'],
+            'port' => $server['port'],
+            'key' => $password,
+            'aead-method' => data_get($protocol_settings, 'aead_method', 'chacha20-poly1305'),
+            'padding-min' => (int) data_get($protocol_settings, 'padding_min', 5),
+            'padding-max' => (int) data_get($protocol_settings, 'padding_max', 15),
+            'table-type' => data_get($protocol_settings, 'table_type', 'prefer_entropy'),
+            'enable-pure-downlink' => (bool) data_get($protocol_settings, 'enable_pure_downlink', true),
+        ];
+
+        if ($custom = data_get($protocol_settings, 'custom_table')) {
+            $array['custom-table'] = $custom;
+        }
+        if ($customs = data_get($protocol_settings, 'custom_tables')) {
+            if (is_array($customs) && count($customs) > 0) {
+                $array['custom-tables'] = array_values($customs);
+            }
+        }
+        if ($mux = data_get($protocol_settings, 'multiplex')) {
+            $array['multiplex'] = $mux;
+        }
+
+        $httpmask = [
+            'disable' => (bool) data_get($protocol_settings, 'httpmask.disable', false),
+            'mode' => data_get($protocol_settings, 'httpmask.mode', 'legacy'),
+        ];
+        if ($pathRoot = data_get($protocol_settings, 'httpmask.path_root')) {
+            $httpmask['path-root'] = $pathRoot;
+        }
+        $array['httpmask'] = $httpmask;
 
         return $array;
     }

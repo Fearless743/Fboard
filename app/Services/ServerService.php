@@ -348,6 +348,8 @@ class ServerService
             'anytls' => [
                 ...$baseConfig,
                 'server_port' => (int) $serverPort,
+                // AnyTLS always requires TLS; expose tls=1 so node kernels enable stream TLS.
+                'tls' => 1,
                 'server_name' => $protocolSettings['tls']['server_name'],
                 'tls_settings' => $protocolSettings['tls'],
                 'padding_scheme' => $protocolSettings['padding_scheme'],

@@ -33,3 +33,5 @@ compose.host.yaml
 compose.split.yaml
 .scribe
 /public/assets/admin
+# 用户本地插件（不入库）
+/plugins/SubSieve/

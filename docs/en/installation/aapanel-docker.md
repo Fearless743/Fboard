@@ -65,10 +65,10 @@ cd /www/wwwroot/your-domain
 chattr -i .user.ini
 rm -rf .htaccess 404.html 502.html index.html .user.ini
 
-# Clone the compose branch
-git clone -b compose --depth 1 https://github.com/cedar2025/Xboard.git ./
+# Clone the compose branch (single service covers web + horizon + ws-server)
+git clone -b compose --depth 1 https://github.com/Fearless743/Fboard.git ./
 
-# Prepare configuration file
+# Prepare configuration file (host network for aaPanel openresty)
 cp compose.host.sample.yaml compose.yaml
 
 # Install dependencies and initialize

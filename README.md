@@ -26,9 +26,11 @@ Xboard is a modern panel system built on Laravel 11, focusing on providing a cle
 
 ## 🚀 Quick Start
 
+默认 **一个 Docker 服务** 即可同时覆盖 Web（Octane）、队列（Horizon）与节点 WebSocket（`ws-server`）；镜像内还内嵌 Redis 与 Caddy，对外只暴露 `7001`。
+
 ```bash
-git clone -b compose --depth 1 https://github.com/cedar2025/Xboard && \
-cd Xboard && \
+git clone -b compose --depth 1 https://github.com/Fearless743/Fboard && \
+cd Fboard && \
 docker compose run -it --rm \
     -e ENABLE_SQLITE=true \
     -e ENABLE_REDIS=true \

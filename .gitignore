@@ -38,3 +38,14 @@ compose.split.yaml
 
 # Built helpers
 /bin/
+
+# Runtime theme copy (generated at deploy); keep only .gitignore
+/public/theme/**
+!/public/theme/.gitignore
+
+# Theme rebuild side-products (keep source assets/*.js like umi.js if intentionally committed)
+theme/**/assets/**/*.map
+theme/**/assets/**/*.js.gz
+theme/**/assets/**/*.js.br
+theme/**/assets/**/*.css.gz
+theme/**/assets/**/*.css.br

@@ -228,9 +228,13 @@ XBoard has built-in hooks for many business-critical nodes. Plugin developers ca
 | payment.notify.success | action | Order | After successful payment |
 | available_payment_methods | filter | methods | Modify available payment methods |
 | **🔗 Subscription** | | | |
-| client.subscribe.before | action | | Before subscription generation |
+| client.auth.before | action | Request | Before client token auth (subscribe middleware) |
+| client.auth.token | action | [Request, token] | After token extracted, before user lookup |
+| client.auth.after | action | [Request, User] | After client auth succeeds |
+| client.subscribe.before | action | Request | Before subscription generation |
 | client.subscribe.servers | filter | servers, user, request | Modify servers before protocol processing |
-| client.subscribe.unavailable | action | | When subscription is unavailable |
+| client.subscribe.unavailable | action | [Request, User] | When subscription is unavailable |
+| client.subscribe.after | action | [Request, User, Response] | After successful subscription response |
 | subscribe.url | filter | url | Modify subscription URL |
 | guest_comm_config | filter | config | Modify guest common config |
 | **🔌 Protocol** | | | |
@@ -308,23 +312,47 @@ $ticketService->replyByBot(
 
 ### ⚡ Plugin Action Buttons
 
-Plugins can register clickable action buttons that appear in the admin plugin management page. When clicked, the defined callback function is executed.
+Plugins can register clickable action buttons that appear in the admin plugin management page. When clicked, the defined callback function is executed. The **admin frontend applies a shared action-result contract** (not plugin-specific), so any plugin can open URLs, copy text, trigger downloads, etc.
 
 ```php
 public function boot(): void
 {
+    // 1) Normal action — call handler via API
     $this->registerAction(
         name: 'sync_users',
         label: 'Sync Users',
         handler: function (array $params = []) {
-            // Execute your logic here
             \Log::info('Syncing users...');
-            return ['synced' => 10];
+            return [
+                'message' => 'Synced 10 users',
+                'reload' => true,
+            ];
         },
         options: [
-            'icon'    => '🔄',              // Emoji icon (default: ⚡)
-            'confirm' => 'Sync all users?', // null = execute immediately
-            'color'   => 'default',         // default | destructive | outline
+            'icon'    => '🔄',
+            'confirm' => 'Sync all users?',
+            'color'   => 'default', // default | destructive | outline
+        ],
+    );
+
+    // 2) Link action — open a page (reusable for any plugin admin UI)
+    $this->registerAction(
+        name: 'open_panel',
+        label: 'Open Panel',
+        handler: function () {
+            return [
+                'message' => 'Opened',
+                'open_url' => '/plugins/my_plugin/index.html',
+                'target' => '_blank',
+                'reload' => false,
+            ];
+        },
+        options: [
+            'icon' => '🛡',
+            'color' => 'outline',
+            'type' => 'link',                         // admin may open without waiting
+            'url' => '/plugins/my_plugin/index.html', // static URL in action meta
+            'target' => '_blank',
         ],
     );
 }
@@ -340,8 +368,24 @@ Parameters:
 | `options.icon` | string | Emoji icon shown on the button |
 | `options.confirm` | string|null | Confirmation dialog text; `null` = no confirm |
 | `options.color` | string | Button style: `default`, `destructive`, or `outline` |
+| `options.type` | string | `default` (run handler) or `link` (open `url`) |
+| `options.url` | string | Static URL for `type=link` |
+| `options.target` | string | `_blank` (default) or `_self` |
 
-> 💡 The action button only appears when the plugin is **enabled**. The handler receives an empty `$params` array by default — useful for future extensibility.
+#### Shared handler return / side-effect contract
+
+Any plugin may return these fields; the admin SPA handles them generically:
+
+| Field | Type | Effect |
+|-------|------|--------|
+| `message` | string | Success toast text |
+| `open_url` / `url` | string | Open URL (`target` controls window) |
+| `target` | `_blank` \| `_self` | How to open the URL |
+| `copy_text` | string | Copy to clipboard |
+| `download_url` | string | Trigger download / open file |
+| `reload` | bool | Refresh plugin list (default true unless `type=link`) |
+
+> 💡 The action button only appears when the plugin is **enabled**. Prefer `open_url` over hardcoding frontend behavior for a single plugin name.
 
 ---
 

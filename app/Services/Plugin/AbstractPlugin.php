@@ -136,6 +136,12 @@ abstract class AbstractPlugin
      * 插件可在 boot() 中调用此方法注册自定义操作按钮，点击后执行回调函数。
      * 按钮将显示在管理后台插件列表页的已启用插件卡片上。
      *
+     * 前端会按通用约定处理 handler 返回值 / 动作元数据副作用，例如：
+     * - open_url|url + target：打开链接
+     * - copy_text：复制文本
+     * - download_url：触发下载
+     * - reload：是否刷新插件列表
+     *
      * @param string $name 动作标识（蛇形命名，如 'sync_users'）
      * @param string $label 按钮显示文本（如 '同步用户'）
      * @param callable $handler 回调函数，接收 array $params 参数，返回 array
@@ -143,19 +149,31 @@ abstract class AbstractPlugin
      *   - 'icon' => string, 图标 emoji（默认 '⚡'）
      *   - 'confirm' => string|null, 确认弹窗提示文本（null 则不确认直接执行）
      *   - 'color' => string, 按钮颜色样式（'default'|'destructive'|'outline'）
+     *   - 'type' => string, 'default'（调 API 执行 handler）| 'link'（可直接打开 url）
+     *   - 'url' => string, type=link 时的静态地址；handler 也可动态返回 open_url/url
+     *   - 'target' => string, '_blank'|'_self'（默认 _blank）
      * @return void
      */
     protected function registerAction(string $name, string $label, callable $handler, array $options = []): void
     {
-        // 注册动作元数据（供前端展示）
+        // 注册动作元数据（供前端展示与通用副作用处理）
         $this->filter('plugin.actions', function ($actions) use ($name, $label, $options) {
-            $actions[$this->pluginCode][] = [
+            $meta = [
                 'name' => $name,
                 'label' => $label,
                 'icon' => $options['icon'] ?? '⚡',
                 'confirm' => $options['confirm'] ?? null,
                 'color' => $options['color'] ?? 'default',
+                'type' => $options['type'] ?? 'default',
             ];
+            // 仅在有值时附带，保持旧插件 JSON 干净
+            if (!empty($options['url'])) {
+                $meta['url'] = (string) $options['url'];
+            }
+            if (!empty($options['target'])) {
+                $meta['target'] = (string) $options['target'];
+            }
+            $actions[$this->pluginCode][] = $meta;
             return $actions;
         });
 

@@ -1,15 +1,18 @@
-# Default all-in-one deployment: a single container covers web (Octane),
-# Horizon queue workers, and the node WebSocket server via supervisord.
-# Redis and Caddy also run inside the same image.
+# Default all-in-one deployment: a single service covers web (Octane),
+# Horizon queues, and the node WebSocket server via supervisord.
+# Redis and Caddy also run inside the same image; only port 7001 is public.
 #
-# Suitable for: bare docker compose, aaPanel + Docker manager, custom reverse
+# Suitable for: bare docker-compose, aaPanel + Docker manager, custom reverse
 # proxies (nginx, Caddy on host, Cloudflare Tunnel, etc.) that talk to
 # 127.0.0.1:7001 on the host.
 #
-# Optional templates (copy over this file if needed):
-#   compose.host.sample.yaml     - network_mode: host (aaPanel native openresty)
-#   compose.1panel.sample.yaml   - join 1Panel's external network for MySQL/Redis
-#   compose.split.sample.yaml    - split web/horizon/ws-server for K8s / scaling
+# For 1Panel users: use compose.1panel.sample.yaml so the container can reach
+# the 1Panel-managed MySQL/Redis on the 1panel-network.
+#
+# For aaPanel native (openresty on host) users that prefer host networking:
+# use compose.host.sample.yaml.
+#
+# For independent scaling of each process: use compose.split.sample.yaml.
 services:
   xboard:
     image: ghcr.io/fearless743/fboard:latest

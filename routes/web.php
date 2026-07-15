@@ -128,5 +128,39 @@ Route::get('/plugins/{pluginCode}/{path?}', function (string $pluginCode, string
         abort(404);
     }
 
-    return response()->file($filePath);
+    // 按扩展名显式设置 MIME，避免 finfo 将 CSS/JS 猜成 text/plain 导致浏览器拒载
+    $ext = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
+    $mimeMap = [
+        'css' => 'text/css; charset=utf-8',
+        'js' => 'application/javascript; charset=utf-8',
+        'mjs' => 'application/javascript; charset=utf-8',
+        'jsx' => 'application/javascript; charset=utf-8',
+        'ts' => 'text/plain; charset=utf-8',
+        'json' => 'application/json; charset=utf-8',
+        'xml' => 'application/xml; charset=utf-8',
+        'html' => 'text/html; charset=utf-8',
+        'htm' => 'text/html; charset=utf-8',
+        'svg' => 'image/svg+xml',
+        'png' => 'image/png',
+        'jpg' => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'gif' => 'image/gif',
+        'webp' => 'image/webp',
+        'bmp' => 'image/bmp',
+        'ico' => 'image/x-icon',
+        'avif' => 'image/avif',
+        'woff' => 'font/woff',
+        'woff2' => 'font/woff2',
+        'ttf' => 'font/ttf',
+        'eot' => 'application/vnd.ms-fontobject',
+        'otf' => 'font/otf',
+        'wasm' => 'application/wasm',
+        'pdf' => 'application/pdf',
+        'txt' => 'text/plain; charset=utf-8',
+        'md' => 'text/markdown; charset=utf-8',
+        'map' => 'application/json; charset=utf-8',
+    ];
+    $mime = $mimeMap[$ext] ?? null;
+
+    return response()->file($filePath, $mime ? ['Content-Type' => $mime] : []);
 })->where('path', '.*');

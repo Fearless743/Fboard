@@ -20,7 +20,7 @@ class ClientController extends Controller
 
     public function subscribe(Request $request)
     {
-        HookManager::call('client.subscribe.before');
+        HookManager::call('client.subscribe.before', $request);
         $request->validate([
             'types' => ['nullable', 'string'],
             'filter' => ['nullable', 'string'],
@@ -31,11 +31,14 @@ class ClientController extends Controller
         $userService = new UserService();
 
         if (!$userService->isAvailable($user)) {
-            HookManager::call('client.subscribe.unavailable');
+            HookManager::call('client.subscribe.unavailable', [$request, $user]);
             return response('', 403, ['Content-Type' => 'text/plain']);
         }
 
-        return $this->doSubscribe($request, $user);
+        $response = $this->doSubscribe($request, $user);
+        // 订阅成功后钩子：可用于访问日志、审计等
+        HookManager::call('client.subscribe.after', [$request, $user, $response]);
+        return $response;
     }
 
     public function doSubscribe(Request $request, $user, $servers = null)

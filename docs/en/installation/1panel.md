@@ -59,16 +59,16 @@ apt update && apt install -y git
 ## CentOS/RHEL
 yum update && yum install -y git
 
-# Clone repository
-git clone -b compose --depth 1 https://github.com/cedar2025/Xboard ./
+# Clone repository (single service covers web + horizon + ws-server)
+git clone -b compose --depth 1 https://github.com/Fearless743/Fboard ./
 # (Optional shortcut: skip the clone and just fetch the sample file with
-#  curl -fsSL https://raw.githubusercontent.com/cedar2025/Xboard/master/compose.sample.yaml -o compose.yaml
+#  curl -fsSL https://raw.githubusercontent.com/Fearless743/Fboard/master/compose.sample.yaml -o compose.yaml
 #  — the running PHP code is in the Docker image, not in the clone.)
 
 # Configure Docker Compose
 ```
 
-4. Prepare `compose.yaml` from the **1Panel-specific** sample. This sample joins the external `1panel-network` so the container can reach the 1Panel-managed MySQL/Redis containers by their hostname:
+4. Prepare `compose.yaml` from the **1Panel-specific** sample. This sample joins the external `1panel-network` so the container can reach the 1Panel-managed MySQL/Redis containers by their hostname. Still **one** Fboard service — panel Redis can stay embedded in the image:
 ```bash
 cp compose.1panel.sample.yaml compose.yaml
 ```

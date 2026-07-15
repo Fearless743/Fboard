@@ -1,9 +1,10 @@
 # Deployment for 1Panel users.
 #
 # 1Panel runs MySQL/Redis as separate containers on a Docker network named
-# `1panel-network`. To let Xboard reach them by their container hostname
+# `1panel-network`. To let Fboard reach them by their container hostname
 # (e.g. `1Panel-mysql-xxxx`), this compose file joins that external network
 # in addition to publishing port 7001 for 1Panel's reverse proxy / website.
+# Still a single Fboard service (web + horizon + ws-server inside one container).
 #
 # During `php artisan xboard:install`, set:
 #   - Database Host: the container name shown in 1Panel under

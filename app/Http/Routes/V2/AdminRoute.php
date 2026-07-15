@@ -9,6 +9,7 @@ use App\Http\Controllers\V2\Admin\Server\GroupController;
 use App\Http\Controllers\V2\Admin\Server\RouteController;
 use App\Http\Controllers\V2\Admin\Server\ManageController;
 use App\Http\Controllers\V2\Admin\Server\MachineController;
+use App\Http\Controllers\V2\Admin\Server\NetworkSettingsTemplateController;
 use App\Http\Controllers\V2\Admin\OrderController;
 use App\Http\Controllers\V2\Admin\UserController;
 use App\Http\Controllers\V2\Admin\StatController;
@@ -79,6 +80,13 @@ class AdminRoute
                 $router->get('/fetch', [RouteController::class, 'fetch']);
                 $router->post('/save', [RouteController::class, 'save']);
                 $router->post('/drop', [RouteController::class, 'drop']);
+            });
+            $router->group([
+                'prefix' => 'server/network-settings-template'
+            ], function ($router) {
+                $router->get('/fetch', [NetworkSettingsTemplateController::class, 'fetch']);
+                $router->post('/save', [NetworkSettingsTemplateController::class, 'save']);
+                $router->post('/drop', [NetworkSettingsTemplateController::class, 'drop']);
             });
             // 节点管理接口
             $router->group([

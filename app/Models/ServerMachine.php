@@ -65,10 +65,23 @@ class ServerMachine extends Model
 
     /**
      * 判断机器是否在最近一个检查周期内上报心跳。
+     *
+     * DB 字段 `last_seen_at` 由心跳异步写回，存在延迟；为避免「节点一直活跃
+     * 但面板误判离线导致升级/重启/拉日志被 409002 拒绝」，同时检查 NodeWorker
+     * 维护的 Redis 活跃缓存（node_ws_alive:{machine_id}），DB 字段作 fallback。
      */
     public function isOnline(int $timeout = Server::CHECK_INTERVAL): bool
     {
-        return $this->last_seen_at !== null
-            && (time() - (int) $this->last_seen_at) < $timeout;
+        $now = time();
+
+        if ($this->last_seen_at !== null && ($now - (int) $this->last_seen_at) < $timeout) {
+            return true;
+        }
+
+        try {
+            return (bool) \Illuminate\Support\Facades\Cache::get("node_ws_alive:{$this->id}");
+        } catch (\Throwable) {
+            return false;
+        }
     }
 }

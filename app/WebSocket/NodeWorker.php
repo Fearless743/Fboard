@@ -18,6 +18,8 @@ class NodeWorker
 {
     private const AUTH_TIMEOUT = 10;
     private const PING_INTERVAL = 55;
+    /** Throttle DB write-back of machine heartbeat to avoid write amplification. */
+    private const HEARTBEAT_DB_WRITE_MIN_INTERVAL = 60;
 
     public const HEARTBEAT_CACHE_KEY = 'ws_server:heartbeat';
     private const HEARTBEAT_INTERVAL = 10;
@@ -225,6 +227,8 @@ class NodeWorker
         $nodes = ServerService::getMachineNodes($machine);
 
         $machine->forceFill(['last_seen_at' => now()->timestamp])->saveQuietly();
+        // Keep the WS-alive cache in sync with DB so isOnline() can fall back to it.
+        Cache::put("node_ws_alive:{$machineId}", true, 86400);
         NodeRegistry::addMachine($machineId, $conn);
 
         // 把同一个连接注册到该机器下所有节点
@@ -273,8 +277,27 @@ class NodeWorker
         // 机器连接：从消息中读取 node_id 来分派到具体节点
         if (!empty($conn->machineNodeIds) || !empty($conn->machineId)) {
             if ($event === 'pong') {
+                $machineId = (int) ($conn->machineId ?? 0);
                 foreach (($conn->machineNodeIds ?? []) as $nid) {
                     Cache::put("node_ws_alive:{$nid}", true, 86400);
+                }
+                // Reflect liveness back to DB so MachineController::getOperableMachine
+                // and ServerMachine::isOnline() see the machine as online without
+                // relying on the Redis fallback. Throttle to one write per minute.
+                if ($machineId > 0) {
+                    $cacheKey = "machine_heartbeat_db_write:{$machineId}";
+                    if (!Cache::has($cacheKey)) {
+                        Cache::put($cacheKey, time(), self::HEARTBEAT_DB_WRITE_MIN_INTERVAL);
+                        try {
+                            \DB::table('v2_server_machine')
+                                ->where('id', $machineId)
+                                ->update(['last_seen_at' => time(), 'updated_at' => time()]);
+                        } catch (\Throwable $e) {
+                            Log::warning("[WS] heartbeat db write failed: {$e->getMessage()}", [
+                                'machine_id' => $machineId,
+                            ]);
+                        }
+                    }
                 }
                 return;
             }

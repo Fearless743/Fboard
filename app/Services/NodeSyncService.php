@@ -186,10 +186,14 @@ class NodeSyncService
 
     /**
      * Push restart command to a machine.
+     *
+     * NOTE: payload must remain a JSON object (Go side unmarshals into
+     * map[string]interface{}; an empty PHP array would encode to `[]`
+     * and trigger "cannot unmarshal array into Go value of type map").
      */
     public static function notifyMachineRestart(int $machineId): void
     {
-        self::pushMachine($machineId, 'sync.restart', []);
+        self::pushMachine($machineId, 'sync.restart', ['reason' => 'manual']);
     }
 
     /**

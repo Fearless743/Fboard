@@ -23,6 +23,7 @@ class GiftCardController extends Controller
             'status' => 'integer|in:0,1',
             'page' => 'integer|min:1',
             'per_page' => 'integer|min:1|max:1000',
+            'search' => 'nullable|string|max:255',
         ]);
 
         $query = GiftCardTemplate::query();
@@ -33,6 +34,15 @@ class GiftCardController extends Controller
 
         if ($request->has('status')) {
             $query->where('status', $request->input('status'));
+        }
+
+        $search = trim((string) $request->input('search', ''));
+        if ($search !== '') {
+            $like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $search) . '%';
+            $query->where(function ($q) use ($like) {
+                $q->where('name', 'like', $like)
+                  ->orWhere('description', 'like', $like);
+            });
         }
 
         $perPage = $request->input('per_page', 15);
@@ -345,6 +355,7 @@ class GiftCardController extends Controller
             'status' => 'integer|in:0,1,2,3',
             'page' => 'integer|min:1',
             'per_page' => 'integer|min:1|max:500',
+            'search' => 'nullable|string|max:255',
         ]);
 
         $query = GiftCardCode::with(['template', 'user']);
@@ -359,6 +370,15 @@ class GiftCardController extends Controller
 
         if ($request->has('status')) {
             $query->where('status', $request->input('status'));
+        }
+
+        $search = trim((string) $request->input('search', ''));
+        if ($search !== '') {
+            $like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $search) . '%';
+            $query->where(function ($q) use ($like) {
+                $q->where('code', 'like', $like)
+                  ->orWhere('batch_id', 'like', $like);
+            });
         }
 
         $perPage = $request->input('per_page', 15);
@@ -449,6 +469,7 @@ class GiftCardController extends Controller
             'user_id' => 'integer|exists:v2_user,id',
             'page' => 'integer|min:1',
             'per_page' => 'integer|min:1|max:500',
+            'search' => 'nullable|string|max:255',
         ]);
 
         $query = GiftCardUsage::with(['template', 'code', 'user', 'inviteUser']);
@@ -459,6 +480,18 @@ class GiftCardController extends Controller
 
         if ($request->has('user_id')) {
             $query->where('user_id', $request->input('user_id'));
+        }
+
+        $search = trim((string) $request->input('search', ''));
+        if ($search !== '') {
+            $like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $search) . '%';
+            $query->where(function ($q) use ($like) {
+                $q->whereHas('code', function ($cq) use ($like) {
+                    $cq->where('code', 'like', $like);
+                })->orWhereHas('user', function ($uq) use ($like) {
+                    $uq->where('email', 'like', $like);
+                });
+            });
         }
 
         $perPage = $request->input('per_page', 15);

@@ -13,8 +13,19 @@ class NoticeController extends Controller
 {
     public function fetch(Request $request)
     {
+        $query = Notice::query();
+
+        $search = trim((string) $request->input('search', ''));
+        if ($search !== '') {
+            $like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $search) . '%';
+            $query->where(function ($q) use ($like) {
+                $q->where('title', 'like', $like)
+                  ->orWhere('tags', 'like', $like);
+            });
+        }
+
         return $this->success(
-            Notice::orderBy('sort', 'ASC')
+            $query->orderBy('sort', 'ASC')
                 ->orderBy('id', 'DESC')
                 ->get(['id', 'title', 'show', 'tags', 'sort', 'created_at', 'updated_at'])
         );

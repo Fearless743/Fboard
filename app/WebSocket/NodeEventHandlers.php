@@ -186,4 +186,54 @@ class NodeEventHandlers
 
         Log::debug("[WS] Machine#{$machineId} reported " . count($clean) . " log lines");
     }
+
+    /**
+     * Handle remote-ops ack from the node (reply to sync.upgrade / sync.restart).
+     *
+     * Payload shape (set by Fboard-Node panel.WSClient.SendOpAck):
+     *   {
+     *     op:     "upgrade" | "restart",
+     *     status: "ok" | "failed",
+     *     detail: string,   // short reason on failed; empty on ok
+     *     ts:     int,
+     *   }
+     *
+     * Logged loudly; the most recent ack per machine/op is cached so the
+     * admin UI can fetch it for status.
+     */
+    public static function handleOpAck(TcpConnection $conn, int $nodeId, array $data): void
+    {
+        $machineId = (int) ($conn->machineId ?? 0);
+        if ($machineId <= 0) {
+            Log::debug('[WS] op.ack ignored: no machineId on connection');
+            return;
+        }
+
+        $op = strtolower((string) ($data['op'] ?? ''));
+        $status = strtolower((string) ($data['status'] ?? ''));
+        $detail = (string) ($data['detail'] ?? '');
+        if (!in_array($op, ['upgrade', 'restart'], true)) {
+            Log::debug('[WS] op.ack ignored: unknown op', ['op' => $op]);
+            return;
+        }
+        if (!in_array($status, ['ok', 'failed'], true)) {
+            Log::debug('[WS] op.ack ignored: unknown status', ['status' => $status]);
+            return;
+        }
+
+        $payload = [
+            'op' => $op,
+            'status' => $status,
+            'detail' => $detail,
+            'ts' => (int) ($data['ts'] ?? time()),
+            'node_id' => $nodeId,
+        ];
+        Cache::put("op_ack:{$machineId}:{$op}", $payload, 86400);
+
+        if ($status === 'ok') {
+            Log::info("[WS] op.ack ok machine=#{$machineId} op={$op}", $payload);
+        } else {
+            Log::warning("[WS] op.ack failed machine=#{$machineId} op={$op} detail={$detail}", $payload);
+        }
+    }
 }

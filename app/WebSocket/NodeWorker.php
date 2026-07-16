@@ -33,6 +33,7 @@ class NodeWorker
         'report.devices' => [NodeEventHandlers::class, 'handleDeviceReport'],
         'request.devices' => [NodeEventHandlers::class, 'handleDeviceRequest'],
         'report.logs' => [NodeEventHandlers::class, 'handleReportLogs'],
+        'op.ack' => [NodeEventHandlers::class, 'handleOpAck'],
     ];
 
     public function __construct(string $host, int $port)
@@ -284,6 +285,10 @@ class NodeWorker
                 // Reflect liveness back to DB so MachineController::getOperableMachine
                 // and ServerMachine::isOnline() see the machine as online without
                 // relying on the Redis fallback. Throttle to one write per minute.
+                //
+                // last_seen_at is unsignedInteger (epoch seconds); updated_at is a
+                // datetime — DO NOT write a unix int into updated_at, MySQL will
+                // raise SQLSTATE[22007] and roll back the entire UPDATE.
                 if ($machineId > 0) {
                     $cacheKey = "machine_heartbeat_db_write:{$machineId}";
                     if (!Cache::has($cacheKey)) {
@@ -291,7 +296,7 @@ class NodeWorker
                         try {
                             \DB::table('v2_server_machine')
                                 ->where('id', $machineId)
-                                ->update(['last_seen_at' => time(), 'updated_at' => time()]);
+                                ->update(['last_seen_at' => time()]);
                         } catch (\Throwable $e) {
                             Log::warning("[WS] heartbeat db write failed: {$e->getMessage()}", [
                                 'machine_id' => $machineId,
@@ -303,7 +308,7 @@ class NodeWorker
             }
 
             // Machine-level events (no node_id), e.g. report.logs
-            if ($event === 'report.logs') {
+            if ($event === 'report.logs' || $event === 'op.ack') {
                 $handler = $this->handlers[$event] ?? null;
                 if ($handler) {
                     $handler($conn, 0, $msg['data'] ?? []);

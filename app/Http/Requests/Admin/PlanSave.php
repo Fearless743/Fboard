@@ -38,6 +38,7 @@ class PlanSave extends FormRequest
             'show' => 'integer|in:0,1',
             'sell' => 'integer|in:0,1',
             'renew' => 'integer|in:0,1',
+            'force_update' => 'boolean',
         ];
     }
 

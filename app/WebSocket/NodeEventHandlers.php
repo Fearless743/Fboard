@@ -142,4 +142,48 @@ class NodeEventHandlers
             'users' => count($users),
         ]);
     }
+
+    /**
+     * Handle machine log report (reply to sync.logs).
+     * Payload: { lines: string[], req_id?: string }
+     */
+    public static function handleReportLogs(TcpConnection $conn, int $nodeId, array $data): void
+    {
+        $machineId = (int) ($conn->machineId ?? 0);
+        if ($machineId <= 0) {
+            Log::debug('[WS] report.logs ignored: no machineId on connection');
+            return;
+        }
+
+        $lines = $data['lines'] ?? [];
+        if (!is_array($lines)) {
+            $lines = [];
+        }
+        // Keep only string lines; cap payload size
+        $clean = [];
+        foreach ($lines as $line) {
+            if (is_string($line)) {
+                $clean[] = $line;
+            }
+            if (count($clean) >= 1000) {
+                break;
+            }
+        }
+
+        $payload = [
+            'lines' => $clean,
+            'req_id' => is_string($data['req_id'] ?? null) ? $data['req_id'] : null,
+            'updated_at' => time(),
+            'count' => count($clean),
+        ];
+
+        Cache::put("machine_logs:{$machineId}", $payload, 120);
+
+        $reqId = $payload['req_id'];
+        if (is_string($reqId) && $reqId !== '') {
+            Cache::put("machine_logs_req:{$machineId}:{$reqId}", $payload, 60);
+        }
+
+        Log::debug("[WS] Machine#{$machineId} reported " . count($clean) . " log lines");
+    }
 }

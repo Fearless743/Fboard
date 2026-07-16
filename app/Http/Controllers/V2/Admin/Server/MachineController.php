@@ -10,6 +10,7 @@ use App\Models\ServerMachine;
 use App\Models\ServerMachineLoadHistory;
 use App\Services\NodeSyncService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class MachineController extends Controller
@@ -283,6 +284,106 @@ class MachineController extends Controller
         Log::info('批量机器 Fboard-Node 升级任务已提交', $stats);
 
         return $this->success($stats);
+    }
+
+
+    /**
+     * 拉取机器运行日志（通过 WS 请求节点内存中的最近日志）。
+     */
+    public function logs(Request $request)
+    {
+        $params = $request->validate([
+            'id' => 'required|integer|exists:v2_server_machine,id',
+            'limit' => 'nullable|integer|min:10|max:1000',
+            'refresh' => 'nullable|boolean',
+        ]);
+
+        $machine = ServerMachine::find($params['id']);
+        if (!$machine) {
+            return $this->fail([400202, '服务器不存在']);
+        }
+
+        $limit = (int) ($params['limit'] ?? 500);
+        $refresh = array_key_exists('refresh', $params)
+            ? (bool) $params['refresh']
+            : true;
+
+        $cached = Cache::get("machine_logs:{$machine->id}");
+        // HTTP process cannot inspect Workerman NodeRegistry; last_seen is the signal.
+        $online = $machine->isOnline();
+
+        if (!$online) {
+            return $this->success([
+                'online' => false,
+                'lines' => is_array($cached['lines'] ?? null) ? $cached['lines'] : [],
+                'updated_at' => $cached['updated_at'] ?? null,
+                'stale' => true,
+                'message' => '服务器当前离线，显示最近一次缓存日志（如有）',
+            ]);
+        }
+
+        if ($refresh || !is_array($cached) || empty($cached['lines'])) {
+            $reqId = bin2hex(random_bytes(8));
+            NodeSyncService::notifyMachineLogs($machine->id, $limit, $reqId);
+
+            $deadline = microtime(true) + 3.0;
+            $payload = null;
+            while (microtime(true) < $deadline) {
+                usleep(100_000);
+                $payload = Cache::get("machine_logs_req:{$machine->id}:{$reqId}");
+                if (is_array($payload)) {
+                    break;
+                }
+                // Also accept any newer machine_logs written without matching req
+                $latest = Cache::get("machine_logs:{$machine->id}");
+                if (is_array($latest) && ($latest['req_id'] ?? null) === $reqId) {
+                    $payload = $latest;
+                    break;
+                }
+            }
+
+            if (!is_array($payload)) {
+                $fallback = Cache::get("machine_logs:{$machine->id}");
+                return $this->success([
+                    'online' => true,
+                    'lines' => is_array($fallback['lines'] ?? null) ? $fallback['lines'] : [],
+                    'updated_at' => $fallback['updated_at'] ?? null,
+                    'stale' => true,
+                    'message' => '等待节点日志超时，显示缓存（如有）。请确认 WebSocket 服务与节点在线。',
+                ]);
+            }
+
+            $lines = $payload['lines'] ?? [];
+            if (!is_array($lines)) {
+                $lines = [];
+            }
+            if (count($lines) > $limit) {
+                $lines = array_slice($lines, -$limit);
+            }
+
+            return $this->success([
+                'online' => true,
+                'lines' => array_values($lines),
+                'updated_at' => $payload['updated_at'] ?? time(),
+                'stale' => false,
+                'req_id' => $reqId,
+            ]);
+        }
+
+        $lines = $cached['lines'] ?? [];
+        if (!is_array($lines)) {
+            $lines = [];
+        }
+        if (count($lines) > $limit) {
+            $lines = array_slice($lines, -$limit);
+        }
+
+        return $this->success([
+            'online' => true,
+            'lines' => array_values($lines),
+            'updated_at' => $cached['updated_at'] ?? null,
+            'stale' => true,
+        ]);
     }
 
     /**

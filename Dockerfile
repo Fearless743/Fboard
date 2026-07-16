@@ -1,26 +1,18 @@
 # syntax=docker/dockerfile:1.7
 
 # ---------------------------------------------------------------------------
-# Stage 1: build the admin SPA from the Fboard-admin source repository.
-# The resulting /out directory is consumed by the final stage so the runtime
-# image never has to ship Node.js or bun.
-# ---------------------------------------------------------------------------
-FROM node:22-alpine AS admin-builder
-
-ARG ADMIN_REPO_URL=https://github.com/Fearless743/Fboard-admin
-ARG ADMIN_BRANCH_NAME=main
-
-RUN apk add --no-cache git
-WORKDIR /build
-
-RUN git clone --depth 1 --branch ${ADMIN_BRANCH_NAME} ${ADMIN_REPO_URL} . \
-    && npm install -g bun \
-    && bun install \
-    && sed -i 's|path.resolve(__dirname, "../Fboard/public/assets/admin")|"/out"|' vite.config.ts \
-    && bun run build
-
-# ---------------------------------------------------------------------------
-# Stage 2: PHP + Swoole runtime for the Fboard panel.
+# 前端构建说明（重要！）：
+# Dockerfile 不再内嵌构建 admin SPA，而是直接 COPY 已构建好的产物到
+# /www/public/assets/admin/。请在 docker build 之前先构建前端：
+#
+#   cd ../admin && bun install && bun run build
+#
+# 该命令会通过 admin/vite.config.ts 中配置的 outDir
+# (../Fboard/public/assets/admin) 直接把产物输出到本仓库内。
+# CI 流程在 .github/workflows/docker-publish.yml 中已加入对应步骤。
+#
+# 这种"先构建再打包"的模式可以彻底规避 BuildKit 对远程 git 仓库的
+# 缓存失效难题，前端版本与本地 Fboard 仓代码完全一致。
 # ---------------------------------------------------------------------------
 FROM phpswoole/swoole:php8.2-alpine
 
@@ -44,8 +36,6 @@ COPY .docker /
 ARG CACHEBUST=1
 ARG REPO_URL=https://github.com/Fearless743/Fboard
 ARG BRANCH_NAME=master
-ARG ADMIN_REPO_URL=https://github.com/Fearless743/Fboard-admin
-ARG ADMIN_BRANCH_NAME=main
 
 RUN echo "Attempting to clone branch: ${BRANCH_NAME} from ${REPO_URL} with CACHEBUST: ${CACHEBUST}" && \
     rm -rf ./* && \
@@ -54,8 +44,10 @@ RUN echo "Attempting to clone branch: ${BRANCH_NAME} from ${REPO_URL} with CACHE
     git clone --depth 1 --branch ${BRANCH_NAME} ${REPO_URL} . \
     && mkdir -p public/assets/admin
 
-# Copy the freshly-built admin SPA from the build stage.
-COPY --from=admin-builder /out /www/public/assets/admin
+# 前端 SPA 产物在镜像构建前由 admin/ 仓的 `bun run build` 输出到
+# public/assets/admin/。Dockerfile 仅负责 COPY，不再内嵌构建步骤，
+# 以彻底规避 BuildKit 缓存陷阱。
+COPY public/assets/admin/ /www/public/assets/admin/
 
 COPY .docker/supervisor/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY .docker/caddy/Caddyfile /etc/caddy/Caddyfile

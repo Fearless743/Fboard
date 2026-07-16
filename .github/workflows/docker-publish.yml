@@ -21,7 +21,25 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1 
+          fetch-depth: 1
+
+      - name: Checkout admin SPA
+        uses: actions/checkout@v4
+        with:
+          repository: Fearless743/Fboard-admin
+          ref: main
+          path: admin
+          fetch-depth: 1
+
+      - name: Build admin SPA
+        working-directory: admin
+        run: |
+          npm install -g bun
+          bun install --frozen-lockfile
+          bun run build
+        # bun run build 会通过 vite.config.ts 的 outDir 把产物输出到
+        # Fboard/public/assets/admin/，正好命中 Dockerfile 的 COPY 源。
+        # 注意：这一步必须在 docker build 之前，否则 COPY 会拿到陈旧产物。
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -93,8 +111,6 @@ jobs:
             CACHEBUST=${{ github.sha }}
             REPO_URL=https://github.com/${{ github.repository }}
             BRANCH_NAME=${{ github.ref_name }}
-            ADMIN_REPO_URL=https://github.com/Fearless743/Fboard-admin
-            ADMIN_BRANCH_NAME=main
           provenance: false
           outputs: type=registry,push=true
           allow: |

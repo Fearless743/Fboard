@@ -33,6 +33,10 @@ jobs:
 
       - name: Build admin SPA
         working-directory: admin
+        env:
+          # admin 仓作为 Fboard 仓的子目录被 checkout，outDir 相对
+          # admin/ 解析，必须指向 Fboard/public/assets/admin。
+          FBOARD_PUBLIC_ASSETS_DIR: ../public/assets/admin
         run: |
           npm install -g bun
           bun install --frozen-lockfile

@@ -216,6 +216,19 @@ class NodeSyncService
         self::push($server->id, 'sync.restart', ['requested_node_id' => $server->id]);
     }
 
+
+    /**
+     * Request recent process logs from a machine.
+     */
+    public static function notifyMachineLogs(int $machineId, int $limit = 500, ?string $reqId = null): void
+    {
+        $data = ['limit' => $limit];
+        if ($reqId !== null && $reqId !== '') {
+            $data['req_id'] = $reqId;
+        }
+        self::pushMachine($machineId, 'sync.logs', $data);
+    }
+
     /**
      * Publish a push command to Redis — picked up by the Workerman WS server
      */

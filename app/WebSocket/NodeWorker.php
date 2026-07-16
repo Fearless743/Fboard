@@ -30,6 +30,7 @@ class NodeWorker
         'node.status' => [NodeEventHandlers::class, 'handleNodeStatus'],
         'report.devices' => [NodeEventHandlers::class, 'handleDeviceReport'],
         'request.devices' => [NodeEventHandlers::class, 'handleDeviceRequest'],
+        'report.logs' => [NodeEventHandlers::class, 'handleReportLogs'],
     ];
 
     public function __construct(string $host, int $port)
@@ -270,16 +271,25 @@ class NodeWorker
         $event = $msg['event'] ?? '';
 
         // 机器连接：从消息中读取 node_id 来分派到具体节点
-        if (!empty($conn->machineNodeIds)) {
+        if (!empty($conn->machineNodeIds) || !empty($conn->machineId)) {
             if ($event === 'pong') {
-                foreach ($conn->machineNodeIds as $nid) {
+                foreach (($conn->machineNodeIds ?? []) as $nid) {
                     Cache::put("node_ws_alive:{$nid}", true, 86400);
                 }
                 return;
             }
 
+            // Machine-level events (no node_id), e.g. report.logs
+            if ($event === 'report.logs') {
+                $handler = $this->handlers[$event] ?? null;
+                if ($handler) {
+                    $handler($conn, 0, $msg['data'] ?? []);
+                }
+                return;
+            }
+
             $nodeId = (int) ($msg['data']['node_id'] ?? 0);
-            if ($nodeId <= 0 || !in_array($nodeId, $conn->machineNodeIds, true)) {
+            if ($nodeId <= 0 || !in_array($nodeId, $conn->machineNodeIds ?? [], true)) {
                 return;
             }
             if (isset($this->handlers[$event])) {

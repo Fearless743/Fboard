@@ -24,9 +24,20 @@ class PaymentController extends Controller
         return $this->success(array_unique($methods));
     }
 
-    public function fetch()
+    public function fetch(Request $request)
     {
-        $payments = Payment::orderBy('sort', 'ASC')->get()->makeVisible('config');
+        $query = Payment::query();
+
+        $search = trim((string) $request->input('search', ''));
+        if ($search !== '') {
+            $like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $search) . '%';
+            $query->where(function ($q) use ($like) {
+                $q->where('name', 'like', $like)
+                  ->orWhere('payment', 'like', $like);
+            });
+        }
+
+        $payments = $query->orderBy('sort', 'ASC')->get()->makeVisible('config');
         foreach ($payments as $k => $v) {
             $notifyUrl = url("/api/v1/guest/payment/notify/{$v->payment}/{$v->uuid}");
             if ($v->notify_domain) {

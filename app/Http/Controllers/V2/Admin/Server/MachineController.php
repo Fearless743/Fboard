@@ -17,15 +17,27 @@ class MachineController extends Controller
 {
     /**
      * 获取机器列表（附带关联节点数，分页）
+     *
+     * 可选搜索参数：
+     *   - search: 在 name / notes 上做大小写不敏感的模糊匹配
      */
     public function fetch(Request $request)
     {
         $current = (int) $request->input('current', 1);
         $pageSize = (int) $request->input('pageSize', 10);
 
-        $machines = ServerMachine::withCount('servers')
-            ->orderBy('id')
-            ->paginate(perPage: $pageSize, page: $current);
+        $query = ServerMachine::withCount('servers');
+
+        $search = trim((string) $request->input('search', ''));
+        if ($search !== '') {
+            $like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $search) . '%';
+            $query->where(function ($q) use ($like) {
+                $q->where('name', 'like', $like)
+                  ->orWhere('notes', 'like', $like);
+            });
+        }
+
+        $machines = $query->orderBy('id')->paginate(perPage: $pageSize, page: $current);
 
         $machines->getCollection()->transform(function (ServerMachine $machine) {
             return [

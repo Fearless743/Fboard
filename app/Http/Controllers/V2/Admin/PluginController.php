@@ -55,12 +55,19 @@ class PluginController extends Controller
 
     /**
      * 获取插件列表（分页）
+     *
+     * 支持的可选参数：
+     *   - type: 插件类型过滤（feature / payment / protocol）
+     *   - search: 在 name / description 上做大小写不敏感的模糊匹配
+     *   - page / pageSize: 分页
      */
     public function index(Request $request)
     {
         $type = $request->query('type');
         $page = max(1, (int) $request->query('page', 1));
         $pageSize = max(1, min(100, (int) $request->query('pageSize', 20)));
+        $search = trim((string) $request->query('search', ''));
+        $searchLower = mb_strtolower($search);
 
         $installedPlugins = Plugin::all()
             ->keyBy('code')
@@ -93,6 +100,15 @@ class PluginController extends Controller
                 $pluginType = $config['type'] ?? Plugin::TYPE_FEATURE;
                 if ($type && $pluginType !== $type) {
                     continue;
+                }
+
+                // 名称/描述模糊匹配（插件是文件系统扫描，in-memory 过滤即可）
+                if ($search !== '' && $searchLower !== '') {
+                    $nameMatch = mb_stripos((string) ($config['name'] ?? ''), $searchLower) !== false;
+                    $descMatch = mb_stripos((string) ($config['description'] ?? ''), $searchLower) !== false;
+                    if (!$nameMatch && !$descMatch) {
+                        continue;
+                    }
                 }
 
                 $installed = isset($installedPlugins[$code]);

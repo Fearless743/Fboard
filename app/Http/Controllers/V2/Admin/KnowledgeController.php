@@ -20,9 +20,19 @@ class KnowledgeController extends Controller
                 return $this->fail([400202, '知识不存在']);
             return $this->success($knowledge);
         }
-        $data = Knowledge::select(['title', 'id', 'updated_at', 'category', 'show'])
-            ->orderBy('sort', 'ASC')
-            ->get();
+
+        $query = Knowledge::select(['title', 'id', 'updated_at', 'category', 'show']);
+
+        $search = trim((string) $request->input('search', ''));
+        if ($search !== '') {
+            $like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $search) . '%';
+            $query->where(function ($q) use ($like) {
+                $q->where('title', 'like', $like)
+                  ->orWhere('category', 'like', $like);
+            });
+        }
+
+        $data = $query->orderBy('sort', 'ASC')->get();
         return $this->success($data);
     }
 

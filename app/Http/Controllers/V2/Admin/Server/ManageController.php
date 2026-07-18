@@ -75,24 +75,43 @@ class ManageController extends Controller
     public function sort(Request $request)
     {
         ini_set("post_max_size", "1m");
-        $params = $request->validate([
-            "*.id" => "numeric",
-            "*.order" => "numeric",
-        ]);
+
+        // 兼容两种请求体：
+        // 1) 新前端: { ids: [3, 1, 2] }  （与 plan/notice/payment 一致，按数组下标写 sort）
+        // 2) 旧前端: [{ id: 1, order: 1 }, ...]
+        if ($request->has('ids')) {
+            $params = $request->validate([
+                'ids' => 'required|array',
+                'ids.*' => 'numeric',
+            ]);
+            $items = collect($params['ids'])->values()->map(function ($id, $index) {
+                return ['id' => (int) $id, 'order' => $index + 1];
+            });
+        } else {
+            $params = $request->validate([
+                '*.id' => 'required|numeric',
+                '*.order' => 'required|numeric',
+            ]);
+            $items = collect($params)->filter(function ($item) {
+                return isset($item['id'], $item['order']);
+            })->values();
+        }
+
+        if ($items->isEmpty()) {
+            return $this->fail([422, '参数有误']);
+        }
 
         HookManager::call('admin.server.sort.before', [
-            'params' => $params,
+            'params' => $items->all(),
             'request' => $request,
         ]);
 
         try {
             DB::beginTransaction();
-            collect($params)->each(function ($item) {
-                if (isset($item["id"]) && isset($item["order"])) {
-                    Server::where("id", $item["id"])->update([
-                        "sort" => $item["order"],
-                    ]);
-                }
+            $items->each(function ($item) {
+                Server::where('id', $item['id'])->update([
+                    'sort' => $item['order'],
+                ]);
             });
             DB::commit();
         } catch (\Exception $e) {
@@ -102,7 +121,7 @@ class ManageController extends Controller
         }
 
         HookManager::call('admin.server.sort.after', [
-            'params' => $params,
+            'params' => $items->all(),
             'request' => $request,
         ]);
 

@@ -159,6 +159,77 @@ class Helper
     }
 
     /**
+     * 将 REALITY / X25519 密钥规范化为 base64.RawURLEncoding（无填充、URL 安全）。
+     * Xray / mihomo / Clash.Meta 等客户端只接受该格式，标准 Base64（含 + / =）会报
+     * "invalid REALITY public key"。
+     */
+    public static function normalizeRealityKey(?string $key): ?string
+    {
+        if ($key === null) {
+            return null;
+        }
+
+        $key = trim($key);
+        if ($key === '') {
+            return null;
+        }
+
+        // 已是合法 RawURL（32 字节）则直接返回
+        $raw = self::decodeRealityKeyBytes($key);
+        if ($raw === null) {
+            return $key; // 无法解码时原样返回，避免误伤
+        }
+
+        return self::base64EncodeUrlSafe($raw);
+    }
+
+    /**
+     * 尝试按多种 Base64 变体解码 32 字节 X25519 密钥。
+     */
+    public static function decodeRealityKeyBytes(string $key): ?string
+    {
+        $candidates = [
+            $key,
+            // 补齐标准 Base64 填充后再解
+            str_pad(strtr($key, '-_', '+/'), (int) (ceil(strlen($key) / 4) * 4), '=', STR_PAD_RIGHT),
+            str_pad($key, (int) (ceil(strlen($key) / 4) * 4), '=', STR_PAD_RIGHT),
+        ];
+
+        foreach ($candidates as $candidate) {
+            $decoded = base64_decode($candidate, true);
+            if ($decoded !== false && strlen($decoded) === 32) {
+                return $decoded;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * 规范化 reality_settings / tls_settings 中的 public_key / private_key。
+     *
+     * @param  array|null  $settings
+     * @return array|null
+     */
+    public static function normalizeRealitySettings(?array $settings): ?array
+    {
+        if ($settings === null) {
+            return null;
+        }
+
+        foreach (['public_key', 'private_key'] as $field) {
+            if (!empty($settings[$field]) && is_string($settings[$field])) {
+                $normalized = self::normalizeRealityKey($settings[$field]);
+                if ($normalized !== null) {
+                    $settings[$field] = $normalized;
+                }
+            }
+        }
+
+        return $settings;
+    }
+
+    /**
      * 根据规则替换域名中对应的字符串
      *
      * @param string $input 用户输入的字符串

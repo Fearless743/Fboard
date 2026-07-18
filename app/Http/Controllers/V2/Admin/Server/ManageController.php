@@ -11,6 +11,7 @@ use App\Models\Server;
 use App\Models\ServerGroup;
 use App\Services\Plugin\HookManager;
 use App\Services\ServerService;
+use App\Utils\Helper;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -623,7 +624,9 @@ class ManageController extends Controller
     }
 
     /**
-     * 生成 Reality x25519 密钥对
+     * 生成 Reality x25519 密钥对。
+     * 编码必须使用 base64.RawURLEncoding（无填充、URL 安全），
+     * 与 Xray / mihomo / Clash.Meta 客户端一致。
      */
     public function generateRealityKey()
     {
@@ -632,8 +635,8 @@ class ManageController extends Controller
         $publicKey = sodium_crypto_box_publickey($keypair);
 
         return $this->success([
-            "public_key" => base64_encode($publicKey),
-            "private_key" => base64_encode($secretKey),
+            "public_key" => Helper::base64EncodeUrlSafe($publicKey),
+            "private_key" => Helper::base64EncodeUrlSafe($secretKey),
         ]);
     }
 

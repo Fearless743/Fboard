@@ -85,6 +85,14 @@ class ServerService
             }
             $server->password = $server->generateServerPassword($user);
             $server->rate = $server->getCurrentRate();
+
+            // 订阅下发前将 REALITY 密钥规范为 RawURL Base64，避免客户端报 invalid REALITY public key
+            $protocolSettings = $server->protocol_settings;
+            if (is_array($protocolSettings) && !empty($protocolSettings['reality_settings']) && is_array($protocolSettings['reality_settings'])) {
+                $protocolSettings['reality_settings'] = Helper::normalizeRealitySettings($protocolSettings['reality_settings']);
+                $server->protocol_settings = $protocolSettings;
+            }
+
             return $server;
         })->toArray();
 
@@ -309,7 +317,7 @@ class ServerService
                 'multiplex' => data_get($protocolSettings, 'multiplex'),
                 'tls' => (int) $protocolSettings['tls'],
                 'tls_settings' => match ((int) $protocolSettings['tls']) {
-                        2 => $protocolSettings['reality_settings'],
+                        2 => Helper::normalizeRealitySettings($protocolSettings['reality_settings'] ?? null),
                         default => $protocolSettings['tls_settings'],
                     },
             ],
@@ -322,7 +330,7 @@ class ServerService
                     default => null,
                 },
                 'tls_settings' => match ((int) $protocolSettings['tls']) {
-                        2 => $protocolSettings['reality_settings'],
+                        2 => Helper::normalizeRealitySettings($protocolSettings['reality_settings'] ?? null),
                         default => $protocolSettings['tls_settings'],
                     },
                 'multiplex' => data_get($protocolSettings, 'multiplex'),

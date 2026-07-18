@@ -207,6 +207,11 @@ class Server extends Model
         $configs = self::getProtocolConfigurations()[$this->type] ?? [];
         $castedSettings = $this->castSettingsWithConfig($value ?? [], $configs);
 
+        // 保存时规范化 REALITY 密钥为 RawURL Base64，与 Xray/mihomo 一致
+        if (!empty($castedSettings['reality_settings']) && is_array($castedSettings['reality_settings'])) {
+            $castedSettings['reality_settings'] = Helper::normalizeRealitySettings($castedSettings['reality_settings']);
+        }
+
         $this->attributes["protocol_settings"] = json_encode($castedSettings);
     }
 

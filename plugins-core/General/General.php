@@ -9,7 +9,7 @@ use App\Support\AbstractProtocol;
 
 class General extends AbstractProtocol
 {
-    public $flags = ['general', 'v2rayn', 'v2rayng', 'passwall', 'ssrplus', 'sagernet'];
+    public $flags = ['general', 'v2rayn', 'v2rayng', 'passwall', 'ssrplus', 'sagernet', 'inhive'];
 
     public $allowedProtocols = [
         Server::TYPE_VMESS,
@@ -416,16 +416,22 @@ class General extends AbstractProtocol
 
     public static function buildAnyTLS($password, $server)
     {
-        $protocol_settings = $server['protocol_settings'];
-        $name = rawurlencode($server['name']);
-        $params = [
-            'sni' => data_get($protocol_settings, 'tls.server_name'),
-            'insecure' => data_get($protocol_settings, 'tls.allow_insecure')
-        ];
+        // 对齐 anytls 官方 URI：anytls://[auth@]host[:port]/?[key=value]...
+        // 见 https://github.com/anytls/anytls-go/blob/main/docs/uri_scheme.md
+        // v2rayN 的 AnytlsFmt 依赖可解析的 UserInfo + sni/insecure 查询参数。
+        $protocol_settings = data_get($server, 'protocol_settings', []) ?: [];
+        $name = rawurlencode((string) ($server['name'] ?? ''));
+        $params = [];
+        if ($sni = data_get($protocol_settings, 'tls.server_name')) {
+            $params['sni'] = $sni;
+        }
+        // insecure 必须为 "0"/"1"，避免 bool/null 经 http_build_query 变成空值导致客户端丢弃节点
+        $params['insecure'] = data_get($protocol_settings, 'tls.allow_insecure') ? '1' : '0';
         $query = http_build_query($params);
         $addr = Helper::wrapIPv6($server['host']);
-        $uri = "anytls://{$password}@{$addr}:{$server['port']}?{$query}#{$name}";
-        $uri .= "\r\n";
+        // auth 含特殊字符时需百分号编码；v2rayN Resolve 侧会 UrlDecode
+        $userinfo = rawurlencode((string) $password);
+        $uri = "anytls://{$userinfo}@{$addr}:{$server['port']}/?{$query}#{$name}\r\n";
         return $uri;
     }
 

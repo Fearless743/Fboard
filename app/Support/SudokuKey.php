@@ -18,6 +18,31 @@ use RuntimeException;
  */
 class SudokuKey
 {
+    /**
+     * Normalize HTTPMask path-root to a single path segment.
+     *
+     * mihomo/Xray both require: one segment, only [A-Za-z0-9_-]
+     * (optional surrounding slashes are stripped, e.g. "/aabbcc/" -> "aabbcc").
+     * Returns null when empty or invalid so callers can omit the field.
+     */
+    public static function normalizeHttpMaskPathRoot(?string $root): ?string
+    {
+        if ($root === null) {
+            return null;
+        }
+
+        $v = trim($root);
+        $v = trim($v, '/');
+        if ($v === '' || str_contains($v, '/')) {
+            return null;
+        }
+        if (!preg_match('/^[A-Za-z0-9_-]+$/', $v)) {
+            return null;
+        }
+
+        return $v;
+    }
+
     public static function generateMasterKeyPair(): array
     {
         // SetUniformBytes(64 random) -> canonical scalar

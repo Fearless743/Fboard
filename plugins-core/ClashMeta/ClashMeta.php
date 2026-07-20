@@ -3,10 +3,11 @@
 namespace Plugin\ClashMeta;
 
 use App\Models\Server;
+use App\Support\AbstractProtocol;
+use App\Support\SudokuKey;
 use App\Utils\Helper;
 use Illuminate\Support\Facades\File;
 use Symfony\Component\Yaml\Yaml;
-use App\Support\AbstractProtocol;
 
 class ClashMeta extends AbstractProtocol
 {
@@ -743,7 +744,12 @@ class ClashMeta extends AbstractProtocol
             'disable' => (bool) data_get($protocol_settings, 'httpmask.disable', false),
             'mode' => data_get($protocol_settings, 'httpmask.mode', 'legacy'),
         ];
-        if ($pathRoot = data_get($protocol_settings, 'httpmask.path_root')) {
+        // mihomo 仅允许单段 [A-Za-z0-9_-]；非法值省略，避免订阅导入报
+        // invalid http-mask-path-root: contains invalid character '.'
+        $pathRoot = SudokuKey::normalizeHttpMaskPathRoot(
+            data_get($protocol_settings, 'httpmask.path_root')
+        );
+        if ($pathRoot !== null) {
             $httpmask['path-root'] = $pathRoot;
         }
         $array['httpmask'] = $httpmask;

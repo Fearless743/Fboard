@@ -163,6 +163,7 @@ class ServerSave extends FormRequest
             'protocol_settings.*.string' => ':attribute 必须是字符串',
             'protocol_settings.*.integer' => ':attribute 必须是整数',
             'protocol_settings.*.in' => ':attribute 的值不合法',
+            'protocol_settings.httpmask.path_root.regex' => '路径前缀 (path-root) 仅允许单段 [A-Za-z0-9_-]，例如 aabbcc 或 /aabbcc/，不可含点号或多级路径',
             'transfer_enable.integer' => '流量上限必须是整数',
             'transfer_enable.min' => '流量上限不能小于0',
         ];

@@ -177,25 +177,21 @@ class Shadowrocket extends AbstractProtocol
     public static function buildVless($uuid, $server)
     {
         $protocol_settings = $server['protocol_settings'];
-        $userinfo = base64_encode('auto:' . $uuid . '@' . Helper::wrapIPv6($server['host']) . ':' . $server['port']);
+        // Shadowrocket userinfo 形如 base64(encryption:uuid@host:port)，encryption 默认 none
+        $encryption = match (data_get($protocol_settings, 'encryption.enabled')) {
+            true => data_get($protocol_settings, 'encryption.encryption', 'none') ?: 'none',
+            default => 'none',
+        };
+        $userinfo = base64_encode($encryption . ':' . $uuid . '@' . Helper::wrapIPv6($server['host']) . ':' . $server['port']);
         $config = [
             'tfo' => 1,
             'remark' => $server['name'],
+            'encryption' => $encryption,
         ];
 
-        // 判断是否开启xtls
-        if (data_get($protocol_settings, 'flow')) {
-            $xtlsMap = [
-                'none' => 0,
-                'xtls-rprx-direct' => 1,
-                'xtls-rprx-vision' => 2
-            ];
-            if (array_key_exists(data_get($protocol_settings, 'flow'), $xtlsMap)) {
-                $config['tls'] = 1;
-                $config['xtls'] = $xtlsMap[data_get($protocol_settings, 'flow')];
-            }
-        }
-        switch (data_get($protocol_settings, 'tls')) {
+        // 仅在实际开启 TLS/Reality 时写入 tls=1；flow 只映射 xtls，不再强制开 TLS
+        $tlsMode = (int) data_get($protocol_settings, 'tls', 0);
+        switch ($tlsMode) {
             case 1:
                 $config['tls'] = 1;
                 $config['allowInsecure'] = (int) data_get($protocol_settings, 'tls_settings.allow_insecure');
@@ -217,6 +213,16 @@ class Shadowrocket extends AbstractProtocol
                 break;
             default:
                 break;
+        }
+        if ($tlsMode !== 0 && ($flow = data_get($protocol_settings, 'flow'))) {
+            $xtlsMap = [
+                'none' => 0,
+                'xtls-rprx-direct' => 1,
+                'xtls-rprx-vision' => 2,
+            ];
+            if (array_key_exists($flow, $xtlsMap)) {
+                $config['xtls'] = $xtlsMap[$flow];
+            }
         }
         switch (data_get($protocol_settings, 'network')) {
             case 'tcp':

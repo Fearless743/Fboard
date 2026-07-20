@@ -439,16 +439,18 @@ class Shadowrocket extends AbstractProtocol
 
     public static function buildAnyTLS($password, $server)
     {
-        $protocol_settings = $server['protocol_settings'];
-        $name = rawurlencode($server['name']);
-        $params = [
-            'sni' => data_get($protocol_settings, 'tls.server_name'),
-            'insecure' => data_get($protocol_settings, 'tls.allow_insecure')
-        ];
+        // 对齐 anytls 官方 URI 与 General 订阅格式，保证 Shadowrocket / v2rayN 等可解析
+        $protocol_settings = data_get($server, 'protocol_settings', []) ?: [];
+        $name = rawurlencode((string) ($server['name'] ?? ''));
+        $params = [];
+        if ($sni = data_get($protocol_settings, 'tls.server_name')) {
+            $params['sni'] = $sni;
+        }
+        $params['insecure'] = data_get($protocol_settings, 'tls.allow_insecure') ? '1' : '0';
         $query = http_build_query($params);
         $addr = Helper::wrapIPv6($server['host']);
-        $uri = "anytls://{$password}@{$addr}:{$server['port']}?{$query}#{$name}";
-        $uri .= "\r\n";
+        $userinfo = rawurlencode((string) $password);
+        $uri = "anytls://{$userinfo}@{$addr}:{$server['port']}/?{$query}#{$name}\r\n";
         return $uri;
     }
 

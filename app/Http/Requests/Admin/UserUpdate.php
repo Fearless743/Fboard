@@ -33,7 +33,9 @@ class UserUpdate extends FormRequest
             'commission_balance' => 'numeric',
             'remarks' => 'nullable',
             'speed_limit' => 'nullable|integer',
-            'device_limit' => 'nullable|integer'
+            'device_limit' => 'nullable|integer',
+            'invite_user_id' => 'nullable|integer|min:1',
+            'invite_user_email' => 'nullable|email:strict',
         ];
 
         return HookManager::filter('admin.user.update.rules', $rules, $this);

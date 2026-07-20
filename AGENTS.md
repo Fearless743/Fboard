@@ -49,7 +49,7 @@ This is **Xboard**, a Laravel 12 + Octane (Swoole) proxy protocol management pan
 
 ## Docker details
 
-- Based on `phpswoole/swoole:php8.2-alpine`.
+- Based on `phpswoole/swoole:php8.3-alpine`.
 - Caddy reverse-proxies to Octane (default) or Octane binds directly (`ENABLE_CADDY=false`).
 - Entrypoint auto-tunes worker counts based on cgroup memory/cpu limits.
 - `xboard:update` runs on every container start.

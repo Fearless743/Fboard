@@ -17,6 +17,11 @@ use Illuminate\Support\Facades\Cache;
 
 class RegisterService
 {
+    public function __construct(
+        private readonly LoginLogService $loginLogService
+    ) {
+    }
+
     /**
      * 验证用户注册请求
      *
@@ -177,9 +182,11 @@ class RegisterService
             Cache::forget(CacheKey::get('EMAIL_VERIFY_CODE', $email));
         }
 
-        // 更新最近登录时间
-        $user->last_login_at = time();
-        $user->save();
+        $this->loginLogService->recordRegister(
+            $user,
+            (string) $request->ip(),
+            $request->userAgent()
+        );
 
         // 更新IP注册计数
         if ((int) admin_setting('register_limit_by_ip_enable', 0)) {

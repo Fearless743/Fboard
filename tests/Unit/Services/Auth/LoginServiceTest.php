@@ -3,6 +3,7 @@
 namespace Tests\Unit\Services\Auth;
 
 use App\Models\User;
+use App\Models\UserLoginLog;
 use App\Services\Auth\LoginService;
 use App\Utils\CacheKey;
 use App\Utils\Helper;
@@ -22,7 +23,54 @@ class LoginServiceTest extends TestCase
         parent::setUp();
 
         Cache::flush();
+        admin_setting([
+            'password_limit_enable' => 0,
+        ]);
         $this->service = app(LoginService::class);
+    }
+
+    public function test_login_records_ip_and_history(): void
+    {
+        $user = $this->createUser('login@example.com', 'secret-pass');
+
+        [$success, $result] = $this->service->login(
+            'login@example.com',
+            'secret-pass',
+            '203.0.113.50',
+            'LoginTestAgent/1.0'
+        );
+
+        $this->assertTrue($success);
+        $this->assertInstanceOf(User::class, $result);
+
+        $user->refresh();
+        $this->assertSame('203.0.113.50', $user->last_login_ip);
+        $this->assertNotNull($user->last_login_at);
+
+        $this->assertDatabaseHas('v2_user_login_log', [
+            'user_id' => $user->id,
+            'ip' => '203.0.113.50',
+            'user_agent' => 'LoginTestAgent/1.0',
+            'method' => UserLoginLog::METHOD_PASSWORD,
+        ]);
+    }
+
+    public function test_login_failure_does_not_write_history(): void
+    {
+        $user = $this->createUser('fail@example.com', 'correct-pass');
+
+        [$success] = $this->service->login(
+            'fail@example.com',
+            'wrong-pass',
+            '203.0.113.9',
+            'Agent'
+        );
+
+        $this->assertFalse($success);
+        $this->assertDatabaseCount('v2_user_login_log', 0);
+
+        $user->refresh();
+        $this->assertNull($user->last_login_ip);
     }
 
     public function test_reset_password_rejects_missing_cached_email_code(): void

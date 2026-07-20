@@ -9,6 +9,7 @@ use App\Http\Requests\Admin\UserUpdate;
 use App\Jobs\SendEmailJob;
 use App\Models\Plan;
 use App\Models\User;
+use App\Models\UserLoginLog;
 use App\Services\AuthService;
 use App\Services\NodeSyncService;
 use App\Services\Plugin\HookManager;
@@ -706,6 +707,28 @@ class UserController extends Controller
         });
 
         return $this->paginate($invitedUsers);
+    }
+
+    /**
+     * 用户登录历史（分页，每用户最多保留 20 条）
+     */
+    public function loginLogs(Request $request)
+    {
+        $request->validate([
+            'user_id' => 'required|integer|exists:App\Models\User,id',
+            'current' => 'nullable|integer|min:1',
+            'pageSize' => 'nullable|integer|min:1|max:50',
+        ]);
+
+        $current = (int) $request->input('current', 1);
+        $pageSize = (int) $request->input('pageSize', 20);
+        $userId = (int) $request->input('user_id');
+
+        $logs = UserLoginLog::where('user_id', $userId)
+            ->orderByDesc('id')
+            ->paginate($pageSize, ['id', 'ip', 'user_agent', 'method', 'created_at'], 'page', $current);
+
+        return $this->paginate($logs);
     }
 
     // Delete user and related data.

@@ -3,6 +3,7 @@
 namespace App\Services\Auth;
 
 use App\Models\User;
+use App\Models\UserLoginLog;
 use App\Services\Plugin\HookManager;
 use App\Utils\CacheKey;
 use App\Utils\Helper;
@@ -10,14 +11,21 @@ use Illuminate\Support\Facades\Cache;
 
 class LoginService
 {
+    public function __construct(
+        private readonly LoginLogService $loginLogService
+    ) {
+    }
+
     /**
      * 处理用户登录
      *
      * @param string $email 用户邮箱
      * @param string $password 用户密码
+     * @param string|null $ip 客户端 IP
+     * @param string|null $userAgent User-Agent
      * @return array [成功状态, 用户对象或错误信息]
      */
-    public function login(string $email, string $password): array
+    public function login(string $email, string $password, ?string $ip = null, ?string $userAgent = null): array
     {
         // 检查密码错误限制
         if ((int) admin_setting('password_limit_enable', true)) {
@@ -67,9 +75,12 @@ class LoginService
             return [false, [400, __('Your account has been suspended')]];
         }
 
-        // 更新最后登录时间
-        $user->last_login_at = time();
-        $user->save();
+        $this->loginLogService->recordLogin(
+            $user,
+            $ip ?? '',
+            $userAgent,
+            UserLoginLog::METHOD_PASSWORD
+        );
 
         HookManager::call('user.login.after', $user);
         return [true, $user];

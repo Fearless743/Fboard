@@ -7,6 +7,8 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Passport\AuthForget;
 use App\Http\Requests\Passport\AuthLogin;
 use App\Http\Requests\Passport\AuthRegister;
+use App\Models\UserLoginLog;
+use App\Services\Auth\LoginLogService;
 use App\Services\Auth\LoginService;
 use App\Services\Auth\MailLinkService;
 use App\Services\Auth\RegisterService;
@@ -18,15 +20,18 @@ class AuthController extends Controller
     protected MailLinkService $mailLinkService;
     protected RegisterService $registerService;
     protected LoginService $loginService;
+    protected LoginLogService $loginLogService;
 
     public function __construct(
         MailLinkService $mailLinkService,
         RegisterService $registerService,
-        LoginService $loginService
+        LoginService $loginService,
+        LoginLogService $loginLogService
     ) {
         $this->mailLinkService = $mailLinkService;
         $this->registerService = $registerService;
         $this->loginService = $loginService;
+        $this->loginLogService = $loginLogService;
     }
 
     /**
@@ -74,7 +79,12 @@ class AuthController extends Controller
         $email = $request->input('email');
         $password = $request->input('password');
 
-        [$success, $result] = $this->loginService->login($email, $password);
+        [$success, $result] = $this->loginService->login(
+            $email,
+            $password,
+            (string) $request->ip(),
+            $request->userAgent()
+        );
 
         if (!$success) {
             return $this->fail($result);
@@ -117,6 +127,13 @@ class AuthController extends Controller
                     'message' => __('User not found')
                 ], 400);
             }
+
+            $this->loginLogService->recordLogin(
+                $user,
+                (string) $request->ip(),
+                $request->userAgent(),
+                UserLoginLog::METHOD_MAIL_LINK
+            );
 
             $authService = new AuthService($user);
 

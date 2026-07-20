@@ -53,6 +53,11 @@ class MachineController extends Controller
             'net.in_speed' => 'nullable|numeric|min:0',
             'net.out_speed' => 'nullable|numeric|min:0',
             'version' => 'nullable|string|max:64',
+            'kernel' => 'nullable|array',
+            'kernel.status' => 'nullable|string|in:idle,running,stopped,partial',
+            'kernel.nodes_total' => 'nullable|integer|min:0',
+            'kernel.nodes_running' => 'nullable|integer|min:0',
+            'kernel.nodes_desired' => 'nullable|integer|min:0',
         ]);
 
         $machine = $this->authenticateMachine($request);
@@ -89,6 +94,20 @@ class MachineController extends Controller
         $version = trim((string) $request->input('version', ''));
         if ($version !== '') {
             $loadStatus['version'] = $version;
+        }
+
+        // Aggregated embedded-kernel state for admin UI button gating.
+        $kernel = $request->input('kernel');
+        if (is_array($kernel)) {
+            $status = (string) ($kernel['status'] ?? '');
+            if (in_array($status, ['idle', 'running', 'stopped', 'partial'], true)) {
+                $loadStatus['kernel'] = [
+                    'status' => $status,
+                    'nodes_total' => max(0, (int) ($kernel['nodes_total'] ?? 0)),
+                    'nodes_running' => max(0, (int) ($kernel['nodes_running'] ?? 0)),
+                    'nodes_desired' => max(0, (int) ($kernel['nodes_desired'] ?? 0)),
+                ];
+            }
         }
 
         $machine->forceFill([

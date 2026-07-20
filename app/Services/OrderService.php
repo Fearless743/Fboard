@@ -63,7 +63,7 @@ class OrderService
                 'plan_id' => $plan->id,
                 'period' => $newPeriod,
                 'trade_no' => Helper::generateOrderNo(),
-                'total_amount' => (int) (optional($plan->prices)[$newPeriod] * 100),
+                'total_amount' => Helper::yuanToCents(optional($plan->prices)[$newPeriod] ?? 0),
             ]);
 
             $orderService = new self($order);
@@ -177,9 +177,10 @@ class OrderService
     {
         $order = $this->order;
         if ($user->discount) {
-            $order->discount_amount = $order->discount_amount + ($order->total_amount * ($user->discount / 100));
+            $order->discount_amount = (int) $order->discount_amount
+                + Helper::percentOfCents((int) $order->total_amount, $user->discount);
         }
-        $order->total_amount = $order->total_amount - $order->discount_amount;
+        $order->total_amount = (int) $order->total_amount - (int) $order->discount_amount;
     }
 
     public function setInvite(User $user): void
@@ -207,12 +208,12 @@ class OrderService
 
         if (!$isCommission)
             return;
-        // total_amount 此时应为余额/优惠抵扣后的实际应付金额
-        if ($inviter->commission_rate) {
-            $order->commission_balance = (int) ($order->total_amount * ($inviter->commission_rate / 100));
-        } else {
-            $order->commission_balance = (int) ($order->total_amount * (admin_setting('invite_commission', 10) / 100));
-        }
+        // total_amount 此时应为余额/优惠抵扣后的实际应付金额（整数分）
+        // 必须用整数运算：699 * 20% = 139.8，float 写入 MySQL INTEGER 在严格模式下会失败
+        $rate = $inviter->commission_rate
+            ? $inviter->commission_rate
+            : admin_setting('invite_commission', 10);
+        $order->commission_balance = Helper::percentOfCents((int) $order->total_amount, $rate);
     }
 
     private function haveValidOrder(User $user): Order|null

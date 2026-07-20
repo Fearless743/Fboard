@@ -6,6 +6,7 @@ use App\Exceptions\ApiException;
 use App\Models\Coupon;
 use App\Models\Order;
 use App\Services\Plugin\HookManager;
+use App\Utils\Helper;
 use Illuminate\Support\Facades\DB;
 
 class CouponService
@@ -30,14 +31,19 @@ class CouponService
         $this->check();
         switch ($this->coupon->type) {
             case 1:
-                $order->discount_amount = $this->coupon->value;
+                // type=1 固定金额，coupon.value 存的是分
+                $order->discount_amount = (int) $this->coupon->value;
                 break;
             case 2:
-                $order->discount_amount = $order->total_amount * ($this->coupon->value / 100);
+                // type=2 百分比；结果必须为整数分，避免 float 写入 INTEGER 列失败
+                $order->discount_amount = Helper::percentOfCents(
+                    (int) $order->total_amount,
+                    $this->coupon->value
+                );
                 break;
         }
         if ($order->discount_amount > $order->total_amount) {
-            $order->discount_amount = $order->total_amount;
+            $order->discount_amount = (int) $order->total_amount;
         }
         if ($this->coupon->limit_use !== NULL) {
             if ($this->coupon->limit_use <= 0)

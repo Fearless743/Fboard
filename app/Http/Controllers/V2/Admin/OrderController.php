@@ -232,7 +232,8 @@ class OrderController extends Controller
             $period = $request->input('period');
             $order->period = PlanService::getPeriodKey((string) $period);
             $order->trade_no = Helper::guid();
-            $order->total_amount = $request->input('total_amount');
+            // 管理端表单按「元」输入，库内统一存「分」
+            $order->total_amount = Helper::yuanToCents($request->input('total_amount'));
 
             if (PlanService::getPeriodKey((string) $order->period) === Plan::PERIOD_RESET_TRAFFIC) {
                 $order->type = Order::TYPE_RESET_TRAFFIC;

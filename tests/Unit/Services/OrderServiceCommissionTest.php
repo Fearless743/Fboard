@@ -50,7 +50,7 @@ class OrderServiceCommissionTest extends TestCase
         $order = OrderService::createFromRequest($buyer, $plan, Plan::PERIOD_MONTHLY);
 
         $expectedPay = self::PLAN_PRICE_CENTS - $balanceUsed;
-        $expectedCommission = (int) ($expectedPay * self::COMMISSION_RATE / 100);
+        $expectedCommission = Helper::percentOfCents($expectedPay, self::COMMISSION_RATE);
 
         $this->assertSame($balanceUsed, $order->balance_amount);
         $this->assertSame($expectedPay, $order->total_amount);
@@ -64,7 +64,7 @@ class OrderServiceCommissionTest extends TestCase
 
         $order = OrderService::createFromRequest($buyer, $plan, Plan::PERIOD_MONTHLY);
 
-        $expectedCommission = (int) (self::PLAN_PRICE_CENTS * self::COMMISSION_RATE / 100);
+        $expectedCommission = Helper::percentOfCents(self::PLAN_PRICE_CENTS, self::COMMISSION_RATE);
 
         $this->assertNull($order->balance_amount);
         $this->assertSame(self::PLAN_PRICE_CENTS, $order->total_amount);
@@ -84,10 +84,47 @@ class OrderServiceCommissionTest extends TestCase
         $order = OrderService::createFromRequest($buyer, $plan, Plan::PERIOD_MONTHLY);
 
         $expectedPay = self::PLAN_PRICE_CENTS - $balanceUsed;
-        $expectedCommission = (int) ($expectedPay * $customRate / 100);
+        $expectedCommission = Helper::percentOfCents($expectedPay, $customRate);
 
         $this->assertSame($expectedPay, $order->total_amount);
         $this->assertSame($expectedCommission, (int) $order->commission_balance);
+    }
+
+    /**
+     * 金额含 .99 且佣金 20% 时，佣金必须是整数分（不能是 139.8 这类 float）。
+     * 否则在 MySQL STRICT 模式下写入 INTEGER 列会失败，前台表现为「出现问题」。
+     */
+    public function test_point_nine_nine_price_with_twenty_percent_commission_is_integer_cents(): void
+    {
+        $priceYuan = 6.99;
+        $rate = 20;
+        [$buyer, $plan] = $this->createBuyerWithInviter(
+            balance: 0,
+            inviterCommissionRate: $rate,
+            planPriceYuan: $priceYuan,
+        );
+
+        $order = OrderService::createFromRequest($buyer, $plan, Plan::PERIOD_MONTHLY);
+
+        $expectedTotal = Helper::yuanToCents($priceYuan); // 699
+        $expectedCommission = Helper::percentOfCents($expectedTotal, $rate); // 139
+
+        $this->assertSame(699, $expectedTotal);
+        $this->assertSame(139, $expectedCommission);
+        $this->assertSame($expectedTotal, $order->total_amount);
+        $this->assertSame($expectedCommission, (int) $order->commission_balance);
+        $this->assertIsInt($order->commission_balance);
+        // 关键现 float：699 * 0.2 = 139.8
+        $this->assertNotSame(139.8, $order->commission_balance);
+    }
+
+    public function test_yuan_to_cents_avoids_float_truncation(): void
+    {
+        // 19.99 * 100 在 float 下可能变成 1998.999…，(int) 会截成 1998
+        $this->assertSame(1999, Helper::yuanToCents(19.99));
+        $this->assertSame(699, Helper::yuanToCents(6.99));
+        $this->assertSame(699, Helper::yuanToCents('6.99'));
+        $this->assertSame(0, Helper::yuanToCents(null));
     }
 
     /**
@@ -96,6 +133,7 @@ class OrderServiceCommissionTest extends TestCase
     private function createBuyerWithInviter(
         int $balance,
         ?float $inviterCommissionRate = null,
+        int|float $planPriceYuan = self::PLAN_PRICE_YUAN,
     ): array {
         $group = new ServerGroup();
         $group->forceFill([
@@ -114,7 +152,7 @@ class OrderServiceCommissionTest extends TestCase
             'sell' => true,
             'renew' => true,
             'prices' => [
-                Plan::PERIOD_MONTHLY => self::PLAN_PRICE_YUAN,
+                Plan::PERIOD_MONTHLY => $planPriceYuan,
             ],
             'created_at' => time(),
             'updated_at' => time(),

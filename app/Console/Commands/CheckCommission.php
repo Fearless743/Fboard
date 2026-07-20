@@ -3,9 +3,10 @@
 namespace App\Console\Commands;
 
 use App\Models\CommissionLog;
-use Illuminate\Console\Command;
 use App\Models\Order;
 use App\Models\User;
+use App\Utils\Helper;
+use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
 class CheckCommission extends Command
@@ -101,7 +102,10 @@ class CheckCommission extends Command
             $inviter = User::find($inviteUserId);
             if (!$inviter) continue;
             if (!isset($commissionShareLevels[$l])) continue;
-            $commissionBalance = $order->commission_balance * ($commissionShareLevels[$l] / 100);
+            $commissionBalance = Helper::percentOfCents(
+                (int) $order->commission_balance,
+                $commissionShareLevels[$l]
+            );
             if (!$commissionBalance) continue;
             if ((int)admin_setting('withdraw_close_enable', 0)) {
                 $inviter->increment('balance', $commissionBalance);
@@ -121,7 +125,7 @@ class CheckCommission extends Command
             ]);
             $inviteUserId = $inviter->invite_user_id;
             // update order actual commission balance
-            $order->actual_commission_balance = $order->actual_commission_balance + $commissionBalance;
+            $order->actual_commission_balance = (int) $order->actual_commission_balance + $commissionBalance;
         }
         return true;
     }

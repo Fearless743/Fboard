@@ -439,4 +439,32 @@ class Helper
     {
         return str_replace(['_', '*', '`', '['], ['\_', '\*', '\`', '\['], $text);
     }
+
+    /**
+     * 元 → 分（四舍五入到整数分，避免 19.99*100 浮点截断）。
+     */
+    public static function yuanToCents(int|float|string|null $yuan): int
+    {
+        if ($yuan === null || $yuan === '') {
+            return 0;
+        }
+
+        return (int) round(((float) $yuan) * 100);
+    }
+
+    /**
+     * 按百分比计算金额（分），向零截断为整数分。
+     * 避免 699 * 20% = 139.8 这类 float 写入 MySQL INTEGER 列失败。
+     */
+    public static function percentOfCents(int $cents, int|float|string|null $rate): int
+    {
+        if ($cents === 0 || $rate === null || $rate === '') {
+            return 0;
+        }
+
+        // 百分比最多保留两位小数（如 12.5%），再以整数运算避免 float 误差
+        $rateBasisPoints = (int) round(((float) $rate) * 100); // 1% = 100
+
+        return intdiv($cents * $rateBasisPoints, 10000);
+    }
 }

@@ -18,6 +18,7 @@ class Shadowrocket extends AbstractProtocol
         Server::TYPE_TUIC,
         Server::TYPE_ANYTLS,
         Server::TYPE_SOCKS,
+        Server::TYPE_MIERU,
     ];
 
     protected $protocolRequirements = [
@@ -65,6 +66,9 @@ class Shadowrocket extends AbstractProtocol
             }
             if ($item['type'] === Server::TYPE_SOCKS) {
                 $uri .= self::buildSocks($item['password'], $item);
+            }
+            if ($item['type'] === Server::TYPE_MIERU) {
+                $uri .= self::buildMieru($item['password'], $item);
             }
         }
         return response(base64_encode($uri))
@@ -443,11 +447,33 @@ class Shadowrocket extends AbstractProtocol
     }
 
     public static function buildSocks($password, $server)
-    {   
+    {
         $protocol_settings = $server['protocol_settings'];
         $name = rawurlencode($server['name']);
         $addr = Helper::wrapIPv6($server['host']);
         $uri = 'socks://' . base64_encode("{$password}:{$password}@{$addr}:{$server['port']}") . "?method=auto#{$name}";
+        $uri .= "\r\n";
+        return $uri;
+    }
+
+    public static function buildMieru($password, $server)
+    {
+        $protocol_settings = $server['protocol_settings'];
+        $name = rawurlencode($server['name']);
+        $addr = Helper::wrapIPv6($server['host']);
+        $params = [
+            'udp' => 1,
+            'transport' => strtolower(data_get($protocol_settings, 'transport', 'TCP'))
+        ];
+
+        if (isset($server['ports'])) {
+            $params['mport'] = $server['ports'];
+        }
+
+        $query = http_build_query($params, '', '&', PHP_QUERY_RFC3986);
+        $username = rawurlencode($password);
+        $password = rawurlencode($password);
+        $uri = "mierus://{$username}:{$password}@{$addr}:{$server['port']}?{$query}#{$name}";
         $uri .= "\r\n";
         return $uri;
     }

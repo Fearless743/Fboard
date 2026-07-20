@@ -47,6 +47,8 @@ class ProtocolDefinition
             'name' => $this->name,
             'description' => $this->description,
             'config_fields' => $this->configFields,
+            // 管理端表单据此标记协议必填项（与 ServerSave 校验一致）
+            'validation_rules' => $this->validationRules,
         ];
     }
 }

@@ -181,13 +181,24 @@ class ServerService
     }
 
     /**
-     * 处理节点连接数汇报
+     * 处理节点在线人数 / 连接数汇报
+     *
+     * $online 为 uid => 设备数（distinct IP）快照；键数量即当前在线用户数。
+     * 空数组表示该节点当前无在线用户，需写 0 以清掉陈旧 ONLINE_USER。
      */
     public static function processOnline(Server $node, array $online): void
     {
         $cacheTime = max(300, (int) admin_setting('server_push_interval', 60) * 3);
         $nodeType = $node->type;
         $nodeId = $node->id;
+        $nodeTypeUpper = strtoupper($nodeType);
+
+        // 管理端「在线人数」读 SERVER_*_ONLINE_USER；优先用真实在线快照，而非本周期有流量的用户数
+        Cache::put(
+            CacheKey::get("SERVER_{$nodeTypeUpper}_ONLINE_USER", $nodeId),
+            count($online),
+            $cacheTime
+        );
 
         foreach ($online as $uid => $conn) {
             $cacheKey = CacheKey::get("USER_ONLINE_CONN_{$nodeType}_{$nodeId}", $uid);

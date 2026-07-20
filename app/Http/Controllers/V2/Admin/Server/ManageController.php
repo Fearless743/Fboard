@@ -20,10 +20,12 @@ class ManageController extends Controller
 {
     public function getNodes(Request $request)
     {
-        $current = $request->input("current", 1);
-        $pageSize = $request->input("pageSize", 20);
+        $current = max(1, (int) $request->input("current", 1));
+        $pageSize = max(1, min(200, (int) $request->input("pageSize", 20)));
         $search = $request->input("search", "");
         $typeFilter = $request->input("type", "");
+        // 运行状态：0 未运行 / 1 无人使用或异常 / 2 运行正常（来自 available_status，非 DB 字段）
+        $statusFilter = $request->input("status", "");
 
         $query = Server::orderBy("sort", "ASC");
 
@@ -43,17 +45,58 @@ class ManageController extends Controller
             });
         }
 
-        $servers = $query->paginate($pageSize, ["*"], "page", $current);
-
-        $servers->getCollection()->transform(function ($item) {
+        $enrich = function ($item) {
             $item["groups"] = ServerGroup::whereIn(
                 "id",
                 $item["group_ids"] ?? [],
             )->get(["name", "id"]);
             $item["parent"] = $item->parent;
-            $item->append('version');
+            // online / available_status 等为 Attribute，需 append 才会进入 JSON
+            $item->append([
+                'version',
+                'online',
+                'is_online',
+                'last_check_at',
+                'last_push_at',
+                'available_status',
+            ]);
+            // 管理端列表用 status 展示节点状态（0 离线 / 1 在线无推送 / 2 在线）
+            $item->setAttribute('status', $item->available_status);
             return $item;
-        });
+        };
+
+        // status 依赖缓存心跳，无法直接 SQL 过滤：先取匹配集合再按 available_status 分页
+        if ($statusFilter !== "" && $statusFilter !== null && is_numeric($statusFilter)) {
+            $status = (int) $statusFilter;
+            if (in_array($status, [
+                Server::STATUS_OFFLINE,
+                Server::STATUS_ONLINE_NO_PUSH,
+                Server::STATUS_ONLINE,
+            ], true)) {
+                $filtered = $query->get()
+                    ->filter(fn ($item) => (int) $item->available_status === $status)
+                    ->values();
+
+                $total = $filtered->count();
+                $slice = $filtered
+                    ->slice(($current - 1) * $pageSize, $pageSize)
+                    ->values()
+                    ->map($enrich);
+
+                $paginator = new \Illuminate\Pagination\LengthAwarePaginator(
+                    $slice,
+                    $total,
+                    $pageSize,
+                    $current,
+                    ['path' => $request->url(), 'query' => $request->query()],
+                );
+
+                return $this->paginate($paginator);
+            }
+        }
+
+        $servers = $query->paginate($pageSize, ["*"], "page", $current);
+        $servers->getCollection()->transform($enrich);
 
         return $this->paginate($servers);
     }
@@ -653,7 +696,7 @@ class ManageController extends Controller
     }
 
     /**
-     * 兼容旧入口：重启独立节点，机器节点会转为机器级重启。
+     * 兼容旧入口：重启独立节点内核；机器节点会转为机器级内核重启。
      */
     public function restart(Request $request)
     {
@@ -672,7 +715,7 @@ class ManageController extends Controller
 
         NodeRestartJob::dispatch($server->id);
 
-        Log::info("节点重启任务已提交", [
+        Log::info("节点内核重启任务已提交", [
             "node_id" => $server->id,
             "node_name" => $server->name,
         ]);

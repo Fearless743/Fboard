@@ -39,7 +39,7 @@ class NodeRestartJob implements ShouldQueue
 
         if ($server->machine_id !== null) {
             MachineRestartJob::dispatch((int) $server->machine_id);
-            Log::info("[NodeRestartJob] 已将节点 {$server->id} 的重启请求转为机器任务", [
+            Log::info("[NodeRestartJob] 已将节点 {$server->id} 的内核重启请求转为机器任务", [
                 'machine_id' => $server->machine_id,
             ]);
             return;
@@ -47,6 +47,6 @@ class NodeRestartJob implements ShouldQueue
 
         NodeSyncService::notifyNodeRestart($server);
 
-        Log::info("[NodeRestartJob] 已通知独立节点 {$server->id}({$server->name}) 执行重启");
+        Log::info("[NodeRestartJob] 已通知独立节点 {$server->id}({$server->name}) 执行内核重启");
     }
 }

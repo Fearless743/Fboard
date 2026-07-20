@@ -31,7 +31,12 @@ class ServerGroup extends Model
 
     public function servers()
     {
-        return Server::whereJsonContains('group_ids', (string) $this->id)->get();
+        // 同时匹配字符串和整型两种存储形式，避免 JSON_CONTAINS 类型不匹配
+        return Server::where(function ($query) {
+            $id = $this->id;
+            $query->whereJsonContains('group_ids', (string) $id)
+                ->orWhereJsonContains('group_ids', (int) $id);
+        })->get();
     }
 
     /**
@@ -40,7 +45,13 @@ class ServerGroup extends Model
     protected function serverCount(): Attribute
     {
         return Attribute::make(
-            get: fn () => Server::whereJsonContains('group_ids', (string) $this->id)->count(),
+            get: function () {
+                $id = $this->id;
+                return Server::where(function ($query) use ($id) {
+                    $query->whereJsonContains('group_ids', (string) $id)
+                        ->orWhereJsonContains('group_ids', (int) $id);
+                })->count();
+            },
         );
     }
 }

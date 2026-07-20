@@ -2,8 +2,6 @@
 
 namespace App\Jobs;
 
-use App\Models\ServerMachine;
-use App\Services\NodeSyncService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -12,6 +10,10 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 
+/**
+ * 兼容入口：语义已改为「重启内嵌内核」，不再重启 fboard-node 进程。
+ * 实际逻辑委托给 MachineKernelOpJob。
+ */
 class MachineRestartJob implements ShouldQueue, ShouldBeUnique
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
@@ -33,26 +35,8 @@ class MachineRestartJob implements ShouldQueue, ShouldBeUnique
 
     public function handle(): void
     {
-        $machine = ServerMachine::find($this->machineId);
-        if (!$machine) {
-            Log::warning("[MachineRestartJob] 机器 {$this->machineId} 不存在，跳过重启");
-            return;
-        }
-
-        if (!$machine->is_active) {
-            Log::info("[MachineRestartJob] 机器 {$machine->id} 已禁用，跳过重启");
-            return;
-        }
-
-        if (!$machine->isOnline()) {
-            Log::info("[MachineRestartJob] 机器 {$machine->id} 当前离线，跳过重启");
-            return;
-        }
-
-        NodeSyncService::notifyMachineRestart($machine->id);
-
-        Log::info("[MachineRestartJob] 已通知机器 {$machine->id} 执行 Fboard-Node 服务重启", [
-            'machine_id' => $machine->id,
-        ]);
+        Log::info("[MachineRestartJob] 转为内核重启", ['machine_id' => $this->machineId]);
+        // 同步执行内核 job 逻辑，避免再入队二次延迟
+        (new MachineKernelOpJob($this->machineId, 'restart'))->handle();
     }
 }

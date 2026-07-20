@@ -58,8 +58,9 @@ class ServerController extends Controller
             ServerService::processAlive($node->id, $alive);
         }
 
+        // online 允许空数组：表示当前无在线用户，需清零 ONLINE_USER
         $online = $request->input('online');
-        if (is_array($online) && !empty($online)) {
+        if (is_array($online)) {
             ServerService::processOnline($node, $online);
         }
 

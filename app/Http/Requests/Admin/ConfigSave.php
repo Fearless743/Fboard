@@ -54,6 +54,10 @@ class ConfigSave extends FormRequest
         'device_limit_mode' => 'integer',
         'server_ws_enable' => 'boolean',
         'server_ws_url' => 'nullable|url',
+        'node_install_script_url' => 'nullable|string',
+        // uTLS 指纹列表：小写字母数字下划线中划线，每项最长 64
+        'utls_fingerprints' => 'nullable|array',
+        'utls_fingerprints.*' => 'required|string|max:64|regex:/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/',
         // frontend theme
         'frontend_theme' => '',
         // email

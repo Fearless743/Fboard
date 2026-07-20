@@ -188,11 +188,11 @@ class NodeEventHandlers
     }
 
     /**
-     * Handle remote-ops ack from the node (reply to sync.upgrade / sync.restart).
+     * Handle remote-ops ack from the node (reply to sync.upgrade / sync.kernel / legacy restart).
      *
      * Payload shape (set by Fboard-Node panel.WSClient.SendOpAck):
      *   {
-     *     op:     "upgrade" | "restart",
+     *     op:     "upgrade" | "restart" | "kernel.stop|start|reload|restart",
      *     status: "ok" | "failed",
      *     detail: string,   // short reason on failed; empty on ok
      *     ts:     int,
@@ -212,7 +212,15 @@ class NodeEventHandlers
         $op = strtolower((string) ($data['op'] ?? ''));
         $status = strtolower((string) ($data['status'] ?? ''));
         $detail = (string) ($data['detail'] ?? '');
-        if (!in_array($op, ['upgrade', 'restart'], true)) {
+        $allowedOps = [
+            'upgrade',
+            'restart', // legacy process-restart ack
+            'kernel.stop',
+            'kernel.start',
+            'kernel.reload',
+            'kernel.restart',
+        ];
+        if (!in_array($op, $allowedOps, true)) {
             Log::debug('[WS] op.ack ignored: unknown op', ['op' => $op]);
             return;
         }

@@ -261,6 +261,88 @@ class Helper
         return gethostbynamel($domain) ?: [];
     }
     
+    /**
+     * 系统配置中可编辑的 uTLS 具体指纹列表（已规范化）。
+     * 会剔除 random / randomized；空配置时回退默认具体指纹。
+     *
+     * @return list<string>
+     */
+    public static function getUtlsFingerprints(): array
+    {
+        $list = admin_setting('utls_fingerprints', Dict::UTLS_FINGERPRINTS_DEFAULT);
+        if (!is_array($list)) {
+            $list = Dict::UTLS_FINGERPRINTS_DEFAULT;
+        }
+
+        $meta = array_fill_keys(Dict::UTLS_FINGERPRINT_META, true);
+        $normalized = [];
+        foreach ($list as $item) {
+            $value = strtolower(trim((string) $item));
+            // 元选项不可配置，即使库里残留也过滤掉
+            if ($value === '' || isset($meta[$value])) {
+                continue;
+            }
+            if (!preg_match('/^[a-z0-9][a-z0-9_-]{0,63}$/', $value)) {
+                continue;
+            }
+            $normalized[$value] = $value;
+        }
+
+        if ($normalized === []) {
+            return Dict::UTLS_FINGERPRINTS_DEFAULT;
+        }
+
+        return array_values($normalized);
+    }
+
+    /**
+     * 节点表单 / 校验用完整指纹列表：具体指纹 + 固定元选项。
+     *
+     * @return list<string>
+     */
+    public static function getUtlsFingerprintsForSelect(): array
+    {
+        return array_values(array_unique(array_merge(
+            self::getUtlsFingerprints(),
+            Dict::UTLS_FINGERPRINT_META
+        )));
+    }
+
+    /**
+     * 节点表单下拉 options：value => label
+     * 始终包含 random / randomized（系统设置中不可编辑）。
+     *
+     * @return array<string, string>
+     */
+    public static function getUtlsFingerprintOptions(): array
+    {
+        $options = [];
+        foreach (self::getUtlsFingerprintsForSelect() as $fp) {
+            $options[$fp] = match ($fp) {
+                'ios' => 'iOS',
+                'qq' => 'QQ',
+                'random' => 'Random',
+                'randomized' => 'Randomized',
+                default => ucfirst($fp),
+            };
+        }
+        return $options;
+    }
+
+    /**
+     * random 元选项的实际抽样池（仅具体指纹）
+     *
+     * @return list<string>
+     */
+    public static function getUtlsRandomPool(): array
+    {
+        $pool = self::getUtlsFingerprints();
+
+        return $pool !== []
+            ? $pool
+            : Dict::UTLS_FINGERPRINTS_DEFAULT;
+    }
+
     public static function getTlsFingerprint($utls = null)
     {
 
@@ -274,8 +356,7 @@ class Helper
             }
         }
 
-        $fingerprints = ['chrome', 'firefox', 'safari', 'ios', 'edge', 'qq'];
-        return Arr::random($fingerprints);
+        return Arr::random(self::getUtlsRandomPool());
     }
 
     public static function normalizeEchSettings($ech = null): ?array

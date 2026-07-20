@@ -401,10 +401,18 @@ class Plugin extends AbstractPlugin
 
     private static function getUtlsFields(): array
     {
+        // options 在 ProtocolDefinitionRegistry 加载时按系统设置动态注入；
+        // 此处给默认列表，避免插件注册阶段尚未可读设置。
         return [
             'utls' => ['type' => 'object', 'fields' => [
                 'enabled' => ['type' => 'boolean', 'default' => false, 'label' => '启用uTLS'],
-                'fingerprint' => ['type' => 'string', 'default' => 'chrome', 'label' => '指纹', 'options' => ['chrome' => 'Chrome', 'firefox' => 'Firefox', 'safari' => 'Safari', 'ios' => 'iOS', 'android' => 'Android', 'edge' => 'Edge', 'qq' => 'QQ', 'random' => 'Random', 'randomized' => 'Randomized'], 'show_when' => ['enabled' => 'true']],
+                'fingerprint' => [
+                    'type' => 'string',
+                    'default' => 'chrome',
+                    'label' => '指纹',
+                    'options' => \App\Utils\Helper::getUtlsFingerprintOptions(),
+                    'show_when' => ['enabled' => 'true'],
+                ],
             ], 'label' => 'uTLS设置'],
         ];
     }
@@ -436,9 +444,13 @@ class Plugin extends AbstractPlugin
 
     private static function getUtlsValidationRules(): array
     {
+        $allowed = array_keys(\App\Utils\Helper::getUtlsFingerprintOptions());
+        $in = $allowed !== [] ? implode(',', $allowed) : 'chrome';
+
         return [
             'utls.enabled' => 'nullable|boolean',
-            'utls.fingerprint' => 'nullable|string|in:chrome,firefox,safari,ios,android,edge,qq,random,randomized',
+            // in 列表与系统设置 utls_fingerprints 同步（Registry 加载时再次刷新）
+            'utls.fingerprint' => 'nullable|string|in:' . $in,
         ];
     }
 

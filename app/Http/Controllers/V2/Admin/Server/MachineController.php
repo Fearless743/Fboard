@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\V2\Admin\Server;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\MachineKernelOpJob;
 use App\Jobs\MachineRestartJob;
 use App\Jobs\MachineUpgradeJob;
 use App\Models\Server;
@@ -20,6 +21,9 @@ class MachineController extends Controller
      *
      * 可选搜索参数：
      *   - search: 在 name / notes 上做大小写不敏感的模糊匹配
+     *
+     * 响应额外字段 summary（全局概览，不受 search 影响）：
+     *   total / online / offline / high_load / nodes
      */
     public function fetch(Request $request)
     {
@@ -54,7 +58,82 @@ class MachineController extends Controller
             ];
         });
 
-        return $this->paginate($machines);
+        return response()->json([
+            'total' => $machines->total(),
+            'current_page' => $machines->currentPage(),
+            'per_page' => $machines->perPage(),
+            'last_page' => $machines->lastPage(),
+            'data' => $machines->items(),
+            // 顶部概览：全局统计，与当前搜索/分页无关
+            'summary' => $this->buildMachineSummary(),
+        ]);
+    }
+
+    /**
+     * 服务器管理页顶部概览统计。
+     * 高负载阈值与前端 LoadMeter 一致：CPU / 内存 / 磁盘任一 ≥ 70%。
+     */
+    private function buildMachineSummary(): array
+    {
+        $all = ServerMachine::query()
+            ->select(['id', 'is_active', 'last_seen_at', 'load_status'])
+            ->get();
+
+        $total = $all->count();
+        $online = 0;
+        $highLoad = 0;
+
+        foreach ($all as $machine) {
+            $isOnline = $machine->isOnline();
+            if ($isOnline) {
+                $online++;
+            }
+
+            if ($this->isHighLoad($machine->load_status)) {
+                $highLoad++;
+            }
+        }
+
+        $nodes = Server::query()
+            ->whereNotNull('machine_id')
+            ->where('machine_id', '>', 0)
+            ->whereNot('type', 'virtual')
+            ->count();
+
+        return [
+            'total' => $total,
+            'online' => $online,
+            'offline' => max(0, $total - $online),
+            'high_load' => $highLoad,
+            'nodes' => $nodes,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $load
+     */
+    private function isHighLoad(?array $load): bool
+    {
+        if (empty($load) || !is_array($load)) {
+            return false;
+        }
+
+        $cpu = isset($load['cpu']) ? (float) $load['cpu'] : null;
+        $memUsed = (float) data_get($load, 'mem.used', 0);
+        $memTotal = (float) data_get($load, 'mem.total', 0);
+        $diskUsed = (float) data_get($load, 'disk.used', 0);
+        $diskTotal = (float) data_get($load, 'disk.total', 0);
+
+        $mem = $memTotal > 0 ? ($memUsed / $memTotal) * 100 : null;
+        $disk = $diskTotal > 0 ? ($diskUsed / $diskTotal) * 100 : null;
+
+        foreach ([$cpu, $mem, $disk] as $value) {
+            if ($value !== null && $value >= 70) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -243,25 +322,59 @@ class MachineController extends Controller
     }
 
     /**
-     * 重启指定机器上的 Fboard-Node 服务。
+     * 重启指定机器上所有节点的内嵌 xray 内核（进程与 WS 保持存活）。
      */
     public function restart(Request $request)
+    {
+        return $this->dispatchKernelOp($request, 'restart');
+    }
+
+    /**
+     * 停止指定机器上所有节点的内嵌 xray 内核。
+     */
+    public function stop(Request $request)
+    {
+        return $this->dispatchKernelOp($request, 'stop');
+    }
+
+    /**
+     * 启动指定机器上所有节点的内嵌 xray 内核。
+     */
+    public function start(Request $request)
+    {
+        return $this->dispatchKernelOp($request, 'start');
+    }
+
+    /**
+     * 重载指定机器上所有节点的内嵌 xray 内核配置。
+     */
+    public function reload(Request $request)
+    {
+        return $this->dispatchKernelOp($request, 'reload');
+    }
+
+    /**
+     * 校验机器可运维后投递内核操作任务。
+     */
+    private function dispatchKernelOp(Request $request, string $action)
     {
         $machine = $this->getOperableMachine($request);
         if (!($machine instanceof ServerMachine)) {
             return $machine;
         }
 
-        MachineRestartJob::dispatch($machine->id);
+        MachineKernelOpJob::dispatch($machine->id, $action);
 
-        Log::info('机器 Fboard-Node 重启任务已提交', [
+        Log::info("机器内核 {$action} 任务已提交", [
             'machine_id' => $machine->id,
             'machine_name' => $machine->name,
+            'action' => $action,
         ]);
 
         return $this->success([
             'submitted' => true,
             'machine_id' => $machine->id,
+            'action' => $action,
         ]);
     }
 
@@ -400,7 +513,7 @@ class MachineController extends Controller
 
     /**
      * 查找可接收机器级运维命令的机器。
-     * 机器级操作不依赖节点数量，机器本身就是升级/重启目标。
+     * 机器级操作不依赖节点数量，机器本身就是升级/内核运维目标。
      */
     private function getOperableMachine(Request $request)
     {

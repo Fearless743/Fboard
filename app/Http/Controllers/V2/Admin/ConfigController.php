@@ -71,25 +71,71 @@ class ConfigController extends Controller
         ]);
     }
 
+    /** @var array<string, string> 配置字段 key => 协议名 */
+    private const SUBSCRIBE_TEMPLATE_KEYS = [
+        'subscribe_template_singbox' => 'singbox',
+        'subscribe_template_clash' => 'clash',
+        'subscribe_template_clashmeta' => 'clashmeta',
+        'subscribe_template_stash' => 'stash',
+        'subscribe_template_surge' => 'surge',
+        'subscribe_template_surfboard' => 'surfboard',
+    ];
+
     public function fetch(Request $request)
     {
         $key = $request->input('key');
-        $configMappings = $this->getConfigMappings();
-        if ($key && isset($configMappings[$key])) {
-            return $this->success([$key => $configMappings[$key]]);
+        $name = $request->input('name');
+
+        // 订阅模板：支持按 name 单独按需获取，避免一次下发全部大模板
+        if ($key === 'subscribe_template' && filled($name)) {
+            $name = strtolower((string) $name);
+            if (!in_array($name, array_values(self::SUBSCRIBE_TEMPLATE_KEYS), true)) {
+                return $this->fail([422, 'Invalid subscribe template name']);
+            }
+            $fieldKey = 'subscribe_template_' . $name;
+            return $this->success([
+                'subscribe_template' => [
+                    $fieldKey => $this->getSubscribeTemplateField($name),
+                ],
+            ]);
         }
 
-        return $this->success($configMappings);
+        if ($key) {
+            $section = $this->getConfigSection((string) $key);
+            if ($section !== null) {
+                return $this->success([$key => $section]);
+            }
+        }
+
+        return $this->success($this->getConfigMappings());
     }
 
     /**
-     * 获取配置映射数据
-     * 
-     * @return array 配置映射数组
+     * 获取全部配置映射（无 key 时兼容旧调用）
+     *
+     * @return array<string, array<string, mixed>>
      */
     private function getConfigMappings(): array
     {
-        return [
+        $keys = ['invite', 'site', 'subscribe', 'server', 'email', 'telegram', 'app', 'safe', 'subscribe_template'];
+        $mappings = [];
+        foreach ($keys as $key) {
+            $section = $this->getConfigSection($key);
+            if ($section !== null) {
+                $mappings[$key] = $section;
+            }
+        }
+        return $mappings;
+    }
+
+    /**
+     * 按 section 懒加载配置，避免请求其它 section 时加载全部订阅模板
+     *
+     * @return array<string, mixed>|null
+     */
+    private function getConfigSection(string $key): ?array
+    {
+        return match ($key) {
             'invite' => [
                 'invite_force' => (bool) admin_setting('invite_force', 0),
                 'invite_commission' => admin_setting('invite_commission', 10),
@@ -103,7 +149,7 @@ class ConfigController extends Controller
                 'commission_distribution_enable' => (bool) admin_setting('commission_distribution_enable', 0),
                 'commission_distribution_l1' => admin_setting('commission_distribution_l1'),
                 'commission_distribution_l2' => admin_setting('commission_distribution_l2'),
-                'commission_distribution_l3' => admin_setting('commission_distribution_l3')
+                'commission_distribution_l3' => admin_setting('commission_distribution_l3'),
             ],
             'site' => [
                 'logo' => admin_setting('logo'),
@@ -142,6 +188,8 @@ class ConfigController extends Controller
                 'server_ws_enable' => (bool) admin_setting('server_ws_enable', 1),
                 'server_ws_url' => admin_setting('server_ws_url', ''),
                 'node_install_script_url' => admin_setting('node_install_script_url', ''),
+                // 仅具体指纹（不含 random/randomized，二者下发节点表单时自动追加）
+                'utls_fingerprints' => \App\Utils\Helper::getUtlsFingerprints(),
             ],
             'email' => [
                 'email_host' => admin_setting('email_host'),
@@ -156,7 +204,7 @@ class ConfigController extends Controller
                 'telegram_bot_enable' => (bool) admin_setting('telegram_bot_enable', 0),
                 'telegram_bot_token' => admin_setting('telegram_bot_token'),
                 'telegram_webhook_url' => admin_setting('telegram_webhook_url'),
-                'telegram_discuss_link' => admin_setting('telegram_discuss_link')
+                'telegram_discuss_link' => admin_setting('telegram_discuss_link'),
             ],
             'app' => [
                 'windows_version' => admin_setting('windows_version', ''),
@@ -164,7 +212,7 @@ class ConfigController extends Controller
                 'macos_version' => admin_setting('macos_version', ''),
                 'macos_download_url' => admin_setting('macos_download_url', ''),
                 'android_version' => admin_setting('android_version', ''),
-                'android_download_url' => admin_setting('android_download_url', '')
+                'android_download_url' => admin_setting('android_download_url', ''),
             ],
             'safe' => [
                 'email_verify' => (bool) admin_setting('email_verify', 0),
@@ -189,20 +237,33 @@ class ConfigController extends Controller
                 'password_limit_count' => admin_setting('password_limit_count', 5),
                 'password_limit_expire' => admin_setting('password_limit_expire', 60),
                 // 保持向后兼容
-                'recaptcha_enable' => (bool) admin_setting('captcha_enable', 0)
+                'recaptcha_enable' => (bool) admin_setting('captcha_enable', 0),
             ],
-            'subscribe_template' => [
-                'subscribe_template_singbox' => $this->formatTemplateContent(
-                    subscribe_template('singbox') ?? '',
-                    'json'
-                ),
-                'subscribe_template_clash' => subscribe_template('clash') ?? '',
-                'subscribe_template_clashmeta' => subscribe_template('clashmeta') ?? '',
-                'subscribe_template_stash' => subscribe_template('stash') ?? '',
-                'subscribe_template_surge' => subscribe_template('surge') ?? '',
-                'subscribe_template_surfboard' => subscribe_template('surfboard') ?? ''
-            ]
-        ];
+            // 无 name 时仍返回全部（兼容旧前端）；新前端应带 name 按需获取
+            'subscribe_template' => $this->getAllSubscribeTemplateFields(),
+            default => null,
+        };
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function getAllSubscribeTemplateFields(): array
+    {
+        $fields = [];
+        foreach (self::SUBSCRIBE_TEMPLATE_KEYS as $fieldKey => $name) {
+            $fields[$fieldKey] = $this->getSubscribeTemplateField($name);
+        }
+        return $fields;
+    }
+
+    private function getSubscribeTemplateField(string $name): string
+    {
+        $content = subscribe_template($name) ?? '';
+        if ($name === 'singbox') {
+            return $this->formatTemplateContent($content, 'json');
+        }
+        return $content;
     }
 
     public function save(ConfigSave $request)
@@ -214,25 +275,44 @@ class ConfigController extends Controller
             'request' => $request,
         ]);
 
-        $templateKeys = [
-            'subscribe_template_singbox' => 'singbox',
-            'subscribe_template_clash' => 'clash',
-            'subscribe_template_clashmeta' => 'clashmeta',
-            'subscribe_template_stash' => 'stash',
-            'subscribe_template_surge' => 'surge',
-            'subscribe_template_surfboard' => 'surfboard',
-        ];
-
         foreach ($data as $k => $v) {
-            if (isset($templateKeys[$k])) {
-                SubscribeTemplate::setContent($templateKeys[$k], $v);
+            if (isset(self::SUBSCRIBE_TEMPLATE_KEYS[$k])) {
+                SubscribeTemplate::setContent(self::SUBSCRIBE_TEMPLATE_KEYS[$k], $v);
                 continue;
             }
             if ($k == 'frontend_theme') {
                 $themeService = app(ThemeService::class);
                 $themeService->switch($v);
             }
+            // 规范化指纹列表：trim + 小写 + 去重；剔除 random/randomized 元选项
+            if ($k === 'utls_fingerprints' && is_array($v)) {
+                $meta = array_fill_keys(\App\Utils\Dict::UTLS_FINGERPRINT_META, true);
+                $normalized = [];
+                foreach ($v as $item) {
+                    $value = strtolower(trim((string) $item));
+                    if ($value === '' || isset($meta[$value])) {
+                        continue;
+                    }
+                    if (!preg_match('/^[a-z0-9][a-z0-9_-]{0,63}$/', $value)) {
+                        continue;
+                    }
+                    $normalized[$value] = $value;
+                }
+                $v = array_values($normalized);
+                if ($v === []) {
+                    $v = \App\Utils\Dict::UTLS_FINGERPRINTS_DEFAULT;
+                }
+            }
             admin_setting([$k => $v]);
+        }
+
+        // 指纹列表变更后重置协议定义缓存，下一次请求重新注入 options
+        if (array_key_exists('utls_fingerprints', $data)) {
+            try {
+                app(\App\Services\ProtocolDefinitionRegistry::class)->reset();
+            } catch (\Throwable) {
+                // ignore when registry not bound in this context
+            }
         }
 
         if (array_key_exists('maintenance_mode', $data)) {

@@ -141,6 +141,9 @@ class AdminRoute
                 $router->get('/history', [MachineController::class, 'history']);
                 $router->post('/upgrade', [MachineController::class, 'upgrade']);
                 $router->post('/restart', [MachineController::class, 'restart']);
+                $router->post('/stop', [MachineController::class, 'stop']);
+                $router->post('/start', [MachineController::class, 'start']);
+                $router->post('/reload', [MachineController::class, 'reload']);
                 $router->post('/batchUpgrade', [MachineController::class, 'batchUpgrade']);
                 $router->get('/logs', [MachineController::class, 'logs']);
             });

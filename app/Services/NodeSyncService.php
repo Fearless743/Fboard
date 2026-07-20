@@ -185,15 +185,39 @@ class NodeSyncService
     }
 
     /**
-     * Push restart command to a machine.
+     * Push kernel lifecycle command to a machine (stop/start/reload/restart).
+     *
+     * Replaces process-level restart for day-to-day ops. Process restart is
+     * reserved for upgrade after binary replace.
      *
      * NOTE: payload must remain a JSON object (Go side unmarshals into
      * map[string]interface{}; an empty PHP array would encode to `[]`
      * and trigger "cannot unmarshal array into Go value of type map").
      */
+    public static function notifyMachineKernel(int $machineId, string $action): void
+    {
+        $action = strtolower(trim($action));
+        if (!in_array($action, ['stop', 'start', 'reload', 'restart'], true)) {
+            Log::warning("[NodePush] invalid kernel action: {$action}", [
+                'machine_id' => $machineId,
+            ]);
+            return;
+        }
+        self::pushMachine($machineId, 'sync.kernel', [
+            'action' => $action,
+            'reason' => 'manual',
+        ]);
+    }
+
+    /**
+     * Push kernel restart command to a machine.
+     *
+     * Semantic: restart embedded xray kernel (NOT fboard-node process).
+     * Kept for callers that still use the Restart name.
+     */
     public static function notifyMachineRestart(int $machineId): void
     {
-        self::pushMachine($machineId, 'sync.restart', ['reason' => 'manual']);
+        self::notifyMachineKernel($machineId, 'restart');
     }
 
     /**

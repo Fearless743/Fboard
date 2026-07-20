@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Services\Plugin\HookManager;
 use App\Services\Plugin\PluginManager;
 use App\Support\ProtocolDefinition;
+use App\Utils\Helper;
 use Illuminate\Support\Facades\Log;
 
 class ProtocolDefinitionRegistry
@@ -95,17 +96,52 @@ class ProtocolDefinitionRegistry
         $pluginDefinitions = HookManager::filter('protocols.definitions', []);
         foreach ($pluginDefinitions as $type => $data) {
             if ($data instanceof ProtocolDefinition) {
-                $this->definitions[$type] = $data;
+                $this->definitions[$type] = $this->withDynamicUtls($data);
             } elseif (is_array($data)) {
-                $this->definitions[$type] = new ProtocolDefinition(
+                $this->definitions[$type] = $this->withDynamicUtls(new ProtocolDefinition(
                     type: $type,
                     name: $data['name'] ?? $type,
                     configFields: $data['config_fields'] ?? $data['configFields'] ?? [],
                     validationRules: $data['validation_rules'] ?? $data['validationRules'] ?? [],
                     description: $data['description'] ?? null,
                     prefix: $data['prefix'] ?? null,
-                );
+                ));
             }
         }
+    }
+
+    /**
+     * 将系统设置中的 uTLS 指纹列表注入协议定义（下拉 options + 校验 in 规则）。
+     * 确保编辑节点时可选指纹与 Config 节点配置保持一致。
+     */
+    private function withDynamicUtls(ProtocolDefinition $definition): ProtocolDefinition
+    {
+        $fields = $definition->configFields;
+        $rules = $definition->validationRules;
+
+        if (!isset($fields['utls']) || !is_array($fields['utls'])) {
+            return $definition;
+        }
+
+        $options = Helper::getUtlsFingerprintOptions();
+        $fields['utls']['fields'] = $fields['utls']['fields'] ?? [];
+        if (isset($fields['utls']['fields']['fingerprint']) && is_array($fields['utls']['fields']['fingerprint'])) {
+            $fields['utls']['fields']['fingerprint']['options'] = $options;
+        }
+
+        $allowed = array_keys($options);
+        if ($allowed !== []) {
+            $rules['utls.fingerprint'] = 'nullable|string|in:' . implode(',', $allowed);
+        }
+
+        return new ProtocolDefinition(
+            type: $definition->type,
+            name: $definition->name,
+            configFields: $fields,
+            validationRules: $rules,
+            description: $definition->description,
+            prefix: $definition->prefix,
+            serverConfigBuilder: $definition->serverConfigBuilder,
+        );
     }
 }

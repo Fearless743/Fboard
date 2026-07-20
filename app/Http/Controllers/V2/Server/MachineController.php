@@ -52,6 +52,7 @@ class MachineController extends Controller
             'disk.used' => 'nullable|integer|min:0',
             'net.in_speed' => 'nullable|numeric|min:0',
             'net.out_speed' => 'nullable|numeric|min:0',
+            'version' => 'nullable|string|max:64',
         ]);
 
         $machine = $this->authenticateMachine($request);
@@ -82,6 +83,12 @@ class MachineController extends Controller
                 'in_speed' => (float) $netInSpeed,
                 'out_speed' => (float) $netOutSpeed,
             ];
+        }
+
+        // fboard-node binary version from machine heartbeat (e.g. v0.3.1)
+        $version = trim((string) $request->input('version', ''));
+        if ($version !== '') {
+            $loadStatus['version'] = $version;
         }
 
         $machine->forceFill([

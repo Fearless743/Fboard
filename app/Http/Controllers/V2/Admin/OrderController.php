@@ -93,6 +93,15 @@ class OrderController extends Controller
             return;
         }
 
+        // 数值状态类（status / commission_status / type 等）必须精确匹配；
+        // 若走 LIKE "%0%" 会把 10、20 等一并命中，也会扫出默认 0 的无意义行。
+        if (is_int($value) || is_float($value) || (is_string($value) && is_numeric($value) && !str_contains($value, ':'))) {
+            $query->where($field, is_string($value) && strpos($value, '.') !== false
+                ? (float) $value
+                : (int) $value);
+            return;
+        }
+
         // Handle operator-based filtering
         if (!is_string($value) || !str_contains($value, ':')) {
             $query->where($field, 'like', "%{$value}%");

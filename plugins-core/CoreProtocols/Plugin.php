@@ -349,7 +349,14 @@ class Plugin extends AbstractPlugin
                 'mode' => ['type' => 'string', 'default' => 'legacy', 'label' => 'HTTPMask 模式', 'options' => [
                     'legacy' => 'legacy', 'stream' => 'stream', 'poll' => 'poll', 'auto' => 'auto', 'ws' => 'ws',
                 ]],
-                'path_root' => ['type' => 'string', 'default' => null, 'label' => '路径前缀'],
+                // mihomo: 单段路径，仅 [A-Za-z0-9_-]；可用 "/aabbcc/" 形式，保存/下发时会规范化
+                'path_root' => [
+                    'type' => 'string',
+                    'default' => null,
+                    'label' => '路径前缀 (path-root)',
+                    'description' => 'HTTP 隧道一级路径前缀，双方需一致。仅允许单段 [A-Za-z0-9_-]，例如 aabbcc；不可含点号 "." 或多级路径。',
+                    'placeholder' => 'aabbcc',
+                ],
             ], 'label' => 'HTTPMask'],
         ], [
             'master_public_key' => 'required|string',
@@ -365,6 +372,10 @@ class Plugin extends AbstractPlugin
             'fallback' => 'nullable|string',
             'multiplex' => 'nullable|string|in:off,auto,on',
             'httpmask' => 'nullable|array',
+            'httpmask.disable' => 'nullable|boolean',
+            'httpmask.mode' => 'nullable|string|in:legacy,stream,poll,auto,ws',
+            // 允许可选首尾斜杠；多级路径 / 非法字符由 regex 拒绝（与 mihomo Validate 一致）
+            'httpmask.path_root' => ['nullable', 'string', 'regex:/^\/?[A-Za-z0-9_-]+\/?$/'],
         ], '[sudoku]');
     }
 

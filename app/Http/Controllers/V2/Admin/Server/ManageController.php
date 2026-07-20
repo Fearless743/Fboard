@@ -11,6 +11,7 @@ use App\Models\Server;
 use App\Models\ServerGroup;
 use App\Services\Plugin\HookManager;
 use App\Services\ServerService;
+use App\Support\SudokuKey;
 use App\Utils\Helper;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -688,7 +689,7 @@ class ManageController extends Controller
      */
     public function generateSudokuKey()
     {
-        $pair = \App\Support\SudokuKey::generateMasterKeyPair();
+        $pair = SudokuKey::generateMasterKeyPair();
         return $this->success([
             "master_public_key" => $pair["master_public_key"],
             "master_private_key" => $pair["master_private_key"],

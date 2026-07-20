@@ -11,6 +11,7 @@ use App\Utils\CacheKey;
 use App\Utils\Helper;
 use App\Models\User;
 use App\Services\ProtocolDefinitionRegistry;
+use App\Support\SudokuKey;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 
 /**
@@ -285,7 +286,7 @@ class Server extends Model
             // Fallback: cannot derive without master private; return uuid (will fail auth).
             return $user->uuid;
         }
-        return \App\Support\SudokuKey::deriveAvailablePrivateKey($masterPrivateHex, $user->uuid);
+        return SudokuKey::deriveAvailablePrivateKey($masterPrivateHex, $user->uuid);
     }
 
     public static function normalizeType(?string $type): string|null

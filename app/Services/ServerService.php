@@ -7,6 +7,7 @@ use App\Models\ServerMachine;
 use App\Models\ServerRoute;
 use App\Models\User;
 use App\Services\Plugin\HookManager;
+use App\Support\SudokuKey;
 use App\Utils\CacheKey;
 use App\Utils\Helper;
 use Illuminate\Support\Facades\Cache;
@@ -423,7 +424,9 @@ class ServerService
                     'handshake_timeout' => data_get($protocolSettings, 'handshake_timeout', 5),
                     'disable_http_mask' => (bool) data_get($protocolSettings, 'httpmask.disable', false),
                     'http_mask_mode' => data_get($protocolSettings, 'httpmask.mode', 'legacy'),
-                    'path_root' => data_get($protocolSettings, 'httpmask.path_root'),
+                    'path_root' => SudokuKey::normalizeHttpMaskPathRoot(
+                        data_get($protocolSettings, 'httpmask.path_root')
+                    ),
                     'fallback' => data_get($protocolSettings, 'fallback'),
                     'multiplex' => data_get($protocolSettings, 'multiplex', 'off'),
                 ],

@@ -55,7 +55,10 @@ class InviteController extends Controller
             ->where('invite_user_id', $user->id)
             ->sum('commission_balance');
         if (admin_setting('commission_distribution_enable', 0)) {
-            $uncheck_commission_balance = $uncheck_commission_balance * (admin_setting('commission_distribution_l1') / 100);
+            $uncheck_commission_balance = Helper::percentOfCents(
+                $uncheck_commission_balance,
+                admin_setting('commission_distribution_l1')
+            );
         }
         $stat = [
             //已注册用户数

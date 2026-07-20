@@ -254,11 +254,38 @@ class UserController extends Controller
             }
             $params['group_id'] = $plan->group_id;
         }
-        // 处理邀请用户
-        if ($request->input('invite_user_email') && $inviteUser = User::byEmail($request->input('invite_user_email'))->first()) {
-            $params['invite_user_id'] = $inviteUser->id;
-        } else {
-            $params['invite_user_id'] = null;
+        // 处理邀请用户：优先 invite_user_id；兼容旧字段 invite_user_email
+        // 仅在明确传入时更新；空值清空邀请关系
+        if ($request->exists('invite_user_id') || array_key_exists('invite_user_id', $params)) {
+            $rawInviteUserId = $request->input('invite_user_id');
+            if ($rawInviteUserId === null || $rawInviteUserId === '' || (int) $rawInviteUserId === 0) {
+                $params['invite_user_id'] = null;
+            } else {
+                $inviteUserId = (int) $rawInviteUserId;
+                if ($inviteUserId === (int) $user->id) {
+                    return $this->fail([400201, '不能将自己设为邀请人']);
+                }
+                if (!User::where('id', $inviteUserId)->exists()) {
+                    return $this->fail([400202, '邀请人不存在']);
+                }
+                $params['invite_user_id'] = $inviteUserId;
+            }
+        } elseif ($request->exists('invite_user_email') || array_key_exists('invite_user_email', $params)) {
+            // 兼容旧管理端：通过邮箱设置邀请人
+            $inviteUserEmail = trim((string) ($request->input('invite_user_email') ?? ''));
+            unset($params['invite_user_email']);
+            if ($inviteUserEmail === '') {
+                $params['invite_user_id'] = null;
+            } else {
+                $inviteUser = User::byEmail($inviteUserEmail)->first();
+                if (!$inviteUser) {
+                    return $this->fail([400202, '邀请人不存在']);
+                }
+                if ((int) $inviteUser->id === (int) $user->id) {
+                    return $this->fail([400201, '不能将自己设为邀请人']);
+                }
+                $params['invite_user_id'] = $inviteUser->id;
+            }
         }
 
         if (isset($params['banned']) && (int) $params['banned'] === 1) {

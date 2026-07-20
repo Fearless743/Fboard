@@ -174,6 +174,7 @@ class AdminRoute
                 $router->post('/resetSecret', [UserController::class, 'resetSecret']);
                 $router->post('/setInviteUser', [UserController::class, 'setInviteUser']);
                 $router->get('/inviteList', [UserController::class, 'inviteList']);
+                $router->get('/loginLogs', [UserController::class, 'loginLogs']);
                 $router->post('/destroy', [UserController::class, 'destroy']);
             });
 

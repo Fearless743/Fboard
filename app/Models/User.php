@@ -38,6 +38,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int|null $device_limit 设备限制数量
  * @property int|null $discount 折扣
  * @property int|null $last_login_at 最后登录时间
+ * @property string|null $last_login_ip 最后登录 IP
+ * @property string|null $register_ip 注册 IP
  * @property int|null $parent_id 父账户ID
  * @property int|null $is_admin 是否管理员
  * @property int|null $next_reset_at 下次流量重置时间
@@ -56,6 +58,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property-read \Illuminate\Database\Eloquent\Collection<int, StatUser> $stat 统计信息
  * @property-read \Illuminate\Database\Eloquent\Collection<int, Ticket> $tickets 工单列表
  * @property-read \Illuminate\Database\Eloquent\Collection<int, TrafficResetLog> $trafficResetLogs 流量重置记录
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, UserLoginLog> $loginLogs 登录历史
  * @property-read User|null $parent 父账户
  * @property-read string $subscribe_url 订阅链接（动态生成）
  */
@@ -151,6 +154,14 @@ class User extends Authenticatable
     public function trafficResetLogs(): HasMany
     {
         return $this->hasMany(TrafficResetLog::class, 'user_id', 'id');
+    }
+
+    /**
+     * 关联登录历史
+     */
+    public function loginLogs(): HasMany
+    {
+        return $this->hasMany(UserLoginLog::class, 'user_id', 'id');
     }
 
     /**

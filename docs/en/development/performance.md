@@ -10,7 +10,7 @@
 
 ### Software Environment
 - OS: Ubuntu 22.04 LTS
-- PHP: 8.2
+- PHP: 8.3
 - MySQL: 5.7
 - Redis: 7.0
 - Docker: Latest stable version

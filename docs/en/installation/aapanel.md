@@ -17,7 +17,7 @@
 ### Software Requirements
 - Operating System: Ubuntu 20.04+ / Debian 10+ (⚠️ CentOS 7 is not recommended)
 - Latest version of aaPanel
-- PHP 8.2
+- PHP 8.3
 - MySQL 5.7+
 - Redis
 - Nginx (any version)
@@ -37,7 +37,7 @@ bash install_6.0_en.sh aapanel
 In the aaPanel dashboard, install:
 - Nginx (any version)
 - MySQL 5.7
-- PHP 8.2
+- PHP 8.3
 
 #### 2.2 Install PHP Extensions
 Required PHP extensions:
@@ -62,7 +62,7 @@ Functions that need to be enabled:
 2. Fill in the information:
    - Domain: Enter your site domain
    - Database: Select MySQL
-   - PHP Version: Select 8.2
+   - PHP Version: Select 8.3
 
 #### 3.2 Deploy Xboard
 ```bash

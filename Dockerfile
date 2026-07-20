@@ -14,7 +14,7 @@
 # 这种"先构建再打包"的模式可以彻底规避 BuildKit 对远程 git 仓库的
 # 缓存失效难题，前端版本与本地 Fboard 仓代码完全一致。
 # ---------------------------------------------------------------------------
-FROM phpswoole/swoole:php8.2-alpine
+FROM phpswoole/swoole:php8.3-alpine
 
 COPY --from=mlocati/php-extension-installer /usr/bin/install-php-extensions /usr/local/bin/
 

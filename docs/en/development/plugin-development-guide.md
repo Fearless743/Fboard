@@ -567,7 +567,7 @@ php artisan your-plugin:test --help
 2. **Error Handling**: Wrap main logic with try-catch
 3. **Return Values**: Return 0 for success, 1 for failure
 4. **User Friendly**: Provide clear help information and error messages
-5. **Type Declarations**: Use PHP 8.2 type declarations
+5. **Type Declarations**: Use PHP 8.3 type declarations
 
 ## 🛠️ Development Tools
 
@@ -712,7 +712,7 @@ Following this guide, you can quickly develop plugins with complete functionalit
 
 ✅ **Auto Registration**: Automatically register all commands in `Commands/` directory when plugin is enabled  
 ✅ **Namespace Isolation**: Each plugin's commands use independent namespaces  
-✅ **Type Safety**: Support PHP 8.2 type declarations  
+✅ **Type Safety**: Support PHP 8.3 type declarations  
 ✅ **Error Handling**: Comprehensive exception handling and error messages  
 ✅ **Configuration Integration**: Commands can access plugin configuration  
 ✅ **Interaction Support**: Support user input and confirmation operations

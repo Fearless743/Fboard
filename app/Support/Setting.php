@@ -16,7 +16,8 @@ class Setting
 
     public function __construct()
     {
-        $this->cache = Cache::store('redis');
+        // 跟随应用默认缓存驱动：生产多为 redis，测试为 array
+        $this->cache = Cache::store();
     }
 
     /**
@@ -25,6 +26,10 @@ class Setting
     public function get(string $key, mixed $default = null): mixed
     {
         $this->load();
+        if ($this->loadedSettings === null) {
+            return $default;
+        }
+
         return Arr::get($this->loadedSettings, strtolower($key), $default);
     }
 
@@ -67,7 +72,7 @@ class Setting
     {
         return $this->set($key, $value);
     }
-    
+
     /**
      * 批量获取配置项
      */
@@ -75,25 +80,27 @@ class Setting
     {
         $this->load();
         $result = [];
-        
+
         foreach ($keys as $index => $item) {
             $isNumericIndex = is_numeric($index);
             $key = strtolower($isNumericIndex ? $item : $index);
             $default = $isNumericIndex ? config('v2board.' . $item) : (config('v2board.' . $key) ?? $item);
-            
-            $result[$item] = Arr::get($this->loadedSettings, $key, $default);
+
+            $result[$item] = $this->loadedSettings === null
+                ? $default
+                : Arr::get($this->loadedSettings, $key, $default);
         }
-        
+
         return $result;
     }
-    
+
     /**
      * 将所有设置转换为数组
      */
     public function toArray(): array
     {
         $this->load();
-        return $this->loadedSettings;
+        return $this->loadedSettings ?? [];
     }
 
     /**
@@ -112,7 +119,11 @@ class Setting
                     CASE_LOWER
                 );
             });
-            
+
+            if (!is_array($settings)) {
+                $settings = [];
+            }
+
             // 处理JSON格式的值
             foreach ($settings as $key => $value) {
                 if (is_string($value)) {
@@ -122,10 +133,11 @@ class Setting
                     }
                 }
             }
-            
+
             $this->loadedSettings = $settings;
         } catch (\Throwable) {
-            $this->loadedSettings = [];
+            // 启动早期（路由注册时迁移尚未完成等）勿锁死空结果，便于后续重试
+            $this->loadedSettings = null;
         }
     }
 

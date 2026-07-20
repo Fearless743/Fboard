@@ -162,6 +162,29 @@ class PaymentController extends Controller
         return $this->success($result);
     }
 
+    public function copy(Request $request)
+    {
+        $payment = Payment::find($request->input('id'));
+        if (!$payment) {
+            return $this->fail([400202, '支付方式不存在']);
+        }
+
+        $copied = $payment->replicate();
+        $copied->uuid = Helper::randomChar(8);
+        $copied->enable = false;
+        if (!$copied->save()) {
+            return $this->fail([500, '复制失败']);
+        }
+
+        HookManager::call('admin.payment.copy.after', [
+            'payment' => $copied,
+            'source' => $payment,
+            'request' => $request,
+        ]);
+
+        return $this->success(true);
+    }
+
 
     public function sort(Request $request)
     {

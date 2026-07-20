@@ -274,6 +274,7 @@ class AdminRoute
                 $router->post('/getPaymentForm', [PaymentController::class, 'getPaymentForm']);
                 $router->post('/save', [PaymentController::class, 'save']);
                 $router->post('/drop', [PaymentController::class, 'drop']);
+                $router->post('/copy', [PaymentController::class, 'copy']);
                 $router->post('/show', [PaymentController::class, 'show']);
                 $router->post('/sort', [PaymentController::class, 'sort']);
             });

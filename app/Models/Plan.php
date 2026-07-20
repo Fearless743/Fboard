@@ -93,11 +93,13 @@ class Plan extends Model
     protected $casts = [
         'show' => 'boolean',
         'renew' => 'boolean',
+        'sell' => 'boolean',
         'created_at' => 'timestamp',
         'updated_at' => 'timestamp',
         'group_id' => 'integer',
         'prices' => 'array',
         'tags' => 'array',
+        // null 表示跟随系统；Laravel 基础 integer cast 对 null 会原样返回
         'reset_traffic_method' => 'integer',
     ];
 

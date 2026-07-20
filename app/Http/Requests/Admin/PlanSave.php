@@ -106,10 +106,10 @@ class PlanSave extends FormRequest
         $cleanedPrices = [];
 
         foreach ($prices as $period => $price) {
-            // 只保留有效的正数价格
+            // 保留 >= 0 的价格（0 = 免费套餐周期）；null/空串表示不启用该周期
             if ($price !== null && $price !== '' && is_numeric($price)) {
                 $numericPrice = (float) $price;
-                if ($numericPrice > 0) {
+                if ($numericPrice >= 0) {
                     // 转换为浮点数并保留两位小数
                     $cleanedPrices[$period] = round($numericPrice, 2);
                 }

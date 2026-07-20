@@ -74,11 +74,14 @@ class OrderService
 
             $orderService->setVipDiscount($user);
             $orderService->setOrderType($user);
-            $orderService->setInvite(user: $user);
 
+            // 余额抵扣会改写 total_amount / balance_amount，佣金必须按抵扣后实际应付金额计算，
+            // 避免全额使用余额（实付 0）仍按原价返利导致余额重复计佣。
             if ($user->balance && $order->total_amount > 0) {
                 $orderService->handleUserBalance($user, $userService);
             }
+
+            $orderService->setInvite(user: $user);
 
             if (!$order->save()) {
                 throw new ApiException(__('Failed to create order'));
@@ -204,10 +207,11 @@ class OrderService
 
         if (!$isCommission)
             return;
+        // total_amount 此时应为余额/优惠抵扣后的实际应付金额
         if ($inviter->commission_rate) {
-            $order->commission_balance = $order->total_amount * ($inviter->commission_rate / 100);
+            $order->commission_balance = (int) ($order->total_amount * ($inviter->commission_rate / 100));
         } else {
-            $order->commission_balance = $order->total_amount * (admin_setting('invite_commission', 10) / 100);
+            $order->commission_balance = (int) ($order->total_amount * (admin_setting('invite_commission', 10) / 100));
         }
     }
 

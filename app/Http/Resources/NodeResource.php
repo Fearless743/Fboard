@@ -20,10 +20,11 @@ class NodeResource extends JsonResource
             'version' => $this['version'] ?? null,
             'name' => $this['name'],
             'rate' => $this['rate'],
-            'tags' => $this['tags'],
-            'is_online' => $this['is_online'],
-            'cache_key' => $this['cache_key'],
-            'last_check_at' => $this['last_check_at']
+            'tags' => $this['tags'] ?? [],
+            // 虚拟节点合并后若未 re-append，避免 Undefined array key 打爆用户节点列表
+            'is_online' => $this['is_online'] ?? 0,
+            'cache_key' => $this['cache_key'] ?? null,
+            'last_check_at' => $this['last_check_at'] ?? null,
         ];
     }
 }

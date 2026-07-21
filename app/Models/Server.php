@@ -321,6 +321,10 @@ class Server extends Model
 
     /**
      * 获取合并后的有效配置（子节点继承父节点配置）
+     *
+     * 以父节点为底克隆以保证协议/倍率等字段完整；再覆盖展示字段。
+     * 必须写回 parent_id，以便 last_check_at / is_online 等访问器按父节点缓存键解析；
+     * 并同步 $appends，避免 toArray 后丢失 is_online 等字段（用户节点列表 500）。
      */
     public function getEffectiveAttribute(): self
     {
@@ -338,6 +342,22 @@ class Server extends Model
         $merged->tags = $this->tags;
         $merged->show = $this->show;
         $merged->sort = $this->sort;
+        // 保留子节点 parent_id，访问器才能用「父节点 id」读 LAST_CHECK 等缓存
+        $merged->parent_id = $this->parent_id;
+        $merged->setAppends(array_values(array_unique(array_merge(
+            $this->getAppends(),
+            $parent->getAppends(),
+            [
+                'last_check_at',
+                'last_push_at',
+                'online',
+                'is_online',
+                'available_status',
+                'cache_key',
+                'server_key',
+            ],
+        ))));
+
         return $merged;
     }
 
@@ -455,7 +475,11 @@ class Server extends Model
     {
         return Attribute::make(
             get: function () {
-                return time() - 300 > $this->last_check_at ? 0 : 1;
+                // last_check_at 为空视为离线；窗口与 CHECK_INTERVAL 一致
+                if (!$this->last_check_at) {
+                    return 0;
+                }
+                return time() - self::CHECK_INTERVAL > $this->last_check_at ? 0 : 1;
             },
         );
     }

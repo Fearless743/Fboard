@@ -72,12 +72,12 @@ class ServerService
             ->append(['last_check_at', 'last_push_at', 'online', 'is_online', 'available_status', 'cache_key', 'server_key']);
 
         $servers = collect($servers)->map(function ($server) use ($user) {
-            // 虚拟节点继承父节点配置
+            // 虚拟节点继承父节点配置（合并后会同步 appends，避免 is_online 等字段丢失）
             if ($server->type === 'virtual') {
                 $server = $server->getEffectiveAttribute();
             }
             // 判断动态端口
-            if (str_contains($server->port, '-')) {
+            if (str_contains((string) $server->port, '-')) {
                 $port = $server->port;
                 $server->port = (int) Helper::randomPort($port);
                 $server->ports = $port;
@@ -93,6 +93,17 @@ class ServerService
                 $protocolSettings['reality_settings'] = Helper::normalizeRealitySettings($protocolSettings['reality_settings']);
                 $server->protocol_settings = $protocolSettings;
             }
+
+            // 确保序列化字段完整（虚拟节点合并 / 部分路径可能未 append）
+            $server->append([
+                'last_check_at',
+                'last_push_at',
+                'online',
+                'is_online',
+                'available_status',
+                'cache_key',
+                'server_key',
+            ]);
 
             return $server;
         })->toArray();

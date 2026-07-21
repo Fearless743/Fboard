@@ -7,7 +7,6 @@ use App\Services\DeviceStateService;
 use App\Services\NodeRegistry;
 use App\Services\ServerService;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
 use Workerman\Connection\TcpConnection;
 
@@ -33,7 +32,7 @@ class NodeEventHandlers
         Cache::put(\App\Utils\CacheKey::get('SERVER_' . $nodeType . '_LAST_CHECK_AT', $nodeId), time(), 3600);
         ServerService::updateMetrics($node, $data);
 
-        Log::debug("[WS] Node#{$nodeId} status updated");
+        WsLog::debug("[WS] Node#{$nodeId} status updated");
     }
 
     /**
@@ -76,7 +75,7 @@ class NodeEventHandlers
         // Mark for push
         Redis::sadd('device:push_pending_nodes', $nodeId);
 
-        Log::debug("[WS] Node#{$nodeId} synced " . count($newDevices) . " users, removed " . count($removedUsers));
+        WsLog::debug("[WS] Node#{$nodeId} synced " . count($newDevices) . " users, removed " . count($removedUsers));
     }
 
     /**
@@ -97,7 +96,7 @@ class NodeEventHandlers
             'users' => $devices,
         ]);
 
-        Log::debug("[WS] Node#{$nodeId} requested devices, sent " . count($devices) . " users");
+        WsLog::debug("[WS] Node#{$nodeId} requested devices, sent " . count($devices) . " users");
     }
 
     /**
@@ -116,7 +115,7 @@ class NodeEventHandlers
             'users' => $devices
         ]);
 
-        Log::debug("[WS] Pushed device state to node#{$nodeId}: " . count($devices) . " users");
+        WsLog::debug("[WS] Pushed device state to node#{$nodeId}: " . count($devices) . " users");
     }
 
     /**
@@ -138,7 +137,7 @@ class NodeEventHandlers
             'users' => $users,
         ]);
 
-        Log::info("[WS] Full sync pushed to node#{$nodeId}", [
+        WsLog::info("[WS] Full sync pushed to node#{$nodeId}", [
             'users' => count($users),
         ]);
     }
@@ -151,7 +150,7 @@ class NodeEventHandlers
     {
         $machineId = (int) ($conn->machineId ?? 0);
         if ($machineId <= 0) {
-            Log::debug('[WS] report.logs ignored: no machineId on connection');
+            WsLog::debug('[WS] report.logs ignored: no machineId on connection');
             return;
         }
 
@@ -184,7 +183,7 @@ class NodeEventHandlers
             Cache::put("machine_logs_req:{$machineId}:{$reqId}", $payload, 60);
         }
 
-        Log::debug("[WS] Machine#{$machineId} reported " . count($clean) . " log lines");
+        WsLog::debug("[WS] Machine#{$machineId} reported " . count($clean) . " log lines");
     }
 
     /**
@@ -205,7 +204,7 @@ class NodeEventHandlers
     {
         $machineId = (int) ($conn->machineId ?? 0);
         if ($machineId <= 0) {
-            Log::debug('[WS] op.ack ignored: no machineId on connection');
+            WsLog::debug('[WS] op.ack ignored: no machineId on connection');
             return;
         }
 
@@ -221,11 +220,11 @@ class NodeEventHandlers
             'kernel.restart',
         ];
         if (!in_array($op, $allowedOps, true)) {
-            Log::debug('[WS] op.ack ignored: unknown op', ['op' => $op]);
+            WsLog::debug('[WS] op.ack ignored: unknown op', ['op' => $op]);
             return;
         }
         if (!in_array($status, ['ok', 'failed'], true)) {
-            Log::debug('[WS] op.ack ignored: unknown status', ['status' => $status]);
+            WsLog::debug('[WS] op.ack ignored: unknown status', ['status' => $status]);
             return;
         }
 
@@ -239,9 +238,9 @@ class NodeEventHandlers
         Cache::put("op_ack:{$machineId}:{$op}", $payload, 86400);
 
         if ($status === 'ok') {
-            Log::info("[WS] op.ack ok machine=#{$machineId} op={$op}", $payload);
+            WsLog::info("[WS] op.ack ok machine=#{$machineId} op={$op}", $payload);
         } else {
-            Log::warning("[WS] op.ack failed machine=#{$machineId} op={$op} detail={$detail}", $payload);
+            WsLog::warning("[WS] op.ack failed machine=#{$machineId} op={$op} detail={$detail}", $payload);
         }
     }
 }

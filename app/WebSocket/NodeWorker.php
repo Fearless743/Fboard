@@ -8,7 +8,6 @@ use App\Services\DeviceStateService;
 use App\Services\NodeRegistry;
 use App\Services\ServerService;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
 use Workerman\Connection\TcpConnection;
 use Workerman\Timer;
@@ -71,7 +70,7 @@ class NodeWorker
 
     public function onWorkerStart(Worker $worker): void
     {
-        Log::info("[WS] Worker started, pid={$worker->id}");
+        WsLog::info("[WS] Worker started, pid={$worker->id}");
         $this->subscribeRedis();
         $this->setupTimers();
     }
@@ -192,7 +191,7 @@ class NodeWorker
 
         app(DeviceStateService::class)->clearAllNodeDevices($nodeId);
 
-        Log::debug("[WS] Node#{$nodeId} connected", [
+        WsLog::debug("[WS] Node#{$nodeId} connected", [
             'remote' => $conn->getRemoteIp(),
             'total' => NodeRegistry::count(),
         ]);
@@ -246,7 +245,7 @@ class NodeWorker
         $conn->machineId = $machineId;
         $conn->machineNodeIds = $nodeIds;
 
-        Log::debug("[WS] Machine#{$machineId} connected, nodes: " . implode(',', $nodeIds), [
+        WsLog::debug("[WS] Machine#{$machineId} connected, nodes: " . implode(',', $nodeIds), [
             'remote' => $conn->getRemoteIp(),
             'total' => NodeRegistry::count(),
             'machines' => NodeRegistry::machineCount(),
@@ -298,7 +297,7 @@ class NodeWorker
                                 ->where('id', $machineId)
                                 ->update(['last_seen_at' => time()]);
                         } catch (\Throwable $e) {
-                            Log::warning("[WS] heartbeat db write failed: {$e->getMessage()}", [
+                            WsLog::warning("[WS] heartbeat db write failed: {$e->getMessage()}", [
                                 'machine_id' => $machineId,
                             ]);
                         }
@@ -356,7 +355,7 @@ class NodeWorker
                 NodeRegistry::removeMachine((int) $conn->machineId, $conn);
             }
 
-            Log::debug("[WS] Machine#{$machineId} disconnected", [
+            WsLog::debug("[WS] Machine#{$machineId} disconnected", [
                 'nodes' => $conn->machineNodeIds,
                 'total' => NodeRegistry::count(),
                 'machines' => NodeRegistry::machineCount(),
@@ -375,7 +374,7 @@ class NodeWorker
                 $service->notifyUpdate($userId);
             }
 
-            Log::debug("[WS] Node#{$nodeId} disconnected", [
+            WsLog::debug("[WS] Node#{$nodeId} disconnected", [
                 'total' => NodeRegistry::count(),
                 'affected_users' => count($affectedUserIds),
             ]);
@@ -423,7 +422,7 @@ class NodeWorker
 
                 $sent = NodeRegistry::sendMachine((int) $machineId, $event, $data);
                 if ($sent) {
-                    Log::debug("[WS] Pushed {$event} to machine#{$machineId}");
+                    WsLog::debug("[WS] Pushed {$event} to machine#{$machineId}");
                 }
                 return;
             }
@@ -436,10 +435,10 @@ class NodeWorker
 
             $sent = NodeRegistry::send((int) $nodeId, $event, $data);
             if ($sent) {
-                Log::debug("[WS] Pushed {$event} to node#{$nodeId}");
+                WsLog::debug("[WS] Pushed {$event} to node#{$nodeId}");
             }
         });
 
-        Log::info("[WS] Subscribed to Redis channel: {$channel}");
+        WsLog::info("[WS] Subscribed to Redis channel: {$channel}");
     }
 }

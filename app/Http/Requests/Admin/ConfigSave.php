@@ -54,6 +54,7 @@ class ConfigSave extends FormRequest
         'device_limit_mode' => 'integer',
         'server_ws_enable' => 'boolean',
         'server_ws_url' => 'nullable|url',
+        'server_ws_log_enable' => 'boolean',
         'node_install_script_url' => 'nullable|string',
         // uTLS 指纹列表：小写字母数字下划线中划线，每项最长 64
         'utls_fingerprints' => 'nullable|array',

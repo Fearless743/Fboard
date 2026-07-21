@@ -187,6 +187,7 @@ class ConfigController extends Controller
                 'device_limit_mode' => (int) admin_setting('device_limit_mode', 0),
                 'server_ws_enable' => (bool) admin_setting('server_ws_enable', 1),
                 'server_ws_url' => admin_setting('server_ws_url', ''),
+                'server_ws_log_enable' => (bool) admin_setting('server_ws_log_enable', 0),
                 'node_install_script_url' => admin_setting('node_install_script_url', ''),
                 // 仅具体指纹（不含 random/randomized，二者下发节点表单时自动追加）
                 'utls_fingerprints' => \App\Utils\Helper::getUtlsFingerprints(),

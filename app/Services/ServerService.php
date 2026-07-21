@@ -304,6 +304,11 @@ class ServerService
             'maintenance_mode' => (bool) admin_setting('maintenance_mode', 0),
         ];
 
+        // Hy2 multi-port listen for client UDP hopping (null when single port / invalid).
+        $hysteriaListenPorts = $nodeType === 'hysteria'
+            ? self::hysteriaListenPorts($node)
+            : null;
+
         $response = match ($nodeType) {
             'shadowsocks' => [
                 ...$baseConfig,
@@ -350,6 +355,9 @@ class ServerService
             'hysteria' => [
                 ...$baseConfig,
                 'server_port' => (int) $serverPort,
+                // Client port range (e.g. 10000-20000) → node multi-port listen for Hy2 hopping.
+                // Subscription already exposes the same range via $server->ports; hop_interval is client-only.
+                ...($hysteriaListenPorts !== null ? ['listen_ports' => $hysteriaListenPorts] : []),
                 'version' => (int) $protocolSettings['version'],
                 'host' => $host,
                 'server_name' => $protocolSettings['tls']['server_name'],
@@ -490,5 +498,40 @@ class ServerService
             })
             ->orderByRaw('CASE WHEN code = ? THEN 0 ELSE 1 END', [$serverId])
             ->first();
+    }
+
+    /**
+     * Resolve Hysteria2 listen port range for the node daemon.
+     *
+     * When the client-facing port is a range (e.g. "10000-20000"), the node must
+     * listen on every port in that range so client UDP port hopping works.
+     * Returns null for a single port (node keeps using server_port only).
+     *
+     * Caps range span at 1024 ports to avoid exhausting UDP sockets.
+     */
+    public static function hysteriaListenPorts(Server $node): ?string
+    {
+        $raw = trim((string) $node->port);
+        if ($raw === '' || !str_contains($raw, '-')) {
+            return null;
+        }
+
+        $parts = preg_split('/\s*-\s*/', $raw, 2);
+        if (count($parts) !== 2) {
+            return null;
+        }
+
+        $start = (int) $parts[0];
+        $end = (int) $parts[1];
+        if ($start < 1 || $start > 65535 || $end < 1 || $end > 65535 || $end < $start) {
+            return null;
+        }
+
+        // Large ranges create one UDP socket per port; hard-cap for safety.
+        if (($end - $start + 1) > 1024) {
+            return null;
+        }
+
+        return $start . '-' . $end;
     }
 }

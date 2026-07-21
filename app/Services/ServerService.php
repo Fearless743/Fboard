@@ -356,6 +356,11 @@ class ServerService
                 'tls_settings' => $protocolSettings['tls'],
                 'up_mbps' => (int) $protocolSettings['bandwidth']['up'],
                 'down_mbps' => (int) $protocolSettings['bandwidth']['down'],
+                // Hysteria Realms URI (realm://token@host/name); empty = ordinary Hy2.
+                'realm' => filled(data_get($protocolSettings, 'realm'))
+                    ? trim((string) data_get($protocolSettings, 'realm'))
+                    : null,
+                'realm_insecure' => (bool) data_get($protocolSettings, 'realm_insecure', false),
                 ...match ((int) $protocolSettings['version']) {
                         1 => ['obfs' => $protocolSettings['obfs']['password'] ?? null],
                         2 => [

@@ -186,10 +186,25 @@ class Plugin extends AbstractPlugin
                 ], 'label' => 'ECH配置'],
             ], 'label' => 'TLS设置'],
             'hop_interval' => ['type' => 'integer', 'default' => null, 'label' => '跳跃间隔'],
+            // Hysteria Realms：整段 URI（节点注册 + 客户端打洞）。主流订阅客户端不识别时会跳过该节点。
+            'realm' => [
+                'type' => 'string',
+                'default' => null,
+                'label' => 'Realms URI',
+                'placeholder' => 'realm://token@host/name',
+                'description' => '完整 Hysteria Realms URI（如 realm://token@host/name 或 realm+http://…）。填写后节点通过 Realms 注册并打洞；主流客户端订阅会跳过此节点，请用官方 hy2 客户端 YAML 连接。',
+            ],
+            'realm_insecure' => [
+                'type' => 'boolean',
+                'default' => false,
+                'label' => 'Realms 跳过证书校验',
+                'description' => '仅影响 Realms rendezvous HTTPS 客户端，不等于 Hy2 TLS allow_insecure。',
+            ],
         ], array_merge(
             ['version' => 'required|integer', 'alpn' => 'nullable|string',
              'obfs.open' => 'nullable|boolean', 'obfs.type' => 'string|nullable', 'obfs.password' => 'string|nullable',
-             'bandwidth.up' => 'nullable|integer', 'bandwidth.down' => 'nullable|integer', 'hop_interval' => 'integer|nullable'],
+             'bandwidth.up' => 'nullable|integer', 'bandwidth.down' => 'nullable|integer', 'hop_interval' => 'integer|nullable',
+             'realm' => 'nullable|string|max:512', 'realm_insecure' => 'nullable|boolean'],
             self::getTlsObjectValidationRules(),
         ), [1 => '[Hy]', 2 => '[Hy2]']);
     }

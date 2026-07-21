@@ -91,6 +91,9 @@ abstract class AbstractProtocol
     protected function filterServersByVersion()
     {
         $this->filterByAllowedProtocols();
+        // Hysteria Realms nodes cannot be expressed as ordinary host:port for
+        // mainstream subscription clients. Skip them globally (no fake fallback).
+        $this->filterHysteriaRealmNodes();
         $hasGlobalConfig = isset($this->protocolRequirements['*']);
         $hasClientConfig = isset($this->protocolRequirements[$this->clientName]);
 
@@ -237,6 +240,28 @@ abstract class AbstractProtocol
                 ->values()
                 ->all();
         }
+    }
+
+    /**
+     * Skip Hysteria nodes configured with Realms (realm:// / realm+http://).
+     *
+     * Mainstream clients do not understand realm endpoints; emitting a fake
+     * host:server_port would produce unusable proxies. Official hy2 clients
+     * should use YAML with realm, not these subscription formats.
+     */
+    protected function filterHysteriaRealmNodes(): void
+    {
+        $this->servers = collect($this->servers)
+            ->reject(function ($server) {
+                $type = $server['type'] ?? null;
+                if ($type !== 'hysteria' && $type !== 'hysteria2') {
+                    return false;
+                }
+                $realm = data_get($server, 'protocol_settings.realm');
+                return is_string($realm) && trim($realm) !== '';
+            })
+            ->values()
+            ->all();
     }
 
     /**

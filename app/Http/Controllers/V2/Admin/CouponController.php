@@ -44,6 +44,17 @@ class CouponController extends Controller
         $pageSize = $request->input('pageSize', 10);
         $builder = Coupon::query();
         $this->applyFiltersAndSorts($request, $builder);
+
+        // 名称 / 券码联合模糊搜索（admin 搜索框传 search）
+        $search = trim((string) $request->input('search', ''));
+        if ($search !== '') {
+            $like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $search) . '%';
+            $builder->where(function ($query) use ($like) {
+                $query->where('name', 'like', $like)
+                    ->orWhere('code', 'like', $like);
+            });
+        }
+
         $coupons = $builder
             ->orderBy('created_at', 'desc')
             ->paginate($pageSize, ["*"], 'page', $current);

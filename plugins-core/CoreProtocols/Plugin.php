@@ -23,9 +23,25 @@ class Plugin extends AbstractPlugin
         $this->registerSudoku();
     }
 
+    /**
+     * @return callable(\App\Models\Server, array): array
+     */
+    private static function builder(string $method): callable
+    {
+        return [NodeConfigBuilders::class, $method];
+    }
+
+    /**
+     * @return callable(\App\Models\Server, \App\Models\User): string
+     */
+    private static function password(string $method): callable
+    {
+        return [PasswordGenerators::class, $method];
+    }
+
     private function registerShadowsocks(): void
     {
-        $this->registerProtocolDefinition('shadowsocks', 'Shadowsocks', [
+        $this->registerProtocolDefinition(ProtocolTypes::SHADOWSOCKS, 'Shadowsocks', [
             'cipher' => ['type' => 'string', 'default' => null, 'label' => '加密方式', 'options' => [
                 'aes-256-gcm' => 'aes-256-gcm', 'aes-128-gcm' => 'aes-128-gcm',
                 'chacha20-ietf-poly1305' => 'chacha20-ietf-poly1305',
@@ -53,12 +69,13 @@ class Plugin extends AbstractPlugin
             'obfs_settings.host' => 'nullable|string',
             'plugin' => 'nullable|string|in:simple-obfs,v2ray-plugin,gost-plugin,shadow-tls,restls,kcptun',
             'plugin_opts' => 'nullable|string',
-        ], '[ss]');
+        ], '[ss]', self::builder('shadowsocks'), self::password('shadowsocks'), [], false, [PasswordGenerators::class, 'shadowsocksServerKey']);
     }
 
     private function registerVMess(): void
     {
-        $this->registerProtocolDefinition('vmess', 'VMess', [
+        // v2ray 为历史别名，normalizeType 时映射到 vmess
+        $this->registerProtocolDefinition(ProtocolTypes::VMESS, 'VMess', [
             'tls' => ['type' => 'integer', 'default' => 0, 'label' => 'TLS', 'options' => ['0' => '关闭', '1' => '开启']],
             'network' => ['type' => 'string', 'default' => null, 'label' => '传输协议', 'options' => ['tcp' => 'TCP', 'kcp' => 'KCP', 'ws' => 'WebSocket', 'http' => 'HTTP/2', 'quic' => 'QUIC', 'grpc' => 'gRPC']],
             'rules' => ['type' => 'array', 'default' => null, 'label' => '规则'],
@@ -82,12 +99,12 @@ class Plugin extends AbstractPlugin
             self::getTlsSettingsValidationRules(),
             self::getMultiplexValidationRules(),
             self::getUtlsValidationRules(),
-        ), '[vmess]');
+        ), '[vmess]', self::builder('vmess'), null, ['v2ray']);
     }
 
     private function registerVLESS(): void
     {
-        $this->registerProtocolDefinition('vless', 'VLESS', [
+        $this->registerProtocolDefinition(ProtocolTypes::VLESS, 'VLESS', [
             'tls' => ['type' => 'integer', 'default' => 0, 'label' => 'TLS', 'options' => ['0' => '关闭', '1' => 'TLS', '2' => 'Reality']],
             'tls_settings' => ['type' => 'object', 'show_when' => ['tls' => '1'], 'fields' => [
                 'server_name' => ['type' => 'string', 'default' => null, 'label' => '服务器名称'],
@@ -125,12 +142,12 @@ class Plugin extends AbstractPlugin
             self::getRealityValidationRules(),
             self::getMultiplexValidationRules(),
             self::getUtlsValidationRules(),
-        ), '[vless]');
+        ), '[vless]', self::builder('vless'));
     }
 
     private function registerTrojan(): void
     {
-        $this->registerProtocolDefinition('trojan', 'Trojan', [
+        $this->registerProtocolDefinition(ProtocolTypes::TROJAN, 'Trojan', [
             'tls' => ['type' => 'integer', 'default' => 1, 'label' => 'TLS', 'options' => ['0' => '关闭', '1' => 'TLS', '2' => 'Reality']],
             'network' => ['type' => 'string', 'default' => null, 'label' => '传输协议', 'options' => ['tcp' => 'TCP', 'kcp' => 'KCP', 'ws' => 'WebSocket', 'quic' => 'QUIC', 'grpc' => 'gRPC', 'xhttp' => 'XHTTP']],
             'network_settings' => ['type' => 'array', 'default' => null, 'label' => '网络设置'],
@@ -158,12 +175,12 @@ class Plugin extends AbstractPlugin
             self::getRealityValidationRules(),
             self::getMultiplexValidationRules(),
             self::getUtlsValidationRules(),
-        ), '[trojan]');
+        ), '[trojan]', self::builder('trojan'));
     }
 
     private function registerHysteria(): void
     {
-        $this->registerProtocolDefinition('hysteria', 'Hysteria', [
+        $this->registerProtocolDefinition(ProtocolTypes::HYSTERIA, 'Hysteria', [
             'version' => ['type' => 'integer', 'default' => 2, 'label' => '版本', 'options' => ['2' => 'v2', '1' => 'v1']],
             'bandwidth' => ['type' => 'object', 'fields' => [
                 'up' => ['type' => 'integer', 'default' => null, 'label' => '上行带宽'],
@@ -207,12 +224,12 @@ class Plugin extends AbstractPlugin
              'bandwidth.up' => 'nullable|integer', 'bandwidth.down' => 'nullable|integer', 'hop_interval' => 'integer|nullable',
              'realm' => 'nullable|string|max:512', 'realm_insecure' => 'nullable|boolean'],
             self::getTlsObjectValidationRules(),
-        ), [1 => '[Hy]', 2 => '[Hy2]']);
+        ), [1 => '[Hy]', 2 => '[Hy2]'], self::builder('hysteria'), null, ['hysteria2']);
     }
 
     private function registerTUIC(): void
     {
-        $this->registerProtocolDefinition('tuic', 'TUIC', [
+        $this->registerProtocolDefinition(ProtocolTypes::TUIC, 'TUIC', [
             'version' => ['type' => 'integer', 'default' => 5, 'label' => '版本', 'options' => ['5' => 'v5', '4' => 'v4', '3' => 'v3']],
             'congestion_control' => ['type' => 'string', 'default' => 'cubic', 'label' => '拥塞控制', 'options' => ['cubic' => 'CUBIC', 'bbr' => 'BBR', 'new_reno' => 'New Reno']],
             'alpn' => ['type' => 'array', 'default' => ['h3'], 'label' => 'ALPN', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1', 'spdy/3' => 'spdy/3', 'h1' => 'h1']],
@@ -234,12 +251,12 @@ class Plugin extends AbstractPlugin
             'congestion_control' => 'nullable|string|in:cubic,bbr,new_reno',
             'alpn' => 'nullable|array',
             'udp_relay_mode' => 'nullable|string|in:native,quic',
-        ], '[tuic]');
+        ], '[tuic]', self::builder('tuic'));
     }
 
     private function registerAnyTLS(): void
     {
-        $this->registerProtocolDefinition('anytls', 'AnyTLS', [
+        $this->registerProtocolDefinition(ProtocolTypes::ANYTLS, 'AnyTLS', [
             'padding_scheme' => ['type' => 'array', 'default' => [
                 "stop=8", "0=30-30", "1=100-400",
                 "2=400-500,c,500-1000,c,500-1000,c,500-1000,c,500-1000",
@@ -261,12 +278,12 @@ class Plugin extends AbstractPlugin
         ], array_merge(
             ['padding_scheme' => 'nullable|array'],
             self::getTlsObjectValidationRules(true),
-        ), '[anytls]');
+        ), '[anytls]', self::builder('anytls'));
     }
 
     private function registerSOCKS(): void
     {
-        $this->registerProtocolDefinition('socks', 'SOCKS', [
+        $this->registerProtocolDefinition(ProtocolTypes::SOCKS, 'SOCKS', [
             'tls' => ['type' => 'integer', 'default' => 0, 'label' => 'TLS', 'options' => ['0' => '关闭', '1' => '开启']],
             'tls_settings' => ['type' => 'object', 'show_when' => ['tls' => '1'], 'fields' => [
                 'server_name' => ['type' => 'string', 'default' => null, 'label' => '服务器名称'],
@@ -280,12 +297,12 @@ class Plugin extends AbstractPlugin
                     'config_path' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置路径', 'show_when' => ['enabled' => 'true']],
                 ], 'label' => 'ECH配置'],
             ], 'label' => 'TLS设置'],
-        ], ['tls' => 'nullable|integer'], '[socks]');
+        ], ['tls' => 'nullable|integer'], '[socks]', self::builder('socks'));
     }
 
     private function registerNaive(): void
     {
-        $this->registerProtocolDefinition('naive', 'NaïveProxy', [
+        $this->registerProtocolDefinition(ProtocolTypes::NAIVE, 'NaïveProxy', [
             'tls' => ['type' => 'integer', 'default' => 0, 'label' => 'TLS', 'options' => ['0' => '关闭', '1' => '开启']],
             'tls_settings' => ['type' => 'object', 'show_when' => ['tls' => '1'], 'fields' => [
                 'server_name' => ['type' => 'string', 'default' => null, 'label' => '服务器名称'],
@@ -299,12 +316,12 @@ class Plugin extends AbstractPlugin
                     'config_path' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置路径', 'show_when' => ['enabled' => 'true']],
                 ], 'label' => 'ECH配置'],
             ], 'label' => 'TLS设置'],
-        ], ['tls' => 'required|integer'], '[naive]');
+        ], ['tls' => 'required|integer'], '[naive]', self::builder('naive'));
     }
 
     private function registerHTTP(): void
     {
-        $this->registerProtocolDefinition('http', 'HTTP', [
+        $this->registerProtocolDefinition(ProtocolTypes::HTTP, 'HTTP', [
             'tls' => ['type' => 'integer', 'default' => 0, 'label' => 'TLS', 'options' => ['0' => '关闭', '1' => '开启']],
             'tls_settings' => ['type' => 'object', 'show_when' => ['tls' => '1'], 'fields' => [
                 'server_name' => ['type' => 'string', 'default' => null, 'label' => '服务器名称'],
@@ -318,25 +335,25 @@ class Plugin extends AbstractPlugin
                     'config_path' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置路径', 'show_when' => ['enabled' => 'true']],
                 ], 'label' => 'ECH配置'],
             ], 'label' => 'TLS设置'],
-        ], ['tls' => 'required|integer'], '[http]');
+        ], ['tls' => 'required|integer'], '[http]', self::builder('http'));
     }
 
     private function registerMieru(): void
     {
-        $this->registerProtocolDefinition('mieru', 'Mieru', [
+        $this->registerProtocolDefinition(ProtocolTypes::MIERU, 'Mieru', [
             'transport' => ['type' => 'string', 'default' => 'TCP', 'label' => '传输方式', 'options' => ['TCP' => 'TCP', 'UDP' => 'UDP']],
             'traffic_pattern' => ['type' => 'string', 'default' => '', 'label' => '流量模式'],
             ...self::getMultiplexFields(),
         ], array_merge(
             ['transport' => 'required|string|in:TCP,UDP', 'traffic_pattern' => 'string'],
             self::getMultiplexValidationRules(),
-        ), '[mieru]');
+        ), '[mieru]', self::builder('mieru'));
     }
 
 
     private function registerShadowQUIC(): void
     {
-        $this->registerProtocolDefinition('shadowquic', 'ShadowQUIC', [
+        $this->registerProtocolDefinition(ProtocolTypes::SHADOWQUIC, 'ShadowQUIC', [
             'jls_upstream' => [
                 'type' => 'string',
                 'default' => null,
@@ -380,12 +397,12 @@ class Plugin extends AbstractPlugin
             'congestion_control' => 'nullable|string|in:bbr,cubic,new_reno',
             'zero_rtt' => 'nullable|boolean',
             'udp_over_stream' => 'nullable|boolean',
-        ], '[shadowquic]');
+        ], '[shadowquic]', self::builder('shadowquic'));
     }
 
     private function registerSudoku(): void
     {
-        $this->registerProtocolDefinition('sudoku', 'Sudoku', [
+        $this->registerProtocolDefinition(ProtocolTypes::SUDOKU, 'Sudoku', [
             'master_public_key' => ['type' => 'string', 'default' => null, 'label' => 'Master Public Key'],
             'master_private_key' => ['type' => 'string', 'default' => null, 'label' => 'Master Private Key（仅面板保存，不下发节点）'],
             'aead_method' => ['type' => 'string', 'default' => 'chacha20-poly1305', 'label' => 'AEAD', 'options' => [
@@ -441,7 +458,7 @@ class Plugin extends AbstractPlugin
             'httpmask.mode' => 'nullable|string|in:legacy,stream,poll,auto,ws',
             // 允许可选首尾斜杠；多级路径 / 非法字符由 regex 拒绝（与 mihomo Validate 一致）
             'httpmask.path_root' => ['nullable', 'string', 'regex:/^\/?[A-Za-z0-9_-]+\/?$/'],
-        ], '[sudoku]');
+        ], '[sudoku]', self::builder('sudoku'), self::password('sudoku'), [], true);
     }
 
     private static function getRealityFields(): array

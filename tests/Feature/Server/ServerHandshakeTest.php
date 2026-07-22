@@ -7,6 +7,7 @@ use App\Models\ServerMachine;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Tests\TestCase;
+use Plugin\CoreProtocols\ProtocolTypes;
 
 class ServerHandshakeTest extends TestCase
 {
@@ -120,7 +121,7 @@ class ServerHandshakeTest extends TestCase
     {
         return Server::create([
             'name' => 'test-node',
-            'type' => Server::TYPE_VMESS,
+            'type' => ProtocolTypes::VMESS,
             'host' => '127.0.0.1',
             'port' => 443,
             'server_port' => 443,

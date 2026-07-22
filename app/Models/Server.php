@@ -11,7 +11,6 @@ use App\Utils\CacheKey;
 use App\Utils\Helper;
 use App\Models\User;
 use App\Services\ProtocolDefinitionRegistry;
-use App\Support\SudokuKey;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 
 /**
@@ -62,44 +61,17 @@ use Illuminate\Database\Eloquent\Casts\Attribute;
  */
 class Server extends Model
 {
-    public const TYPE_HYSTERIA = "hysteria";
-    public const TYPE_VLESS = "vless";
-    public const TYPE_TROJAN = "trojan";
-    public const TYPE_VMESS = "vmess";
-    public const TYPE_TUIC = "tuic";
-    public const TYPE_SHADOWSOCKS = "shadowsocks";
-    public const TYPE_ANYTLS = "anytls";
-    public const TYPE_SOCKS = "socks";
-    public const TYPE_NAIVE = "naive";
-    public const TYPE_HTTP = "http";
-    public const TYPE_MIERU = "mieru";
-    public const TYPE_SUDOKU = "sudoku";
-    public const TYPE_SHADOWQUIC = "shadowquic";
+    /**
+     * 虚拟节点（非协议类型；展示用，继承父节点配置）。
+     * 协议 type 字符串常量见 Plugin\CoreProtocols\ProtocolTypes。
+     */
+    public const TYPE_VIRTUAL = "virtual";
+
     public const STATUS_OFFLINE = 0;
     public const STATUS_ONLINE_NO_PUSH = 1;
     public const STATUS_ONLINE = 2;
 
     public const CHECK_INTERVAL = 300; // 5 minutes in seconds
-
-    private const CIPHER_CONFIGURATIONS = [
-        "2022-blake3-aes-128-gcm" => [
-            "serverKeySize" => 16,
-            "userKeySize" => 16,
-        ],
-        "2022-blake3-aes-256-gcm" => [
-            "serverKeySize" => 32,
-            "userKeySize" => 32,
-        ],
-        "2022-blake3-chacha20-poly1305" => [
-            "serverKeySize" => 32,
-            "userKeySize" => 32,
-        ],
-    ];
-
-    public const TYPE_ALIASES = [
-        "v2ray" => self::TYPE_VMESS,
-        "hysteria2" => self::TYPE_HYSTERIA,
-    ];
 
     public static function getValidTypes(): array
     {
@@ -246,53 +218,22 @@ class Server extends Model
         $this->attributes["group_ids"] = json_encode($normalized);
     }
 
+    /**
+     * 生成订阅/节点侧用户密码。逻辑由协议插件 passwordGenerator 提供。
+     */
     public function generateServerPassword(User $user): string
     {
-        if ($this->type === self::TYPE_SUDOKU) {
-            return $this->generateSudokuAvailableKey($user);
-        }
-        if ($this->type !== self::TYPE_SHADOWSOCKS) {
-            return $user->uuid;
+        $definition = app(ProtocolDefinitionRegistry::class)->get((string) $this->type);
+        if ($definition) {
+            return $definition->generatePassword($this, $user);
         }
 
-        $cipher = data_get($this, "protocol_settings.cipher");
-        if (!$cipher || !isset(self::CIPHER_CONFIGURATIONS[$cipher])) {
-            return $user->uuid;
-        }
-
-        $config = self::CIPHER_CONFIGURATIONS[$cipher];
-        // Use parent's created_at if this is a child node
-        $serverCreatedAt = $this->parent_id
-            ? $this->parent->created_at
-            : $this->created_at;
-        $serverKey = Helper::getServerKey(
-            $serverCreatedAt,
-            $config["serverKeySize"],
-        );
-        $userKey = Helper::uuidToBase64($user->uuid, $config["userKeySize"]);
-        return "{$serverKey}:{$userKey}";
-    }
-
-
-    /**
-     * Deterministic Sudoku Available Private Key for a user.
-     * Compatible wire format with official split keys: hex(r||k) where master = r+k (mod L).
-     * UserHash = hex(sha256(raw_key_bytes)[:8]).
-     */
-    private function generateSudokuAvailableKey(User $user): string
-    {
-        $settings = $this->protocol_settings ?? [];
-        $masterPrivateHex = data_get($settings, 'master_private_key');
-        if (!$masterPrivateHex) {
-            // Fallback: cannot derive without master private; return uuid (will fail auth).
-            return $user->uuid;
-        }
-        return SudokuKey::deriveAvailablePrivateKey($masterPrivateHex, $user->uuid);
+        return (string) $user->uuid;
     }
 
     public static function normalizeType(?string $type): string|null
     {
-        return $type ? strtolower(self::TYPE_ALIASES[$type] ?? $type) : null;
+        return app(ProtocolDefinitionRegistry::class)->normalizeType($type);
     }
 
     public static function isValidType(?string $type): bool
@@ -498,16 +439,15 @@ class Server extends Model
     }
 
     /**
-     * 服务器密钥访问器
+     * 服务器密钥访问器（由协议插件 serverKeyResolver 提供，如 Shadowsocks）
      */
     protected function serverKey(): Attribute
     {
         return Attribute::make(
             get: function () {
-                if ($this->type === self::TYPE_SHADOWSOCKS) {
-                    return Helper::getServerKey($this->created_at, 16);
-                }
-                return null;
+                $definition = app(ProtocolDefinitionRegistry::class)->get((string) $this->type);
+
+                return $definition?->resolveServerKey($this);
             },
         );
     }

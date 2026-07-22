@@ -79,15 +79,15 @@ class Plugin extends AbstractPlugin
 namespace Plugin\YourProtocol;
 
 use App\Support\AbstractProtocol;
-use App\Models\Server;
+use Plugin\CoreProtocols\ProtocolTypes;
 
 class YourProtocol extends AbstractProtocol
 {
     public $flags = ['your_client_flag1', 'flag2'];
 
     public $allowedProtocols = [
-        Server::TYPE_VMESS,
-        Server::TYPE_SHADOWSOCKS,
+        ProtocolTypes::VMESS,
+        ProtocolTypes::SHADOWSOCKS,
     ];
 
     protected $protocolRequirements = [];
@@ -118,13 +118,13 @@ public $flags = ['clash', 'verge', 'nekobox'];
 
 ```php
 public $allowedProtocols = [
-    Server::TYPE_VMESS,
-    Server::TYPE_TROJAN,
-    Server::TYPE_HYSTERIA,
+    ProtocolTypes::VMESS,
+    ProtocolTypes::TROJAN,
+    ProtocolTypes::HYSTERIA,
 ];
 ```
 
-可用类型：`TYPE_VMESS`、`TYPE_VLESS`、`TYPE_SHADOWSOCKS`、`TYPE_TROJAN`、`TYPE_HYSTERIA`、`TYPE_TUIC`、`TYPE_ANYTLS`、`TYPE_SOCKS`、`TYPE_NAIVE`、`TYPE_HTTP`、`TYPE_MIERU`。
+可用类型见 `Plugin\CoreProtocols\ProtocolTypes`（如 `ProtocolTypes::VMESS`）。第三方协议使用自身插件定义的 type 字符串。
 
 ### `$protocolRequirements` (protected)
 
@@ -258,16 +258,16 @@ class Plugin extends AbstractPlugin
 namespace Plugin\SimpleProtocol;
 
 use App\Support\AbstractProtocol;
-use App\Models\Server;
+use Plugin\CoreProtocols\ProtocolTypes;
 
 class SimpleProtocol extends AbstractProtocol
 {
     public $flags = ['simpleapp', 'simple-client'];
 
     public $allowedProtocols = [
-        Server::TYPE_VMESS,
-        Server::TYPE_VLESS,
-        Server::TYPE_TROJAN,
+        ProtocolTypes::VMESS,
+        ProtocolTypes::VLESS,
+        ProtocolTypes::TROJAN,
     ];
 
     public function handle()
@@ -379,6 +379,8 @@ class Plugin extends AbstractPlugin
             validationRules: [           // Laravel 验证规则
                 'field_name' => 'required|string',
             ],
+            // 可选：节点下发配置构建器（ServerService::buildNodeConfig 调用）
+            // serverConfigBuilder: fn (Server $node, array $baseConfig) => [...$baseConfig, 'field_name' => ...],
         );
     }
 }
@@ -392,6 +394,12 @@ class Plugin extends AbstractPlugin
 | `$name` | string | 是 | 管理后台显示的名称 |
 | `$configFields` | array | 是 | 配置字段定义，完整格式见下方 |
 | `$validationRules` | array | 否 | Laravel 验证规则数组 |
+| `$prefix` | string\|array\|null | 否 | 服务器名称前缀，如 `'[ss]'`，或版本映射 `[1=>'[Hy]', 2=>'[Hy2]']` |
+| `$serverConfigBuilder` | callable\|null | 否 | 节点配置构建器 `fn(Server $node, array $baseConfig): array`，由 `buildNodeConfig` 调用 |
+| `$passwordGenerator` | callable\|null | 否 | 用户密码生成器 `fn(Server $node, User $user): string`（默认 `$user->uuid`） |
+| `$aliases` | list\<string\> | 否 | 类型别名（如 `['hysteria2']`），`Server::normalizeType` 会映射到正式 type |
+| `$transformNodeUserUuid` | bool | 否 | 为 true 时节点用户列表的 uuid 字段用 passwordGenerator 覆盖（如 Sudoku） |
+| `$serverKeyResolver` | callable\|null | 否 | 订阅 `server_key` 访问器 `fn(Server $node): mixed` |
 
 ## 🔧 配置字段格式 (`configFields`)
 
@@ -558,6 +566,37 @@ class Plugin extends AbstractPlugin
 3. **合并加载**：`ProtocolDefinitionRegistry` 收集所有插件注册的定义，合并后供系统使用
 4. **API 暴露**：`ProtocolDefinitionController` 提供 REST API 供管理后台前端动态获取
 
+## 🔧 节点配置构建（`serverConfigBuilder`）
+
+`ServerService::buildNodeConfig()` 不再硬编码各协议字段，而是：
+
+1. 组装公共 `$baseConfig`（protocol / listen_ip / server_port / network / networkSettings / maintenance_mode）
+2. 从 `ProtocolDefinitionRegistry` 取对应协议的 `serverConfigBuilder` 生成协议专属字段
+3. 追加 routes / custom_outbounds / custom_routes / cert_config
+4. 经 `protocols.server_config` 钩子允许其它插件再扩展
+
+注册时传入 builder：
+
+```php
+$this->registerProtocolDefinition(
+    type: 'my_protocol',
+    name: 'My Protocol',
+    configFields: [...],
+    validationRules: [...],
+    prefix: '[my]',
+    serverConfigBuilder: function (\App\Models\Server $node, array $baseConfig): array {
+        $settings = $node->protocol_settings;
+        return [
+            ...$baseConfig,
+            'server_port' => (int) $node->server_port,
+            'custom_field' => $settings['custom_field'] ?? null,
+        ];
+    },
+);
+```
+
+CoreProtocols 内建协议的 builder 见 `plugins-core/CoreProtocols/NodeConfigBuilders.php`。
+
 ## 🔧 钩子扩展
 
 插件可以通过以下钩子扩展或覆盖协议类型定义：
@@ -565,19 +604,19 @@ class Plugin extends AbstractPlugin
 | 钩子 | 类型 | 说明 |
 |------|------|------|
 | `protocols.definitions` | filter | 注册/修改协议类型定义 |
-| `protocols.server_config` | filter | 在生成节点配置时修改配置数组 |
+| `protocols.server_config` | filter | 在生成节点配置后修改完整配置数组 |
 
 ### 使用 `protocols.server_config` 钩子
 
-当需要自定义节点配置输出时（例如添加自定义字段到订阅配置）：
+当需要在已构建的节点配置上追加/覆盖字段时：
 
 ```php
 public function boot(): void
 {
-    // 注册协议类型
+    // 注册协议类型（含 serverConfigBuilder 更推荐）
     $this->registerProtocolDefinition(...);
 
-    // 自定义配置构建
+    // 在完整配置上追加字段
     $this->filter('protocols.server_config', function (array $config, $node) {
         $type = $node->type;
         $settings = $node->protocol_settings;

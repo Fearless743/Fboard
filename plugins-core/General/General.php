@@ -2,26 +2,26 @@
 
 namespace Plugin\General;
 
-use App\Models\Server;
 use App\Utils\Helper;
 use Illuminate\Support\Arr;
 use App\Support\AbstractProtocol;
+use Plugin\CoreProtocols\ProtocolTypes;
 
 class General extends AbstractProtocol
 {
     public $flags = ['general', 'v2rayn', 'v2rayng', 'passwall', 'ssrplus', 'sagernet', 'inhive'];
 
     public $allowedProtocols = [
-        Server::TYPE_VMESS,
-        Server::TYPE_VLESS,
-        Server::TYPE_SHADOWSOCKS,
-        Server::TYPE_TROJAN,
-        Server::TYPE_HYSTERIA,
-        Server::TYPE_ANYTLS,
-        Server::TYPE_SOCKS,
-        Server::TYPE_TUIC,
-        Server::TYPE_HTTP,
-        Server::TYPE_SHADOWQUIC,
+        ProtocolTypes::VMESS,
+        ProtocolTypes::VLESS,
+        ProtocolTypes::SHADOWSOCKS,
+        ProtocolTypes::TROJAN,
+        ProtocolTypes::HYSTERIA,
+        ProtocolTypes::ANYTLS,
+        ProtocolTypes::SOCKS,
+        ProtocolTypes::TUIC,
+        ProtocolTypes::HTTP,
+        ProtocolTypes::SHADOWQUIC,
     ];
 
     protected $protocolRequirements = [
@@ -37,16 +37,16 @@ class General extends AbstractProtocol
 
         foreach ($servers as $item) {
             $uri .= match ($item['type']) {
-                Server::TYPE_VMESS => self::buildVmess($item['password'], $item),
-                Server::TYPE_VLESS => self::buildVless($item['password'], $item),
-                Server::TYPE_SHADOWSOCKS => self::buildShadowsocks($item['password'], $item),
-                Server::TYPE_TROJAN => self::buildTrojan($item['password'], $item),
-                Server::TYPE_HYSTERIA => self::buildHysteria($item['password'], $item),
-                Server::TYPE_ANYTLS => self::buildAnyTLS($item['password'], $item),
-                Server::TYPE_SOCKS => self::buildSocks($item['password'], $item),
-                Server::TYPE_TUIC => self::buildTuic($item['password'], $item),
-                Server::TYPE_HTTP => self::buildHttp($item['password'], $item),
-                Server::TYPE_SHADOWQUIC => self::buildShadowQUIC($item['password'], $item),
+                ProtocolTypes::VMESS => self::buildVmess($item['password'], $item),
+                ProtocolTypes::VLESS => self::buildVless($item['password'], $item),
+                ProtocolTypes::SHADOWSOCKS => self::buildShadowsocks($item['password'], $item),
+                ProtocolTypes::TROJAN => self::buildTrojan($item['password'], $item),
+                ProtocolTypes::HYSTERIA => self::buildHysteria($item['password'], $item),
+                ProtocolTypes::ANYTLS => self::buildAnyTLS($item['password'], $item),
+                ProtocolTypes::SOCKS => self::buildSocks($item['password'], $item),
+                ProtocolTypes::TUIC => self::buildTuic($item['password'], $item),
+                ProtocolTypes::HTTP => self::buildHttp($item['password'], $item),
+                ProtocolTypes::SHADOWQUIC => self::buildShadowQUIC($item['password'], $item),
                 default => '',
             };
         }

@@ -79,15 +79,15 @@ Your protocol class must extend `App\Support\AbstractProtocol` and implement the
 namespace Plugin\YourProtocol;
 
 use App\Support\AbstractProtocol;
-use App\Models\Server;
+use Plugin\CoreProtocols\ProtocolTypes;
 
 class YourProtocol extends AbstractProtocol
 {
     public $flags = ['your_client_flag1', 'flag2'];
 
     public $allowedProtocols = [
-        Server::TYPE_VMESS,
-        Server::TYPE_SHADOWSOCKS,
+        ProtocolTypes::VMESS,
+        ProtocolTypes::SHADOWSOCKS,
     ];
 
     protected $protocolRequirements = [];
@@ -118,13 +118,13 @@ White-list of server types this protocol supports. Servers of other types are fi
 
 ```php
 public $allowedProtocols = [
-    Server::TYPE_VMESS,
-    Server::TYPE_TROJAN,
-    Server::TYPE_HYSTERIA,
+    ProtocolTypes::VMESS,
+    ProtocolTypes::TROJAN,
+    ProtocolTypes::HYSTERIA,
 ];
 ```
 
-Available types: `TYPE_VMESS`, `TYPE_VLESS`, `TYPE_SHADOWSOCKS`, `TYPE_TROJAN`, `TYPE_HYSTERIA`, `TYPE_TUIC`, `TYPE_ANYTLS`, `TYPE_SOCKS`, `TYPE_NAIVE`, `TYPE_HTTP`, `TYPE_MIERU`.
+Available types: see `Plugin\CoreProtocols\ProtocolTypes` (e.g. `ProtocolTypes::VMESS`). Third-party protocols use their own type strings.
 
 ### `$protocolRequirements` (protected)
 
@@ -258,16 +258,16 @@ class Plugin extends AbstractPlugin
 namespace Plugin\SimpleProtocol;
 
 use App\Support\AbstractProtocol;
-use App\Models\Server;
+use Plugin\CoreProtocols\ProtocolTypes;
 
 class SimpleProtocol extends AbstractProtocol
 {
     public $flags = ['simpleapp', 'simple-client'];
 
     public $allowedProtocols = [
-        Server::TYPE_VMESS,
-        Server::TYPE_VLESS,
-        Server::TYPE_TROJAN,
+        ProtocolTypes::VMESS,
+        ProtocolTypes::VLESS,
+        ProtocolTypes::TROJAN,
     ];
 
     public function handle()
@@ -380,6 +380,8 @@ class Plugin extends AbstractPlugin
             validationRules: [           // Laravel validation rules
                 'field_name' => 'required|string',
             ],
+            // optional: node config builder used by ServerService::buildNodeConfig
+            // serverConfigBuilder: fn (Server $node, array $baseConfig) => [...$baseConfig, 'field_name' => ...],
         );
     }
 }
@@ -393,6 +395,12 @@ class Plugin extends AbstractPlugin
 | `$name` | string | yes | Display name in admin panel |
 | `$configFields` | array | yes | Field definitions, see full format below |
 | `$validationRules` | array | no | Laravel validation rule array |
+| `$prefix` | string\|array\|null | no | Server name prefix, e.g. `'[ss]'`, or version map `[1=>'[Hy]', 2=>'[Hy2]']` |
+| `$serverConfigBuilder` | callable\|null | no | Node config builder `fn(Server $node, array $baseConfig): array`, invoked by `buildNodeConfig` |
+| `$passwordGenerator` | callable\|null | no | User password generator `fn(Server $node, User $user): string` (defaults to `$user->uuid`) |
+| `$aliases` | list\<string\> | no | Type aliases (e.g. `['hysteria2']`); `Server::normalizeType` maps them to the canonical type |
+| `$transformNodeUserUuid` | bool | no | When true, node user list rewrites `uuid` via passwordGenerator (e.g. Sudoku) |
+| `$serverKeyResolver` | callable\|null | no | Subscription `server_key` accessor `fn(Server $node): mixed` |
 
 ## 🔧 Config Field Format (`configFields`)
 
@@ -559,6 +567,37 @@ class Plugin extends AbstractPlugin
 3. **Merge loading**: `ProtocolDefinitionRegistry` collects definitions from all plugins and merges them
 4. **API exposure**: `ProtocolDefinitionController` provides REST API for the admin frontend
 
+## 🔧 Node config builders (`serverConfigBuilder`)
+
+`ServerService::buildNodeConfig()` no longer hardcodes per-protocol fields. Flow:
+
+1. Build shared `$baseConfig` (protocol / listen_ip / server_port / network / networkSettings / maintenance_mode)
+2. Resolve `serverConfigBuilder` from `ProtocolDefinitionRegistry` for the node type
+3. Append routes / custom_outbounds / custom_routes / cert_config
+4. Run `protocols.server_config` so other plugins can extend the full config
+
+Register a builder:
+
+```php
+$this->registerProtocolDefinition(
+    type: 'my_protocol',
+    name: 'My Protocol',
+    configFields: [...],
+    validationRules: [...],
+    prefix: '[my]',
+    serverConfigBuilder: function (\App\Models\Server $node, array $baseConfig): array {
+        $settings = $node->protocol_settings;
+        return [
+            ...$baseConfig,
+            'server_port' => (int) $node->server_port,
+            'custom_field' => $settings['custom_field'] ?? null,
+        ];
+    },
+);
+```
+
+Built-in builders live in `plugins-core/CoreProtocols/NodeConfigBuilders.php`.
+
 ## 🔧 Extension Hooks
 
 Plugins can extend or override protocol type definitions with these hooks:
@@ -566,19 +605,19 @@ Plugins can extend or override protocol type definitions with these hooks:
 | Hook | Type | Description |
 |------|------|-------------|
 | `protocols.definitions` | filter | Register/modify protocol type definitions |
-| `protocols.server_config` | filter | Modify server config array during node config generation |
+| `protocols.server_config` | filter | Modify the full node config after it is built |
 
 ### Using `protocols.server_config`
 
-To customize node config output (e.g., add custom fields to subscription config):
+To append/override fields on the already-built node config:
 
 ```php
 public function boot(): void
 {
-    // Register protocol type
+    // Prefer registering serverConfigBuilder with the protocol definition
     $this->registerProtocolDefinition(...);
 
-    // Custom config builder
+    // Optionally extend the full config
     $this->filter('protocols.server_config', function (array $config, $node) {
         $type = $node->type;
         $settings = $node->protocol_settings;

@@ -293,10 +293,11 @@ class UserController extends Controller
             $authService->removeAllSessions();
         }
         if (isset($params['balance'])) {
-            $params['balance'] = $params['balance'] * 100;
+            // 管理端按「元」输入，库内存「分」；禁止 float * 100（IEEE 精度会丢分）
+            $params['balance'] = Helper::yuanToCents($params['balance']);
         }
         if (isset($params['commission_balance'])) {
-            $params['commission_balance'] = $params['commission_balance'] * 100;
+            $params['commission_balance'] = Helper::yuanToCents($params['commission_balance']);
         }
 
         $params = HookManager::filter('admin.user.update.params', $params, $request, $user);

@@ -81,8 +81,9 @@ class Plugin extends AbstractPlugin implements PaymentInterface
 
     public function notify($params): array|bool
     {
-        if ($params['trade_status'] !== 'TRADE_SUCCESS')
+        if (($params['trade_status'] ?? '') !== 'TRADE_SUCCESS') {
             return false;
+        }
 
         $gateway = new AlipayF2F();
         $gateway->setAppId($this->getConfig('app_id'));
@@ -91,10 +92,15 @@ class Plugin extends AbstractPlugin implements PaymentInterface
 
         try {
             if ($gateway->verify($params)) {
-                return [
+                $result = [
                     'trade_no' => $params['out_trade_no'],
-                    'callback_no' => $params['trade_no']
+                    'callback_no' => $params['trade_no'],
                 ];
+                // total_amount 为元；写入 paid_amount（分）供 PaymentController 与订单应付比对
+                if (isset($params['total_amount']) && is_numeric($params['total_amount'])) {
+                    $result['paid_amount'] = (int) round(((float) $params['total_amount']) * 100);
+                }
+                return $result;
             } else {
                 return false;
             }

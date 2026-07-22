@@ -77,7 +77,7 @@ class Plugin extends AbstractPlugin implements PaymentInterface
         ];
     }
 
-    public function notify($params): array|bool
+    public function notify($params, ?int $expectedAmountCents = null): array|bool
     {
         $sign = $params['sign'] ?? '';
         unset($params['sign'], $params['sign_type']);
@@ -95,9 +95,22 @@ class Plugin extends AbstractPlugin implements PaymentInterface
             return false;
         }
 
+        // money 为元；必须可解析为金额，并在给定订单应付时拒绝少付
+        if (!isset($params['money']) || !is_numeric($params['money'])) {
+            return false;
+        }
+        $paidAmountCents = (int) round(((float) $params['money']) * 100);
+        if ($paidAmountCents < 0) {
+            return false;
+        }
+        if ($expectedAmountCents !== null && $paidAmountCents < $expectedAmountCents) {
+            return false;
+        }
+
         return [
             'trade_no' => $params['out_trade_no'],
-            'callback_no' => $params['trade_no']
+            'callback_no' => $params['trade_no'],
+            'paid_amount' => $paidAmountCents,
         ];
     }
 }

@@ -4,6 +4,7 @@ namespace App\Services\Auth;
 
 use App\Models\User;
 use App\Models\UserLoginLog;
+use App\Services\AuthService;
 use App\Services\Plugin\HookManager;
 use App\Utils\CacheKey;
 use App\Utils\Helper;
@@ -124,6 +125,9 @@ class LoginService
         if (!$user->save()) {
             return [false, [500, __('Reset failed')]];
         }
+
+        // 密码已变：作废全部已签发 Sanctum 会话，防止旧 token 继续访问
+        (new AuthService($user))->removeAllSessions();
 
         HookManager::call('user.password.reset.after', $user);
 

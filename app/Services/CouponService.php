@@ -91,9 +91,11 @@ class CouponService
 
     public function checkLimitUseWithUser(): bool
     {
+        // PENDING 也占额度：否则用户可连开多笔待支付订单，各自挂上 limit_use_with_user=1 的券。
+        // 仅排除已取消（STATUS_CANCELLED=2）；取消时会回滚 limit_use，额度也一并释放。
         $usedCount = Order::where('coupon_id', $this->coupon->id)
             ->where('user_id', $this->userId)
-            ->whereNotIn('status', [0, 2])
+            ->where('status', '!=', Order::STATUS_CANCELLED)
             ->count();
         if ($usedCount >= $this->coupon->limit_use_with_user)
             return false;

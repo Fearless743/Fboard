@@ -36,13 +36,14 @@ class OrderHandleJob implements ShouldQueue
      */
     public function handle()
     {
-        $order = Order::where('trade_no', $this->tradeNo)
-            ->lockForUpdate()
-            ->first();
-        if (!$order) return;
+        // open/cancel 内部自带事务与 lockForUpdate；此处只取最新状态再分发，
+        // 避免无外层事务时 lockForUpdate 立刻释放导致的假安全感。
+        $order = Order::where('trade_no', $this->tradeNo)->first();
+        if (!$order) {
+            return;
+        }
         $orderService = new OrderService($order);
-        switch ($order->status) {
-            // cancel
+        switch ((int) $order->status) {
             case Order::STATUS_PENDING:
                 if ($order->created_at <= (time() - 3600 * 2)) {
                     $orderService->cancel();

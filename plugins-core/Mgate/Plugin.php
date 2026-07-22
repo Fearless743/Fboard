@@ -117,9 +117,23 @@ class Plugin extends AbstractPlugin implements PaymentInterface
             return false;
         }
 
-        return [
+        // 若回调携带 status / trade_status，仅成功态可入账（字段缺失时保持兼容）
+        $status = strtolower((string) ($params['status'] ?? $params['trade_status'] ?? ''));
+        if ($status !== '') {
+            $ok = ['paid', 'success', 'succeeded', 'completed', 'trade_success', '1', '2'];
+            if (!in_array($status, $ok, true)) {
+                return false;
+            }
+        }
+
+        $result = [
             'trade_no' => $params['out_trade_no'],
-            'callback_no' => $params['trade_no']
+            'callback_no' => $params['trade_no'],
         ];
+        // 回调若带 total_amount（分），交给 PaymentController 与订单应付比对
+        if (isset($params['total_amount']) && is_numeric($params['total_amount'])) {
+            $result['paid_amount'] = (int) $params['total_amount'];
+        }
+        return $result;
     }
 }

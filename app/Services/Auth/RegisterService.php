@@ -115,23 +115,28 @@ class RegisterService
      */
     public function handleInviteCode(string $inviteCode): int|null
     {
-        $inviteCodeModel = InviteCode::where('code', $inviteCode)
-            ->where('status', InviteCode::STATUS_UNUSED)
-            ->first();
+        // 事务内行锁 + 条件更新：一次性码并发双注册不得都绑定成功
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($inviteCode) {
+            $inviteCodeModel = InviteCode::where('code', $inviteCode)
+                ->lockForUpdate()
+                ->first();
 
-        if (!$inviteCodeModel) {
-            if ((int) admin_setting('invite_force', 0)) {
-                throw new ApiException(__('Invalid invitation code'));
+            if (!$inviteCodeModel || (int) $inviteCodeModel->status !== InviteCode::STATUS_UNUSED) {
+                if ((int) admin_setting('invite_force', 0)) {
+                    throw new ApiException(__('Invalid invitation code'));
+                }
+                return null;
             }
-            return null;
-        }
 
-        if (!(int) admin_setting('invite_never_expire', 0)) {
-            $inviteCodeModel->status = InviteCode::STATUS_USED;
-            $inviteCodeModel->save();
-        }
+            if (!(int) admin_setting('invite_never_expire', 0)) {
+                $inviteCodeModel->status = InviteCode::STATUS_USED;
+                if (!$inviteCodeModel->save()) {
+                    throw new ApiException(__('Invalid invitation code'));
+                }
+            }
 
-        return $inviteCodeModel->user_id;
+            return $inviteCodeModel->user_id;
+        });
     }
 
 

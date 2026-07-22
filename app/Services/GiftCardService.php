@@ -15,7 +15,8 @@ use Illuminate\Support\Facades\Log;
 
 class GiftCardService
 {
-    protected readonly GiftCardCode $code;
+    // redeem 事务内需 lockForUpdate 后替换为锁定行，不能用 readonly
+    protected GiftCardCode $code;
     protected readonly GiftCardTemplate $template;
     protected ?User $user = null;
 
@@ -106,6 +107,28 @@ class GiftCardService
         }
 
         return DB::transaction(function () use ($options) {
+            // 行锁 + 事务内二次校验：构造时已加载的 code 可能过期/被并发兑掉。
+            $locked = GiftCardCode::query()
+                ->whereKey($this->code->id)
+                ->lockForUpdate()
+                ->first();
+            if (!$locked) {
+                throw new ApiException('兑换码不存在');
+            }
+            $this->code = $locked;
+
+            if (!$this->template->isAvailable()) {
+                throw new ApiException('该礼品卡类型已停用');
+            }
+            if (!$this->code->isAvailable()) {
+                throw new ApiException('兑换码不可用：' . $this->code->status_name);
+            }
+
+            $eligibility = $this->checkUserEligibility();
+            if (!$eligibility['can_redeem']) {
+                throw new ApiException($eligibility['reason']);
+            }
+
             $actualRewards = $this->template->calculateActualRewards($this->user);
 
             if ($this->template->type === GiftCardTemplate::TYPE_MYSTERY) {
@@ -119,7 +142,10 @@ class GiftCardService
                 $inviteRewards = $this->giveInviteRewards($actualRewards);
             }
 
-            $this->code->markAsUsed($this->user);
+            // markAsUsed 内再按 usage_count/max_usage 原子推进，防 max_usage>1 的竞态
+            if (!$this->code->markAsUsed($this->user)) {
+                throw new ApiException('兑换码使用失败');
+            }
 
             GiftCardUsage::createRecord(
                 $this->code,
@@ -147,10 +173,18 @@ class GiftCardService
     {
         $userService = app(UserService::class);
 
+        // 用户行锁：并发兑两张不同码时 transfer_enable/device_limit 读改写不得丢失更新
+        $lockedUser = User::query()->lockForUpdate()->find($this->user->id);
+        if (!$lockedUser) {
+            throw new ApiException('用户不存在');
+        }
+        $this->user = $lockedUser;
+
         if (isset($rewards['balance']) && $rewards['balance'] > 0) {
             if (!$userService->addBalance($this->user->id, $rewards['balance'])) {
                 throw new ApiException('余额发放失败');
             }
+            $this->user->refresh();
         }
 
         if (isset($rewards['transfer_enable']) && $rewards['transfer_enable'] > 0) {

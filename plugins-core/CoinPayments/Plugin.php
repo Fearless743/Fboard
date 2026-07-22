@@ -98,11 +98,16 @@ class Plugin extends AbstractPlugin implements PaymentInterface
 
         $status = $params['status'];
         if ($status >= 100 || $status == 2) {
-            return [
+            $result = [
                 'trade_no' => $params['item_number'],
                 'callback_no' => $params['txn_id'],
-                'custom_result' => 'IPN OK'
+                'custom_result' => 'IPN OK',
             ];
+            // amountf 为币种主单位；写入 paid_amount（分）供控制器比对
+            if (isset($params['amountf']) && is_numeric($params['amountf'])) {
+                $result['paid_amount'] = (int) round(((float) $params['amountf']) * 100);
+            }
+            return $result;
         } else if ($status < 0) {
             throw new ApiException('Payment Timed Out or Error');
         } else {

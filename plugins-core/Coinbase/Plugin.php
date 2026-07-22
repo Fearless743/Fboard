@@ -90,13 +90,37 @@ class Plugin extends AbstractPlugin implements PaymentInterface
             throw new ApiException('HMAC signature does not match', 400);
         }
 
-        $out_trade_no = $json_param['event']['data']['metadata']['outTradeNo'];
-        $pay_trade_no = $json_param['event']['id'];
-        
-        return [
-            'trade_no' => $out_trade_no,
-            'callback_no' => $pay_trade_no
+        // 仅确认/解决类事件可入账；created/pending/failed 等不得开通
+        $eventType = $json_param['event']['type'] ?? '';
+        $allowedTypes = [
+            'charge:confirmed',
+            'charge:resolved',
+            'charge:completed',
         ];
+        if (!in_array($eventType, $allowedTypes, true)) {
+            throw new ApiException('Unsupported Coinbase event type: ' . $eventType, 400);
+        }
+
+        $out_trade_no = $json_param['event']['data']['metadata']['outTradeNo'] ?? null;
+        $pay_trade_no = $json_param['event']['id'] ?? null;
+        if (!$out_trade_no || !$pay_trade_no) {
+            throw new ApiException('Coinbase payload missing trade reference', 400);
+        }
+
+        $result = [
+            'trade_no' => $out_trade_no,
+            'callback_no' => $pay_trade_no,
+        ];
+
+        // 从 local 定价提取实付（元）→ 分，供 PaymentController 拦截少付
+        $localAmount = $json_param['event']['data']['pricing']['local']['amount']
+            ?? $json_param['event']['data']['local_price']['amount']
+            ?? null;
+        if ($localAmount !== null && is_numeric($localAmount)) {
+            $result['paid_amount'] = (int) round(((float) $localAmount) * 100);
+        }
+
+        return $result;
     }
 
     private function curlPost($url, $params = false)

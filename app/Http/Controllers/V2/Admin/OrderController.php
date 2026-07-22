@@ -218,45 +218,56 @@ class OrderController extends Controller
             return $this->fail([400202, '该订阅不存在']);
         }
 
-        $userService = new UserService();
-        if ($userService->isNotCompleteOrderByUserId($user->id)) {
-            return $this->fail([400, '该用户还有待支付的订单，无法分配']);
-        }
-
         try {
-            DB::beginTransaction();
-            $order = new Order();
-            $orderService = new OrderService($order);
-            $order->user_id = $user->id;
-            $order->plan_id = $plan->id;
-            $period = $request->input('period');
-            $order->period = PlanService::getPeriodKey((string) $period);
-            $order->trade_no = Helper::guid();
-            // 管理端表单按「元」输入，库内统一存「分」
-            $order->total_amount = Helper::yuanToCents($request->input('total_amount'));
+            // 与用户侧 createFromRequest 对齐：事务内锁用户行再查未完成订单，避免并发 assign 叠 PENDING
+            $tradeNo = DB::transaction(function () use ($request, $plan, $user) {
+                $lockedUser = User::query()->lockForUpdate()->find($user->id);
+                if (!$lockedUser) {
+                    throw new \App\Exceptions\ApiException('该用户不存在');
+                }
 
-            if (PlanService::getPeriodKey((string) $order->period) === Plan::PERIOD_RESET_TRAFFIC) {
-                $order->type = Order::TYPE_RESET_TRAFFIC;
-            } else if ($user->plan_id !== NULL && $order->plan_id !== $user->plan_id) {
-                $order->type = Order::TYPE_UPGRADE;
-            } else if ($user->expired_at > time() && $order->plan_id == $user->plan_id) {
-                $order->type = Order::TYPE_RENEWAL;
-            } else {
-                $order->type = Order::TYPE_NEW_PURCHASE;
-            }
+                $userService = new UserService();
+                if ($userService->isNotCompleteOrderByUserId($lockedUser->id)) {
+                    throw new \App\Exceptions\ApiException('该用户还有待支付的订单，无法分配');
+                }
 
-            $orderService->setInvite($user);
+                $order = new Order();
+                $orderService = new OrderService($order);
+                $order->user_id = $lockedUser->id;
+                $order->plan_id = $plan->id;
+                $period = $request->input('period');
+                $order->period = PlanService::getPeriodKey((string) $period);
+                $order->trade_no = Helper::guid();
+                // 管理端表单按「元」输入，库内统一存「分」
+                $order->total_amount = Helper::yuanToCents($request->input('total_amount'));
+                // 显式 PENDING：否则 save 后内存 status 为 null，立即 paid() 会跳过入账
+                $order->status = Order::STATUS_PENDING;
 
-            if (!$order->save()) {
-                DB::rollBack();
-                return $this->fail([500, '订单创建失败']);
-            }
-            DB::commit();
+                if (PlanService::getPeriodKey((string) $order->period) === Plan::PERIOD_RESET_TRAFFIC) {
+                    $order->type = Order::TYPE_RESET_TRAFFIC;
+                } else if ($lockedUser->plan_id !== NULL && $order->plan_id !== $lockedUser->plan_id) {
+                    $order->type = Order::TYPE_UPGRADE;
+                } else if ($lockedUser->expired_at > time() && $order->plan_id == $lockedUser->plan_id) {
+                    $order->type = Order::TYPE_RENEWAL;
+                } else {
+                    $order->type = Order::TYPE_NEW_PURCHASE;
+                }
+
+                $orderService->setInvite($lockedUser);
+
+                if (!$order->save()) {
+                    throw new \App\Exceptions\ApiException('订单创建失败');
+                }
+
+                return $order->trade_no;
+            });
+        } catch (\App\Exceptions\ApiException $e) {
+            return $this->fail([400, $e->getMessage()]);
         } catch (\Exception $e) {
-            DB::rollBack();
-            throw $e;
+            Log::error($e);
+            return $this->fail([500, '订单创建失败']);
         }
 
-        return $this->success($order->trade_no);
+        return $this->success($tradeNo);
     }
 }

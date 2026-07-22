@@ -34,6 +34,9 @@ class Client
         if (!$user) {
             throw new ApiException('token is error',403);
         }
+        if ((int) $user->banned === 1) {
+            throw new ApiException(__('Your account has been suspended'), 403);
+        }
 
         Auth::setUser($user);
 

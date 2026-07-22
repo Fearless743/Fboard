@@ -55,9 +55,20 @@ class ShadowsocksTidalabController extends Controller
         $formatData = [];
 
         foreach ($data as $item) {
-            $formatData[$item['user_id']] = [$item['u'], $item['d']];
+            if (!is_array($item) || !isset($item['user_id'], $item['u'], $item['d'])) {
+                continue;
+            }
+            // 与 V2 processTraffic 一致：只接受非负增量，防止负流量回退
+            $u = (float) $item['u'];
+            $d = (float) $item['d'];
+            if ($u < 0 || $d < 0) {
+                continue;
+            }
+            $formatData[$item['user_id']] = [$u, $d];
         }
-        $userService->trafficFetch($server, 'shadowsocks', $formatData);
+        if (!empty($formatData)) {
+            $userService->trafficFetch($server, 'shadowsocks', $formatData);
+        }
 
         return response([
             'ret' => 1,

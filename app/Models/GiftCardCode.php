@@ -109,8 +109,13 @@ class GiftCardCode extends Model
      */
     public function isAvailable(): bool
     {
-        // 检查状态
-        if (in_array($this->status, [self::STATUS_EXPIRED, self::STATUS_DISABLED])) {
+        // USED/EXPIRED/DISABLED 均不可兑；USED 不能只靠 usage_count 推断
+        // （异常数据或管理端改状态后可能 usage_count 与 status 不一致）
+        if (in_array((int) $this->status, [
+            self::STATUS_USED,
+            self::STATUS_EXPIRED,
+            self::STATUS_DISABLED,
+        ], true)) {
             return false;
         }
 
@@ -136,14 +141,22 @@ class GiftCardCode extends Model
     }
 
     /**
-     * 标记为已使用
+     * 标记为已使用。
+     * 调用方应已在事务内 lockForUpdate；此处再校验次数并原子 +1。
      */
     public function markAsUsed(User $user): bool
     {
-        $this->status = self::STATUS_USED;
+        if ($this->usage_count >= $this->max_usage) {
+            return false;
+        }
+
+        $this->usage_count += 1;
         $this->user_id = $user->id;
         $this->used_at = time();
-        $this->usage_count += 1;
+        // max_usage=1 或已用尽时标记 USED；允许多次用时保持 UNUSED 直至达上限
+        if ($this->usage_count >= $this->max_usage) {
+            $this->status = self::STATUS_USED;
+        }
 
         return $this->save();
     }

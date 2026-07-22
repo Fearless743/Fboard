@@ -102,13 +102,32 @@ class Plugin extends AbstractPlugin implements PaymentInterface
         $invoiceDetail = file_get_contents($this->getConfig('btcpay_url') . 'api/v1/stores/' . $this->getConfig('btcpay_storeId') . '/invoices/' . $json_param['invoiceId'], false, $context);
         $invoiceDetail = json_decode($invoiceDetail, true);
 
-        $out_trade_no = $invoiceDetail['metadata']["orderId"];
-        $pay_trade_no = $json_param['invoiceId'];
-        
-        return [
+        if (!is_array($invoiceDetail)) {
+            throw new ApiException('BTCPay invoice fetch failed', 400);
+        }
+
+        // 仅已结算发票可入账；New/Processing/Expired/Invalid 等不得开通
+        $status = (string) ($invoiceDetail['status'] ?? '');
+        $allowed = ['Settled', 'Complete', 'complete', 'settled', 'paid', 'Paid'];
+        if (!in_array($status, $allowed, true)) {
+            throw new ApiException('BTCPay invoice not settled: ' . $status, 400);
+        }
+
+        $out_trade_no = $invoiceDetail['metadata']['orderId'] ?? null;
+        $pay_trade_no = $json_param['invoiceId'] ?? null;
+        if (!$out_trade_no || !$pay_trade_no) {
+            throw new ApiException('BTCPay payload missing trade reference', 400);
+        }
+
+        $result = [
             'trade_no' => $out_trade_no,
-            'callback_no' => $pay_trade_no
+            'callback_no' => $pay_trade_no,
         ];
+        // amount 单位为发票币种主单位，写入 paid_amount（分）供控制器比对
+        if (isset($invoiceDetail['amount']) && is_numeric($invoiceDetail['amount'])) {
+            $result['paid_amount'] = (int) round(((float) $invoiceDetail['amount']) * 100);
+        }
+        return $result;
     }
 
     private function curlPost($url, $params = false)

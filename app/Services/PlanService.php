@@ -76,7 +76,8 @@ class PlanService
         $periodKey = self::getPeriodKey($period);
         $price = $this->plan->prices[$periodKey] ?? null;
 
-        if ($price === null) {
+        // 与 getAvailablePeriods 一致：仅 >0 可购；0/null 均拒绝，避免 0 元套餐 checkout 免单开通
+        if ($price === null || (float) $price <= 0) {
             throw new ApiException(__('This payment period cannot be purchased, please choose another period'));
         }
 

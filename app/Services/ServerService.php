@@ -433,6 +433,15 @@ class ServerService
                 'transport' => data_get($protocolSettings, 'transport', 'TCP'),
                 'traffic_pattern' => $protocolSettings['traffic_pattern'],
             ],
+            'shadowquic' => [
+                ...$baseConfig,
+                'server_port' => (int) $serverPort,
+                'jls_upstream' => data_get($protocolSettings, 'jls_upstream'),
+                'server_name' => data_get($protocolSettings, 'server_name'),
+                'congestion_control' => data_get($protocolSettings, 'congestion_control', 'bbr'),
+                'zero_rtt' => (bool) data_get($protocolSettings, 'zero_rtt', true),
+                'alpn' => data_get($protocolSettings, 'alpn', ['h3']),
+            ],
             'sudoku' => [
                 ...$baseConfig,
                 'server_port' => (int) $serverPort,

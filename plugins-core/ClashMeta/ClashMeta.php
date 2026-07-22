@@ -26,6 +26,7 @@ class ClashMeta extends AbstractProtocol
         Server::TYPE_SOCKS,
         Server::TYPE_HTTP,
         Server::TYPE_MIERU,
+        Server::TYPE_SHADOWQUIC,
         Server::TYPE_SUDOKU,
     ];
 
@@ -194,6 +195,10 @@ class ClashMeta extends AbstractProtocol
             }
             if ($item['type'] === Server::TYPE_MIERU) {
                 array_push($proxy, self::buildMieru($item['password'], $item));
+                array_push($proxies, $item['name']);
+            }
+            if ($item['type'] === Server::TYPE_SHADOWQUIC) {
+                array_push($proxy, self::buildShadowQUIC($item['password'], $item));
                 array_push($proxies, $item['name']);
             }
             if ($item['type'] === Server::TYPE_SUDOKU) {
@@ -707,6 +712,38 @@ class ClashMeta extends AbstractProtocol
         // 如果配置了端口范围
         if (isset($server['ports'])) {
             $array['port-range'] = $server['ports'];
+        }
+
+        return $array;
+    }
+
+    public static function buildShadowQUIC($password, $server)
+    {
+        $protocol_settings = data_get($server, 'protocol_settings', []);
+        $array = [
+            'name' => $server['name'],
+            'type' => 'shadowquic',
+            'server' => $server['host'],
+            'port' => $server['port'],
+            'username' => $password,
+            'password' => $password,
+            'udp' => true,
+        ];
+
+        if ($sni = data_get($protocol_settings, 'server_name')) {
+            $array['sni'] = $sni;
+        }
+        if ($alpn = data_get($protocol_settings, 'alpn')) {
+            $array['alpn'] = is_array($alpn) ? array_values($alpn) : [$alpn];
+        } else {
+            $array['alpn'] = ['h3'];
+        }
+        if ($cc = data_get($protocol_settings, 'congestion_control')) {
+            $array['congestion-controller'] = $cc;
+        }
+        $array['zero-rtt'] = (bool) data_get($protocol_settings, 'zero_rtt', true);
+        if (data_get($protocol_settings, 'udp_over_stream')) {
+            $array['udp-over-stream'] = true;
         }
 
         return $array;

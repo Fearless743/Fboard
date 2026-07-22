@@ -74,6 +74,7 @@ class Server extends Model
     public const TYPE_HTTP = "http";
     public const TYPE_MIERU = "mieru";
     public const TYPE_SUDOKU = "sudoku";
+    public const TYPE_SHADOWQUIC = "shadowquic";
     public const STATUS_OFFLINE = 0;
     public const STATUS_ONLINE_NO_PUSH = 1;
     public const STATUS_ONLINE = 2;

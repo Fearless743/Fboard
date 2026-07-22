@@ -432,17 +432,25 @@ class Stash extends AbstractProtocol
     public static function buildHysteria($password, $server)
     {
         $protocol_settings = $server['protocol_settings'];
-        $array['name'] = $server['name'];
-        $array['server'] = $server['host'];
-        $array['port'] = $server['port'];
-        $array['up-speed'] = data_get($protocol_settings, 'bandwidth.up');
-        $array['down-speed'] = data_get($protocol_settings, 'bandwidth.down');
-        $array['skip-cert-verify'] = data_get($protocol_settings, 'tls.allow_insecure');
+        $array = [
+            'name' => $server['name'],
+            'server' => $server['host'],
+            'port' => $server['port'],
+            'up-speed' => data_get($protocol_settings, 'bandwidth.up'),
+            'down-speed' => data_get($protocol_settings, 'bandwidth.down'),
+            'skip-cert-verify' => (bool) data_get($protocol_settings, 'tls.allow_insecure', false),
+            'udp' => true,
+        ];
         if ($serverName = data_get($protocol_settings, 'tls.server_name')) {
             $array['sni'] = $serverName;
         }
+        // 端口跳跃：与上游 v2board PR#329 / ClashMeta 对齐，同时写 ports 与 mport
         if (isset($server['ports'])) {
             $array['ports'] = $server['ports'];
+            $array['mport'] = $server['ports'];
+        }
+        if ($hopInterval = data_get($protocol_settings, 'hop_interval')) {
+            $array['hop-interval'] = (int) $hopInterval;
         }
         switch (data_get($protocol_settings, 'version')) {
             case 1:
@@ -454,8 +462,9 @@ class Stash extends AbstractProtocol
                 }
                 break;
             case 2:
+                // mihomo/Stash 使用 password（非 auth），见 MetaCubeX hysteria2 outbound
                 $array['type'] = 'hysteria2';
-                $array['auth'] = $password;
+                $array['password'] = $password;
                 $array['fast-open'] = true;
                 if (data_get($protocol_settings, 'obfs.open')) {
                     $array['obfs'] = data_get($protocol_settings, 'obfs.type', 'salamander');
@@ -509,10 +518,16 @@ class Stash extends AbstractProtocol
             'server' => $server['host'],
             'port' => $server['port'],
             'password' => $password,
-            'sni' => data_get($protocol_settings, 'tls.server_name'),
-            'skip-cert-verify' => (bool) data_get($protocol_settings, 'tls.allow_insecure', false),
             'udp' => true,
         ];
+
+        // 仅在有非空 SNI 时写入，避免 sni: "" 覆盖客户端默认用 host 作 SNI 的行为
+        if ($serverName = data_get($protocol_settings, 'tls.server_name')) {
+            $array['sni'] = $serverName;
+        }
+        if ($allowInsecure = data_get($protocol_settings, 'tls.allow_insecure')) {
+            $array['skip-cert-verify'] = (bool) $allowInsecure;
+        }
 
         return $array;
     }

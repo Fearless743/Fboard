@@ -21,6 +21,7 @@ class General extends AbstractProtocol
         Server::TYPE_SOCKS,
         Server::TYPE_TUIC,
         Server::TYPE_HTTP,
+        Server::TYPE_SHADOWQUIC,
     ];
 
     protected $protocolRequirements = [
@@ -45,6 +46,7 @@ class General extends AbstractProtocol
                 Server::TYPE_SOCKS => self::buildSocks($item['password'], $item),
                 Server::TYPE_TUIC => self::buildTuic($item['password'], $item),
                 Server::TYPE_HTTP => self::buildHttp($item['password'], $item),
+                Server::TYPE_SHADOWQUIC => self::buildShadowQUIC($item['password'], $item),
                 default => '',
             };
         }
@@ -462,6 +464,39 @@ class General extends AbstractProtocol
         $uri = "http://{$credentials}@{$addr}:{$server['port']}";
         if (!empty($params)) {
             $uri .= '?' . http_build_query($params);
+        }
+        $uri .= "#{$name}\r\n";
+        return $uri;
+    }
+
+    public static function buildShadowQUIC($password, $server)
+    {
+        $protocol_settings = data_get($server, 'protocol_settings', []) ?: [];
+        $name = rawurlencode((string) ($server['name'] ?? ''));
+        $addr = Helper::wrapIPv6($server['host']);
+        $port = $server['port'];
+        $user = rawurlencode((string) $password);
+        $pass = rawurlencode((string) $password);
+
+        $queryParams = [];
+        if ($sni = data_get($protocol_settings, 'server_name')) {
+            $queryParams['sni'] = $sni;
+        }
+        if ($alpn = data_get($protocol_settings, 'alpn')) {
+            $queryParams['alpn'] = is_array($alpn) ? implode(',', $alpn) : $alpn;
+        } else {
+            $queryParams['alpn'] = 'h3';
+        }
+        $queryParams['congestion_control'] = data_get($protocol_settings, 'congestion_control', 'bbr');
+        $queryParams['zero_rtt'] = data_get($protocol_settings, 'zero_rtt', true) ? '1' : '0';
+        if (data_get($protocol_settings, 'udp_over_stream')) {
+            $queryParams['udp_over_stream'] = '1';
+        }
+
+        $query = http_build_query($queryParams);
+        $uri = "shadowquic://{$user}:{$pass}@{$addr}:{$port}";
+        if ($query !== '') {
+            $uri .= "?{$query}";
         }
         $uri .= "#{$name}\r\n";
         return $uri;

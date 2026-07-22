@@ -19,6 +19,7 @@ class Plugin extends AbstractPlugin
         $this->registerNaive();
         $this->registerHTTP();
         $this->registerMieru();
+        $this->registerShadowQUIC();
         $this->registerSudoku();
     }
 
@@ -332,6 +333,55 @@ class Plugin extends AbstractPlugin
         ), '[mieru]');
     }
 
+
+    private function registerShadowQUIC(): void
+    {
+        $this->registerProtocolDefinition('shadowquic', 'ShadowQUIC', [
+            'jls_upstream' => [
+                'type' => 'string',
+                'default' => null,
+                'label' => 'JLS 伪装上游',
+                'description' => '必填，格式 host:port，例如 www.cloudflare.com:443',
+                'placeholder' => 'www.cloudflare.com:443',
+            ],
+            'server_name' => [
+                'type' => 'string',
+                'default' => null,
+                'label' => 'SNI / server_name',
+                'description' => '可空；为空时节点侧可从 jls_upstream 解析主机名',
+            ],
+            'alpn' => [
+                'type' => 'array',
+                'default' => ['h3'],
+                'label' => 'ALPN',
+                'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2', 'http/1.1' => 'http/1.1'],
+            ],
+            'congestion_control' => [
+                'type' => 'string',
+                'default' => 'bbr',
+                'label' => '拥塞控制',
+                'options' => ['bbr' => 'BBR', 'cubic' => 'CUBIC', 'new_reno' => 'New Reno'],
+            ],
+            'zero_rtt' => [
+                'type' => 'boolean',
+                'default' => true,
+                'label' => '0-RTT',
+            ],
+            'udp_over_stream' => [
+                'type' => 'boolean',
+                'default' => false,
+                'label' => 'UDP over Stream',
+                'description' => '仅影响客户端订阅；服务端同时支持 datagram 与 stream 关联',
+            ],
+        ], [
+            'jls_upstream' => 'required|string',
+            'server_name' => 'nullable|string',
+            'alpn' => 'nullable|array',
+            'congestion_control' => 'nullable|string|in:bbr,cubic,new_reno',
+            'zero_rtt' => 'nullable|boolean',
+            'udp_over_stream' => 'nullable|boolean',
+        ], '[shadowquic]');
+    }
 
     private function registerSudoku(): void
     {

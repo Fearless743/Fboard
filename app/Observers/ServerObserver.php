@@ -17,6 +17,10 @@ class ServerObserver
     public function updated(Server $server): void
     {
         if ($server->wasChanged('group_ids')) {
+            // 父节点缩减权限组后，裁剪子节点多出的组，保持「子 ⊆ 父」
+            if ($server->type !== Server::TYPE_VIRTUAL) {
+                $server->syncVirtualChildrenGroupIds();
+            }
             NodeSyncService::notifyFullSync($server->id);
         } elseif ($server->wasChanged([
             'server_port',

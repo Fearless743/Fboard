@@ -81,6 +81,32 @@ class Server extends Model
 
     protected static function booted(): void
     {
+        // 任意写入路径都强制：子/虚拟节点 group_ids ⊆ 父节点
+        static::saving(function (Server $server) {
+            if (!$server->parent_id) {
+                return;
+            }
+            // 仅约束虚拟子节点；普通节点不应挂 parent_id（历史数据除外）
+            if ($server->type !== self::TYPE_VIRTUAL && $server->getOriginal('type') !== self::TYPE_VIRTUAL) {
+                return;
+            }
+
+            $parent = $server->relationLoaded('parent')
+                ? $server->parent
+                : static::query()->find($server->parent_id);
+            if (!$parent) {
+                throw new \InvalidArgumentException('父节点不存在');
+            }
+            if ($parent->type === self::TYPE_VIRTUAL) {
+                throw new \InvalidArgumentException('不能在虚拟节点下再创建子节点');
+            }
+
+            $server->group_ids = self::assertGroupIdsWithinParent(
+                $server->group_ids,
+                $parent->group_ids,
+            );
+        });
+
         // 父节点删除时级联删除其虚拟子节点（含单删与逐模型批量删除）
         static::deleting(function (Server $server) {
             if ($server->type === self::TYPE_VIRTUAL) {
@@ -207,6 +233,98 @@ class Server extends Model
     }
 
     /**
+     * 规范化权限组 ID 列表为去重字符串数组。
+     *
+     * @param  mixed  $value
+     * @return list<string>
+     */
+    public static function normalizeGroupIdList($value): array
+    {
+        if (is_null($value)) {
+            return [];
+        }
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+            $value = is_array($decoded) ? $decoded : [$value];
+        }
+        if (!is_array($value)) {
+            $value = [$value];
+        }
+
+        $normalized = [];
+        foreach ($value as $id) {
+            if ($id === null || $id === '') {
+                continue;
+            }
+            $key = (string) $id;
+            if (!in_array($key, $normalized, true)) {
+                $normalized[] = $key;
+            }
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * 校验子/虚拟节点权限组必须是父节点权限组的子集。
+     *
+     * 连接由父节点进程承载，父节点只按自身 group_ids 下发用户；
+     * 若子节点多出父节点没有的组，会出现「能订阅、不能连接」。
+     *
+     * @param  array<int|string>|null  $childGroupIds
+     * @param  array<int|string>|null  $parentGroupIds
+     * @return list<string> 规范化后的子节点 group_ids
+     *
+     * @throws \InvalidArgumentException
+     */
+    public static function assertGroupIdsWithinParent(
+        $childGroupIds,
+        $parentGroupIds,
+    ): array {
+        $child = self::normalizeGroupIdList($childGroupIds);
+        $parent = self::normalizeGroupIdList($parentGroupIds);
+        $extra = array_values(array_diff($child, $parent));
+        if ($extra !== []) {
+            throw new \InvalidArgumentException(
+                '子节点权限组不能超出父节点：' . implode(', ', $extra),
+            );
+        }
+
+        return $child;
+    }
+
+    /**
+     * 父节点权限组缩减后，裁剪虚拟子节点中超出的组，保持「子 ⊆ 父」。
+     */
+    public function syncVirtualChildrenGroupIds(): void
+    {
+        if ($this->type === self::TYPE_VIRTUAL || !$this->id) {
+            return;
+        }
+
+        $parentGroups = self::normalizeGroupIdList($this->group_ids);
+        $children = static::query()
+            ->where('parent_id', $this->id)
+            ->where('type', self::TYPE_VIRTUAL)
+            ->get();
+
+        foreach ($children as $child) {
+            $current = self::normalizeGroupIdList($child->group_ids);
+            $clipped = array_values(array_intersect($current, $parentGroups));
+            // 比较集合（与顺序无关）
+            $same =
+                count($current) === count($clipped)
+                && array_diff($current, $clipped) === [];
+            if ($same) {
+                continue;
+            }
+            // 静默更新，避免子节点 group_ids 变更再触发无意义的 fullSync
+            $child->group_ids = $clipped;
+            $child->saveQuietly();
+        }
+    }
+
+    /**
      * 统一将 group_ids 序列化为字符串数组，避免 JSON_CONTAINS 因类型不匹配导致查询失败。
      *
      * MySQL JSON_CONTAINS 对类型严格敏感：
@@ -220,18 +338,7 @@ class Server extends Model
             $this->attributes["group_ids"] = null;
             return;
         }
-        if (is_string($value)) {
-            $decoded = json_decode($value, true);
-            $value = is_array($decoded) ? $decoded : [$value];
-        }
-        $normalized = array_values(
-            array_unique(
-                array_map(
-                    fn($id) => (string) $id,
-                    is_array($value) ? $value : [$value],
-                ),
-            ),
-        );
+        $normalized = self::normalizeGroupIdList($value);
         $this->attributes["group_ids"] = json_encode($normalized);
     }
 
@@ -328,6 +435,19 @@ class Server extends Model
         $parentId = $data["parent_id"] ?? null;
         if (!$parentId || !($parent = self::find($parentId))) {
             throw new \InvalidArgumentException("父节点不存在");
+        }
+        if ($parent->type === self::TYPE_VIRTUAL) {
+            throw new \InvalidArgumentException("不能在虚拟节点下再创建子节点");
+        }
+
+        // 权限组必须是父节点子集；未指定时默认继承父节点全部权限组
+        if (array_key_exists("group_ids", $data) && $data["group_ids"] !== null) {
+            $data["group_ids"] = self::assertGroupIdsWithinParent(
+                $data["group_ids"],
+                $parent->group_ids,
+            );
+        } else {
+            $data["group_ids"] = self::normalizeGroupIdList($parent->group_ids);
         }
 
         $data["type"] = "virtual";

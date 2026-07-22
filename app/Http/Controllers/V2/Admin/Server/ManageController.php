@@ -198,6 +198,8 @@ class ManageController extends Controller
                 ]);
 
                 return $this->success(true);
+            } catch (\InvalidArgumentException $e) {
+                return $this->fail([400, $e->getMessage()]);
             } catch (\Exception $e) {
                 Log::error($e);
                 return $this->fail([500, "保存失败"]);
@@ -220,6 +222,8 @@ class ManageController extends Controller
             ]);
 
             return $this->success(true);
+        } catch (\InvalidArgumentException $e) {
+            return $this->fail([400, $e->getMessage()]);
         } catch (\Exception $e) {
             Log::error($e);
             return $this->fail([500, "创建失败"]);
@@ -251,6 +255,8 @@ class ManageController extends Controller
             ]);
 
             return $this->success(true);
+        } catch (\InvalidArgumentException $e) {
+            return $this->fail([400, $e->getMessage()]);
         } catch (\Exception $e) {
             Log::error($e);
             return $this->fail([500, "保存失败"]);
@@ -501,6 +507,8 @@ class ManageController extends Controller
         try {
             $server = Server::createVirtual($request->all());
             return $this->success($server);
+        } catch (\InvalidArgumentException $e) {
+            return $this->fail([400, $e->getMessage()]);
         } catch (\Exception $e) {
             Log::error("创建子节点失败", ["error" => $e->getMessage()]);
             return $this->fail([500, "创建失败"]);
@@ -527,17 +535,32 @@ class ManageController extends Controller
             if (!$server || $server->type !== "virtual") {
                 return $this->fail([400, "子节点不存在"]);
             }
-            $server->update(
-                $request->only([
-                    "name",
-                    "host",
-                    "port",
-                    "group_ids",
-                    "tags",
-                    "show",
-                ]),
-            );
+
+            $payload = $request->only([
+                "name",
+                "host",
+                "port",
+                "group_ids",
+                "tags",
+                "show",
+            ]);
+
+            // 子节点权限组不能超出父节点（连接由父节点进程承载）
+            if (array_key_exists("group_ids", $payload)) {
+                $parent = $server->parent;
+                if (!$parent) {
+                    return $this->fail([400, "父节点不存在"]);
+                }
+                $payload["group_ids"] = Server::assertGroupIdsWithinParent(
+                    $payload["group_ids"],
+                    $parent->group_ids,
+                );
+            }
+
+            $server->update($payload);
             return $this->success($server);
+        } catch (\InvalidArgumentException $e) {
+            return $this->fail([400, $e->getMessage()]);
         } catch (\Exception $e) {
             Log::error("更新子节点失败", ["error" => $e->getMessage()]);
             return $this->fail([500, "更新失败"]);
@@ -596,13 +619,27 @@ class ManageController extends Controller
         ]);
 
         try {
+            $nodes = array_values($request->input("virtual_nodes", []));
+            // 旧 JSON 方案同样约束：虚拟入口权限组 ⊆ 父节点
+            foreach ($nodes as $i => $node) {
+                if (!is_array($node)) {
+                    continue;
+                }
+                if (array_key_exists("group_ids", $node)) {
+                    $nodes[$i]["group_ids"] = Server::assertGroupIdsWithinParent(
+                        $node["group_ids"] ?? [],
+                        $server->group_ids,
+                    );
+                }
+            }
+
             $settings = $server->protocol_settings ?? [];
-            $settings["virtual_nodes"] = array_values(
-                $request->input("virtual_nodes", []),
-            );
+            $settings["virtual_nodes"] = $nodes;
             $server->protocol_settings = $settings;
             $server->save();
             return $this->success($settings["virtual_nodes"]);
+        } catch (\InvalidArgumentException $e) {
+            return $this->fail([400, $e->getMessage()]);
         } catch (\Exception $e) {
             Log::error("保存虚拟节点失败", ["error" => $e->getMessage()]);
             return $this->fail([500, "保存失败"]);

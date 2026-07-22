@@ -111,8 +111,11 @@ class ServerService
     }
 
     /**
-     * 根据权限组获取可用的用户列表
-     * @param array $groupIds
+     * 根据权限组获取可用的用户列表。
+     *
+     * 物理节点只按自身 group_ids 下发；子/虚拟节点权限组必须是父节点子集
+     * （见 Server::assertGroupIdsWithinParent），因此不会出现「能订阅不能连」。
+     *
      * @return Collection
      */
     public static function getAvailableUsers(Server $node)

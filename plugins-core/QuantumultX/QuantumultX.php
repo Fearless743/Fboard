@@ -4,19 +4,19 @@ namespace Plugin\QuantumultX;
 
 use App\Utils\Helper;
 use App\Support\AbstractProtocol;
-use App\Models\Server;
+use Plugin\CoreProtocols\ProtocolTypes;
 
 class QuantumultX extends AbstractProtocol
 {
     public $flags = ['quantumult%20x', 'quantumult-x'];
     public $allowedProtocols = [
-        Server::TYPE_SHADOWSOCKS,
-        Server::TYPE_VMESS,
-        Server::TYPE_VLESS,
-        Server::TYPE_TROJAN,
-        Server::TYPE_ANYTLS,
-        Server::TYPE_SOCKS,
-        Server::TYPE_HTTP,
+        ProtocolTypes::SHADOWSOCKS,
+        ProtocolTypes::VMESS,
+        ProtocolTypes::VLESS,
+        ProtocolTypes::TROJAN,
+        ProtocolTypes::ANYTLS,
+        ProtocolTypes::SOCKS,
+        ProtocolTypes::HTTP,
     ];
 
     public function handle()
@@ -26,13 +26,13 @@ class QuantumultX extends AbstractProtocol
         $uri = '';
         foreach ($servers as $item) {
             $uri .= match ($item['type']) {
-                Server::TYPE_SHADOWSOCKS => self::buildShadowsocks($item['password'], $item),
-                Server::TYPE_VMESS => self::buildVmess($item['password'], $item),
-                Server::TYPE_VLESS => self::buildVless($item['password'], $item),
-                Server::TYPE_TROJAN => self::buildTrojan($item['password'], $item),
-                Server::TYPE_ANYTLS => self::buildAnyTLS($item['password'], $item),
-                Server::TYPE_SOCKS => self::buildSocks5($item['password'], $item),
-                Server::TYPE_HTTP => self::buildHttp($item['password'], $item),
+                ProtocolTypes::SHADOWSOCKS => self::buildShadowsocks($item['password'], $item),
+                ProtocolTypes::VMESS => self::buildVmess($item['password'], $item),
+                ProtocolTypes::VLESS => self::buildVless($item['password'], $item),
+                ProtocolTypes::TROJAN => self::buildTrojan($item['password'], $item),
+                ProtocolTypes::ANYTLS => self::buildAnyTLS($item['password'], $item),
+                ProtocolTypes::SOCKS => self::buildSocks5($item['password'], $item),
+                ProtocolTypes::HTTP => self::buildHttp($item['password'], $item),
                 default => ''
             };
         }
@@ -175,7 +175,7 @@ class QuantumultX extends AbstractProtocol
     private static function applyCommonSettings(&$config, $server)
     {
         $config[] = 'fast-open=true';
-        if ($server['type'] !== Server::TYPE_HTTP) {
+        if ($server['type'] !== ProtocolTypes::HTTP) {
             $config[] = 'udp-relay=true';
         }
         $config[] = "tag={$server['name']}";

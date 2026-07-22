@@ -7,7 +7,6 @@ use App\Models\ServerMachine;
 use App\Models\ServerRoute;
 use App\Models\User;
 use App\Services\Plugin\HookManager;
-use App\Support\SudokuKey;
 use App\Utils\CacheKey;
 use App\Utils\Helper;
 use Illuminate\Support\Facades\Cache;
@@ -138,8 +137,9 @@ class ServerService
             ])
             ->get();
 
-        // Sudoku nodes expect Available Private Key in uuid field for node auth.
-        if (($node->type ?? null) === Server::TYPE_SUDOKU || ($node->type ?? null) === 'sudoku') {
+        // 部分协议（如 Sudoku）要求节点用户列表的 uuid 字段为派生密钥而非原始 uuid
+        $definition = app(ProtocolDefinitionRegistry::class)->get((string) ($node->type ?? ''));
+        if ($definition?->transformNodeUserUuid) {
             $users = $users->map(function ($user) use ($node) {
                 $userModel = new User();
                 $userModel->forceFill(['uuid' => $user->uuid]);
@@ -299,173 +299,30 @@ class ServerService
         );
     }
 
+    /**
+     * 构建节点守护进程配置。
+     * 协议字段由 ProtocolDefinition.serverConfigBuilder（插件注册）生成；
+     * 公共字段（路由/出站/证书）在此追加，最后经 protocols.server_config 钩子扩展。
+     */
     public static function buildNodeConfig(Server $node): array
     {
         $nodeType = $node->type;
         $protocolSettings = $node->protocol_settings;
-        $serverPort = $node->server_port;
-        $host = $node->host;
 
         $baseConfig = [
             'protocol' => $nodeType,
             'listen_ip' => '0.0.0.0',
-            'server_port' => (int) $serverPort,
+            'server_port' => (int) $node->server_port,
             'network' => data_get($protocolSettings, 'network'),
             'networkSettings' => data_get($protocolSettings, 'network_settings') ?: null,
             'maintenance_mode' => (bool) admin_setting('maintenance_mode', 0),
         ];
 
-        // Hy2 multi-port listen for client UDP hopping (null when single port / invalid).
-        $hysteriaListenPorts = $nodeType === 'hysteria'
-            ? self::hysteriaListenPorts($node)
-            : null;
-
-        $response = match ($nodeType) {
-            'shadowsocks' => [
-                ...$baseConfig,
-                'cipher' => $protocolSettings['cipher'],
-                'plugin' => $protocolSettings['plugin'],
-                'plugin_opts' => $protocolSettings['plugin_opts'],
-                'server_key' => match ($protocolSettings['cipher']) {
-                        '2022-blake3-aes-128-gcm' => Helper::getServerKey($node->created_at, 16),
-                        '2022-blake3-aes-256-gcm' => Helper::getServerKey($node->created_at, 32),
-                        default => null,
-                    },
-            ],
-            'vmess' => [
-                ...$baseConfig,
-                'tls' => (int) $protocolSettings['tls'],
-                'tls_settings' => $protocolSettings['tls_settings'],
-                'multiplex' => data_get($protocolSettings, 'multiplex'),
-            ],
-            'trojan' => [
-                ...$baseConfig,
-                'host' => $host,
-                'server_name' => data_get($protocolSettings, 'tls_settings.server_name'),
-                'multiplex' => data_get($protocolSettings, 'multiplex'),
-                'tls' => (int) $protocolSettings['tls'],
-                'tls_settings' => match ((int) $protocolSettings['tls']) {
-                        2 => Helper::normalizeRealitySettings($protocolSettings['reality_settings'] ?? null),
-                        default => $protocolSettings['tls_settings'],
-                    },
-            ],
-            'vless' => [
-                ...$baseConfig,
-                'tls' => (int) $protocolSettings['tls'],
-                'flow' => $protocolSettings['flow'],
-                'decryption' => match (data_get($protocolSettings, 'encryption.enabled')) {
-                    true => data_get($protocolSettings, 'encryption.decryption'),
-                    default => null,
-                },
-                'tls_settings' => match ((int) $protocolSettings['tls']) {
-                        2 => Helper::normalizeRealitySettings($protocolSettings['reality_settings'] ?? null),
-                        default => $protocolSettings['tls_settings'],
-                    },
-                'multiplex' => data_get($protocolSettings, 'multiplex'),
-            ],
-            'hysteria' => [
-                ...$baseConfig,
-                'server_port' => (int) $serverPort,
-                // Client port range (e.g. 10000-20000) → node multi-port listen for Hy2 hopping.
-                // Subscription already exposes the same range via $server->ports; hop_interval is client-only.
-                ...($hysteriaListenPorts !== null ? ['listen_ports' => $hysteriaListenPorts] : []),
-                'version' => (int) $protocolSettings['version'],
-                'host' => $host,
-                'server_name' => $protocolSettings['tls']['server_name'],
-                'tls_settings' => $protocolSettings['tls'],
-                'up_mbps' => (int) $protocolSettings['bandwidth']['up'],
-                'down_mbps' => (int) $protocolSettings['bandwidth']['down'],
-                // Hysteria Realms URI (realm://token@host/name); empty = ordinary Hy2.
-                'realm' => filled(data_get($protocolSettings, 'realm'))
-                    ? trim((string) data_get($protocolSettings, 'realm'))
-                    : null,
-                'realm_insecure' => (bool) data_get($protocolSettings, 'realm_insecure', false),
-                ...match ((int) $protocolSettings['version']) {
-                        1 => ['obfs' => $protocolSettings['obfs']['password'] ?? null],
-                        2 => [
-                            'obfs' => $protocolSettings['obfs']['open'] ? $protocolSettings['obfs']['type'] : null,
-                            'obfs-password' => $protocolSettings['obfs']['password'] ?? null,
-                        ],
-                        default => [],
-                    },
-            ],
-            'tuic' => [
-                ...$baseConfig,
-                'version' => (int) $protocolSettings['version'],
-                'server_port' => (int) $serverPort,
-                'server_name' => $protocolSettings['tls']['server_name'],
-                'congestion_control' => $protocolSettings['congestion_control'],
-                'tls_settings' => $protocolSettings['tls'],
-                'auth_timeout' => '3s',
-                'zero_rtt_handshake' => false,
-                'heartbeat' => '3s',
-            ],
-            'anytls' => [
-                ...$baseConfig,
-                'server_port' => (int) $serverPort,
-                // AnyTLS always requires TLS; expose tls=1 so node kernels enable stream TLS.
-                'tls' => 1,
-                'server_name' => $protocolSettings['tls']['server_name'],
-                'tls_settings' => $protocolSettings['tls'],
-                'padding_scheme' => $protocolSettings['padding_scheme'],
-            ],
-            'socks' => [
-                ...$baseConfig,
-                'server_port' => (int) $serverPort,
-                'tls' => (int) data_get($protocolSettings, 'tls', 0),
-                'tls_settings' => data_get($protocolSettings, 'tls_settings'),
-            ],
-            'naive' => [
-                ...$baseConfig,
-                'server_port' => (int) $serverPort,
-                'tls' => (int) $protocolSettings['tls'],
-                'tls_settings' => $protocolSettings['tls_settings'],
-            ],
-            'http' => [
-                ...$baseConfig,
-                'server_port' => (int) $serverPort,
-                'tls' => (int) $protocolSettings['tls'],
-                'tls_settings' => $protocolSettings['tls_settings'],
-            ],
-            'mieru' => [
-                ...$baseConfig,
-                'server_port' => (int) $serverPort,
-                'transport' => data_get($protocolSettings, 'transport', 'TCP'),
-                'traffic_pattern' => $protocolSettings['traffic_pattern'],
-            ],
-            'shadowquic' => [
-                ...$baseConfig,
-                'server_port' => (int) $serverPort,
-                'jls_upstream' => data_get($protocolSettings, 'jls_upstream'),
-                'server_name' => data_get($protocolSettings, 'server_name'),
-                'congestion_control' => data_get($protocolSettings, 'congestion_control', 'bbr'),
-                'zero_rtt' => (bool) data_get($protocolSettings, 'zero_rtt', true),
-                'alpn' => data_get($protocolSettings, 'alpn', ['h3']),
-            ],
-            'sudoku' => [
-                ...$baseConfig,
-                'server_port' => (int) $serverPort,
-                'server_key' => data_get($protocolSettings, 'master_public_key'),
-                'sudoku_config' => [
-                    'aead_method' => data_get($protocolSettings, 'aead_method', 'chacha20-poly1305'),
-                    'padding_min' => data_get($protocolSettings, 'padding_min', 5),
-                    'padding_max' => data_get($protocolSettings, 'padding_max', 15),
-                    'table_type' => data_get($protocolSettings, 'table_type', 'prefer_entropy'),
-                    'enable_pure_downlink' => (bool) data_get($protocolSettings, 'enable_pure_downlink', true),
-                    'custom_table' => data_get($protocolSettings, 'custom_table'),
-                    'custom_tables' => data_get($protocolSettings, 'custom_tables', []),
-                    'handshake_timeout' => data_get($protocolSettings, 'handshake_timeout', 5),
-                    'disable_http_mask' => (bool) data_get($protocolSettings, 'httpmask.disable', false),
-                    'http_mask_mode' => data_get($protocolSettings, 'httpmask.mode', 'legacy'),
-                    'path_root' => SudokuKey::normalizeHttpMaskPathRoot(
-                        data_get($protocolSettings, 'httpmask.path_root')
-                    ),
-                    'fallback' => data_get($protocolSettings, 'fallback'),
-                    'multiplex' => data_get($protocolSettings, 'multiplex', 'off'),
-                ],
-            ],
-            default => [],
-        };
+        // 协议专属配置：由 CoreProtocols 等插件在 registerProtocolDefinition 时注册的 builder 生成
+        $definition = app(ProtocolDefinitionRegistry::class)->get($nodeType);
+        $response = $definition
+            ? $definition->buildServerConfig($node, $baseConfig)
+            : [];
 
         if (!empty($node['route_ids'])) {
             $response['routes'] = self::getRoutes($node['route_ids']);
@@ -491,13 +348,8 @@ class ServerService
             }
         }
 
-        // Allow plugins to extend or override the server config
-        $pluginConfig = HookManager::filter('protocols.server_config', [], $node);
-        if (!empty($pluginConfig)) {
-            $response = array_merge($response, $pluginConfig);
-        }
-
-        return $response;
+        // 插件可在完整配置上追加/覆盖字段（初始值为已构建的配置，与文档一致）
+        return HookManager::filter('protocols.server_config', $response, $node);
     }
 
     /**

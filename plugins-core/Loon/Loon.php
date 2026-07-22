@@ -3,19 +3,19 @@
 namespace Plugin\Loon;
 
 use App\Support\AbstractProtocol;
-use App\Models\Server;
+use Plugin\CoreProtocols\ProtocolTypes;
 
 class Loon extends AbstractProtocol
 {
     public $flags = ['loon'];
 
     public $allowedProtocols = [
-        Server::TYPE_SHADOWSOCKS,
-        Server::TYPE_VMESS,
-        Server::TYPE_TROJAN,
-        Server::TYPE_HYSTERIA,
-        Server::TYPE_VLESS,
-        Server::TYPE_ANYTLS,
+        ProtocolTypes::SHADOWSOCKS,
+        ProtocolTypes::VMESS,
+        ProtocolTypes::TROJAN,
+        ProtocolTypes::HYSTERIA,
+        ProtocolTypes::VLESS,
+        ProtocolTypes::ANYTLS,
     ];
 
     protected $protocolRequirements = [
@@ -32,23 +32,23 @@ class Loon extends AbstractProtocol
 
         foreach ($servers as $item) {
             if (
-                $item['type'] === Server::TYPE_SHADOWSOCKS
+                $item['type'] === ProtocolTypes::SHADOWSOCKS
             ) {
                 $uri .= self::buildShadowsocks($item['password'], $item);
             }
-            if ($item['type'] === Server::TYPE_VMESS) {
+            if ($item['type'] === ProtocolTypes::VMESS) {
                 $uri .= self::buildVmess($item['password'], $item);
             }
-            if ($item['type'] === Server::TYPE_TROJAN) {
+            if ($item['type'] === ProtocolTypes::TROJAN) {
                 $uri .= self::buildTrojan($item['password'], $item);
             }
-            if ($item['type'] === Server::TYPE_HYSTERIA) {
+            if ($item['type'] === ProtocolTypes::HYSTERIA) {
                 $uri .= self::buildHysteria($item['password'], $item, $user);
             }
-            if ($item['type'] === Server::TYPE_VLESS) {
+            if ($item['type'] === ProtocolTypes::VLESS) {
                 $uri .= self::buildVless($item['password'], $item);
             }
-            if ($item['type'] === Server::TYPE_ANYTLS) {
+            if ($item['type'] === ProtocolTypes::ANYTLS) {
                 $uri .= self::buildAnyTLS($item['password'], $item);
             }
         }

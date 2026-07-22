@@ -11,16 +11,37 @@ use Illuminate\Support\Facades\Log;
 class ProtocolDefinitionRegistry
 {
     private array $definitions = [];
+
+    /** @var array<string, string> alias => canonical type */
+    private array $aliases = [];
+
     private bool $loaded = false;
     private bool $initializing = false;
 
     public function register(ProtocolDefinition $definition): void
     {
         $this->definitions[$definition->type] = $definition;
+        foreach ($definition->aliases as $alias) {
+            $alias = strtolower((string) $alias);
+            if ($alias !== '' && $alias !== $definition->type) {
+                $this->aliases[$alias] = $definition->type;
+            }
+        }
     }
 
-    public function registerFromArray(string $type, string $name, array $configFields, array $validationRules = [], ?string $description = null, string|array|null $prefix = null): void
-    {
+    public function registerFromArray(
+        string $type,
+        string $name,
+        array $configFields,
+        array $validationRules = [],
+        ?string $description = null,
+        string|array|null $prefix = null,
+        mixed $serverConfigBuilder = null,
+        mixed $passwordGenerator = null,
+        array $aliases = [],
+        bool $transformNodeUserUuid = false,
+        mixed $serverKeyResolver = null,
+    ): void {
         $this->register(new ProtocolDefinition(
             type: $type,
             name: $name,
@@ -28,6 +49,11 @@ class ProtocolDefinitionRegistry
             validationRules: $validationRules,
             description: $description,
             prefix: $prefix,
+            serverConfigBuilder: $serverConfigBuilder,
+            passwordGenerator: $passwordGenerator,
+            aliases: $aliases,
+            transformNodeUserUuid: $transformNodeUserUuid,
+            serverKeyResolver: $serverKeyResolver,
         ));
     }
 
@@ -40,12 +66,38 @@ class ProtocolDefinitionRegistry
     public function get(string $type): ?ProtocolDefinition
     {
         $this->loadIfNeeded();
-        return $this->definitions[$type] ?? null;
+        $canonical = $this->normalizeType($type);
+
+        return $this->definitions[$canonical] ?? $this->definitions[$type] ?? null;
     }
 
     public function getValidTypes(): array
     {
         return array_keys($this->getAll());
+    }
+
+    /**
+     * 将别名规范为协议 type（小写）。未知别名原样返回小写字符串。
+     */
+    public function normalizeType(?string $type): ?string
+    {
+        if ($type === null || $type === '') {
+            return null;
+        }
+
+        $this->loadIfNeeded();
+        $lower = strtolower($type);
+
+        return $this->aliases[$lower] ?? $lower;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function getAliases(): array
+    {
+        $this->loadIfNeeded();
+        return $this->aliases;
     }
 
     public function getConfigFields(string $type): array
@@ -68,6 +120,7 @@ class ProtocolDefinitionRegistry
     public function reset(): void
     {
         $this->definitions = [];
+        $this->aliases = [];
         $this->loaded = false;
     }
 
@@ -96,16 +149,29 @@ class ProtocolDefinitionRegistry
         $pluginDefinitions = HookManager::filter('protocols.definitions', []);
         foreach ($pluginDefinitions as $type => $data) {
             if ($data instanceof ProtocolDefinition) {
-                $this->definitions[$type] = $this->withDynamicUtls($data);
+                $this->register($this->withDynamicUtls($data));
             } elseif (is_array($data)) {
-                $this->definitions[$type] = $this->withDynamicUtls(new ProtocolDefinition(
+                $this->register($this->withDynamicUtls(new ProtocolDefinition(
                     type: $type,
                     name: $data['name'] ?? $type,
                     configFields: $data['config_fields'] ?? $data['configFields'] ?? [],
                     validationRules: $data['validation_rules'] ?? $data['validationRules'] ?? [],
                     description: $data['description'] ?? null,
                     prefix: $data['prefix'] ?? null,
-                ));
+                    serverConfigBuilder: $data['server_config_builder']
+                        ?? $data['serverConfigBuilder']
+                        ?? null,
+                    passwordGenerator: $data['password_generator']
+                        ?? $data['passwordGenerator']
+                        ?? null,
+                    aliases: array_values($data['aliases'] ?? []),
+                    transformNodeUserUuid: (bool) ($data['transform_node_user_uuid']
+                        ?? $data['transformNodeUserUuid']
+                        ?? false),
+                    serverKeyResolver: $data['server_key_resolver']
+                        ?? $data['serverKeyResolver']
+                        ?? null,
+                )));
             }
         }
     }
@@ -142,6 +208,10 @@ class ProtocolDefinitionRegistry
             description: $definition->description,
             prefix: $definition->prefix,
             serverConfigBuilder: $definition->serverConfigBuilder,
+            passwordGenerator: $definition->passwordGenerator,
+            aliases: $definition->aliases,
+            transformNodeUserUuid: $definition->transformNodeUserUuid,
+            serverKeyResolver: $definition->serverKeyResolver,
         );
     }
 }

@@ -5,16 +5,16 @@ namespace Plugin\Surfboard;
 use App\Utils\Helper;
 use Illuminate\Support\Facades\File;
 use App\Support\AbstractProtocol;
-use App\Models\Server;
+use Plugin\CoreProtocols\ProtocolTypes;
 
 class Surfboard extends AbstractProtocol
 {
     public $flags = ['surfboard'];
     public $allowedProtocols = [
-        Server::TYPE_SHADOWSOCKS,
-        Server::TYPE_VMESS,
-        Server::TYPE_TROJAN,
-        Server::TYPE_ANYTLS,
+        ProtocolTypes::SHADOWSOCKS,
+        ProtocolTypes::VMESS,
+        ProtocolTypes::TROJAN,
+        ProtocolTypes::ANYTLS,
     ];
     const CUSTOM_TEMPLATE_FILE = 'resources/rules/custom.surfboard.conf';
     const DEFAULT_TEMPLATE_FILE = 'resources/rules/default.surfboard.conf';
@@ -32,7 +32,7 @@ class Surfboard extends AbstractProtocol
 
         foreach ($servers as $item) {
             if (
-                $item['type'] === Server::TYPE_SHADOWSOCKS
+                $item['type'] === ProtocolTypes::SHADOWSOCKS
                 && in_array(data_get($item, 'protocol_settings.cipher'), [
                     'aes-128-gcm',
                     'aes-192-gcm',
@@ -48,19 +48,19 @@ class Surfboard extends AbstractProtocol
                 // [Proxy Group]
                 $proxyGroup .= $item['name'] . ', ';
             }
-            if ($item['type'] === Server::TYPE_VMESS) {
+            if ($item['type'] === ProtocolTypes::VMESS) {
                 // [Proxy]
                 $proxies .= self::buildVmess($item['password'], $item);
                 // [Proxy Group]
                 $proxyGroup .= $item['name'] . ', ';
             }
-            if ($item['type'] === Server::TYPE_TROJAN) {
+            if ($item['type'] === ProtocolTypes::TROJAN) {
                 // [Proxy]
                 $proxies .= self::buildTrojan($item['password'], $item);
                 // [Proxy Group]
                 $proxyGroup .= $item['name'] . ', ';
             }
-            if ($item['type'] === Server::TYPE_ANYTLS) {
+            if ($item['type'] === ProtocolTypes::ANYTLS) {
                 $proxies .= self::buildAnyTLS($item['password'], $item);
                 $proxyGroup .= $item['name'] . ', ';
             }

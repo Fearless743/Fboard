@@ -4,21 +4,21 @@ namespace Plugin\Shadowrocket;
 
 use App\Utils\Helper;
 use App\Support\AbstractProtocol;
-use App\Models\Server;
+use Plugin\CoreProtocols\ProtocolTypes;
 
 class Shadowrocket extends AbstractProtocol
 {
     public $flags = ['shadowrocket'];
     public $allowedProtocols = [
-        Server::TYPE_SHADOWSOCKS,
-        Server::TYPE_VMESS,
-        Server::TYPE_VLESS,
-        Server::TYPE_TROJAN,
-        Server::TYPE_HYSTERIA,
-        Server::TYPE_TUIC,
-        Server::TYPE_ANYTLS,
-        Server::TYPE_SOCKS,
-        Server::TYPE_MIERU,
+        ProtocolTypes::SHADOWSOCKS,
+        ProtocolTypes::VMESS,
+        ProtocolTypes::VLESS,
+        ProtocolTypes::TROJAN,
+        ProtocolTypes::HYSTERIA,
+        ProtocolTypes::TUIC,
+        ProtocolTypes::ANYTLS,
+        ProtocolTypes::SOCKS,
+        ProtocolTypes::MIERU,
     ];
 
     protected $protocolRequirements = [
@@ -43,31 +43,31 @@ class Shadowrocket extends AbstractProtocol
         $expiredDate = $user['expired_at'] === null ? 'N/A' : date('Y-m-d', $user['expired_at']);
         $uri .= "STATUS=🚀↑:{$upload}GB,↓:{$download}GB,TOT:{$totalTraffic}GB💡Expires:{$expiredDate}\r\n";
         foreach ($servers as $item) {
-            if ($item['type'] === Server::TYPE_SHADOWSOCKS) {
+            if ($item['type'] === ProtocolTypes::SHADOWSOCKS) {
                 $uri .= self::buildShadowsocks($item['password'], $item);
             }
-            if ($item['type'] === Server::TYPE_VMESS) {
+            if ($item['type'] === ProtocolTypes::VMESS) {
                 $uri .= self::buildVmess($item['password'], $item);
             }
-            if ($item['type'] === Server::TYPE_VLESS) {
+            if ($item['type'] === ProtocolTypes::VLESS) {
                 $uri .= self::buildVless($item['password'], $item);
             }
-            if ($item['type'] === Server::TYPE_TROJAN) {
+            if ($item['type'] === ProtocolTypes::TROJAN) {
                 $uri .= self::buildTrojan($item['password'], $item);
             }
-            if ($item['type'] === Server::TYPE_HYSTERIA) {
+            if ($item['type'] === ProtocolTypes::HYSTERIA) {
                 $uri .= self::buildHysteria($item['password'], $item);
             }
-            if ($item['type'] === Server::TYPE_TUIC) {
+            if ($item['type'] === ProtocolTypes::TUIC) {
                 $uri .= self::buildTuic($item['password'], $item);
             }
-            if ($item['type'] === Server::TYPE_ANYTLS) {
+            if ($item['type'] === ProtocolTypes::ANYTLS) {
                 $uri .= self::buildAnyTLS($item['password'], $item);
             }
-            if ($item['type'] === Server::TYPE_SOCKS) {
+            if ($item['type'] === ProtocolTypes::SOCKS) {
                 $uri .= self::buildSocks($item['password'], $item);
             }
-            if ($item['type'] === Server::TYPE_MIERU) {
+            if ($item['type'] === ProtocolTypes::MIERU) {
                 $uri .= self::buildMieru($item['password'], $item);
             }
         }

@@ -240,7 +240,7 @@ XBoard has built-in hooks for many business-critical nodes. Plugin developers ca
 | **🔌 Protocol** | | | |
 | protocols.register | filter | [] | Register protocol handler classes |
 | protocols.definitions | filter | [] | Register/modify protocol type definitions |
-| protocols.server_config | filter | [], node | Modify server config for protocol |
+| protocols.server_config | filter | built config, node | Modify full node config after protocol builder runs |
 | protocol.servers.filtered | filter | servers | Modify filtered servers before handle() |
 | **📊 Traffic** | | | |
 | traffic.process.before | filter | server, protocol, data | Before traffic data processing |

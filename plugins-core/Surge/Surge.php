@@ -5,7 +5,7 @@ namespace Plugin\Surge;
 use App\Utils\Helper;
 use Illuminate\Support\Facades\File;
 use App\Support\AbstractProtocol;
-use App\Models\Server;
+use Plugin\CoreProtocols\ProtocolTypes;
 
 class Surge extends AbstractProtocol
 {
@@ -14,13 +14,13 @@ class Surge extends AbstractProtocol
     const DEFAULT_TEMPLATE_FILE = 'resources/rules/default.surge.conf';
 
     public $allowedProtocols = [
-        Server::TYPE_SHADOWSOCKS,
-        Server::TYPE_VMESS,
-        Server::TYPE_TROJAN,
-        Server::TYPE_HYSTERIA,
-        Server::TYPE_ANYTLS,
-        Server::TYPE_SOCKS,
-        Server::TYPE_HTTP,
+        ProtocolTypes::SHADOWSOCKS,
+        ProtocolTypes::VMESS,
+        ProtocolTypes::TROJAN,
+        ProtocolTypes::HYSTERIA,
+        ProtocolTypes::ANYTLS,
+        ProtocolTypes::SOCKS,
+        ProtocolTypes::HTTP,
     ];
     protected $protocolRequirements = [
         'surge.hysteria.protocol_settings.version' => [2 => '2398'],
@@ -38,7 +38,7 @@ class Surge extends AbstractProtocol
 
         foreach ($servers as $item) {
             if (
-                $item['type'] === Server::TYPE_SHADOWSOCKS
+                $item['type'] === ProtocolTypes::SHADOWSOCKS
                 && in_array(data_get($item, 'protocol_settings.cipher'), [
                     'aes-128-gcm',
                     'aes-192-gcm',
@@ -51,27 +51,27 @@ class Surge extends AbstractProtocol
                 $proxies .= self::buildShadowsocks($item['password'], $item);
                 $proxyGroup .= $item['name'] . ', ';
             }
-            if ($item['type'] === Server::TYPE_VMESS) {
+            if ($item['type'] === ProtocolTypes::VMESS) {
                 $proxies .= self::buildVmess($item['password'], $item);
                 $proxyGroup .= $item['name'] . ', ';
             }
-            if ($item['type'] === Server::TYPE_TROJAN) {
+            if ($item['type'] === ProtocolTypes::TROJAN) {
                 $proxies .= self::buildTrojan($item['password'], $item);
                 $proxyGroup .= $item['name'] . ', ';
             }
-            if ($item['type'] === Server::TYPE_HYSTERIA) {
+            if ($item['type'] === ProtocolTypes::HYSTERIA) {
                 $proxies .= self::buildHysteria($item['password'], $item);
                 $proxyGroup .= $item['name'] . ', ';
             }
-            if ($item['type'] === Server::TYPE_ANYTLS) {
+            if ($item['type'] === ProtocolTypes::ANYTLS) {
                 $proxies .= self::buildAnyTLS($item['password'], $item);
                 $proxyGroup .= $item['name'] . ', ';
             }
-            if ($item['type'] === Server::TYPE_SOCKS) {
+            if ($item['type'] === ProtocolTypes::SOCKS) {
                 $proxies .= self::buildSocks($item['password'], $item);
                 $proxyGroup .= $item['name'] . ', ';
             }
-            if ($item['type'] === Server::TYPE_HTTP) {
+            if ($item['type'] === ProtocolTypes::HTTP) {
                 $proxies .= self::buildHttp($item['password'], $item);
                 $proxyGroup .= $item['name'] . ', ';
             }

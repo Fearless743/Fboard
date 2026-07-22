@@ -3,14 +3,14 @@
 namespace Plugin\Shadowsocks;
 
 use App\Support\AbstractProtocol;
-use App\Models\Server;
+use Plugin\CoreProtocols\ProtocolTypes;
 
 class Shadowsocks extends AbstractProtocol
 {
     public $flags = ['shadowsocks'];
 
     public $allowedProtocols = [
-        Server::TYPE_SHADOWSOCKS,
+        ProtocolTypes::SHADOWSOCKS,
     ];
 
     public function handle()

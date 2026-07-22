@@ -99,15 +99,46 @@ abstract class AbstractPlugin
      * @param array $configFields 配置字段定义
      * @param array $validationRules 验证规则
      * @param string|array|null $prefix 服务器名称前缀，字符串如 '[ss]'，或版本依赖数组如 [1 => '[Hy]', 2 => '[Hy2]']
+     * @param callable|null $serverConfigBuilder 节点配置构建器 fn(Server $node, array $baseConfig): array
+     * @param callable|null $passwordGenerator 用户密码生成器 fn(Server $node, User $user): string
+     * @param list<string> $aliases 类型别名（如 ['hysteria2']）
+     * @param bool $transformNodeUserUuid 节点用户列表是否用 password 覆盖 uuid
+     * @param callable|null $serverKeyResolver 订阅 server_key fn(Server $node): mixed
      */
-    protected function registerProtocolDefinition(string $type, string $name, array $configFields, array $validationRules = [], string|array|null $prefix = null): void
-    {
-        $this->filter('protocols.definitions', function ($definitions) use ($type, $name, $configFields, $validationRules, $prefix) {
+    protected function registerProtocolDefinition(
+        string $type,
+        string $name,
+        array $configFields,
+        array $validationRules = [],
+        string|array|null $prefix = null,
+        ?callable $serverConfigBuilder = null,
+        ?callable $passwordGenerator = null,
+        array $aliases = [],
+        bool $transformNodeUserUuid = false,
+        ?callable $serverKeyResolver = null,
+    ): void {
+        $this->filter('protocols.definitions', function ($definitions) use (
+            $type,
+            $name,
+            $configFields,
+            $validationRules,
+            $prefix,
+            $serverConfigBuilder,
+            $passwordGenerator,
+            $aliases,
+            $transformNodeUserUuid,
+            $serverKeyResolver,
+        ) {
             $definitions[$type] = [
                 'name' => $name,
                 'config_fields' => $configFields,
                 'validation_rules' => $validationRules,
                 'prefix' => $prefix,
+                'server_config_builder' => $serverConfigBuilder,
+                'password_generator' => $passwordGenerator,
+                'aliases' => $aliases,
+                'transform_node_user_uuid' => $transformNodeUserUuid,
+                'server_key_resolver' => $serverKeyResolver,
             ];
             return $definitions;
         });

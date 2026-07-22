@@ -79,12 +79,19 @@ class Plugin extends AbstractPlugin implements PaymentInterface
 
     public function notify($params): array|bool
     {
-        $sign = $params['sign'];
+        $sign = $params['sign'] ?? '';
         unset($params['sign'], $params['sign_type']);
         ksort($params);
         $str = stripslashes(urldecode(http_build_query($params))) . $this->getConfig('key');
+        $generateSignature = md5($str);
 
-        if ($sign !== md5($str)) {
+        if (!is_string($sign) || !hash_equals($generateSignature, $sign)) {
+            return false;
+        }
+
+        // 强制要求交易状态为成功，避免未支付/处理中状态被误入账
+        $tradeStatus = $params['trade_status'] ?? '';
+        if ($tradeStatus !== 'TRADE_SUCCESS') {
             return false;
         }
 

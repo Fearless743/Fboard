@@ -38,6 +38,7 @@ use Illuminate\Database\Eloquent\Casts\Attribute;
  * @property int $updated_at
  *
  * @property-read Server|null $parent 父节点
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, Server> $virtualChildren 虚拟子节点
  * @property-read \Illuminate\Database\Eloquent\Collection<int, StatServer> $stats 节点统计
  *
  * @property-read int|null $last_check_at 最后检查时间（Unix时间戳）
@@ -76,6 +77,22 @@ class Server extends Model
     public static function getValidTypes(): array
     {
         return app(ProtocolDefinitionRegistry::class)->getValidTypes();
+    }
+
+    protected static function booted(): void
+    {
+        // 父节点删除时级联删除其虚拟子节点（含单删与逐模型批量删除）
+        static::deleting(function (Server $server) {
+            if ($server->type === self::TYPE_VIRTUAL) {
+                return;
+            }
+
+            static::query()
+                ->where("parent_id", $server->id)
+                ->where("type", self::TYPE_VIRTUAL)
+                ->get()
+                ->each(static fn (Server $child) => $child->delete());
+        });
     }
 
     protected $table = "v2_server";
@@ -340,6 +357,17 @@ class Server extends Model
     public function parent(): BelongsTo
     {
         return $this->belongsTo(self::class, "parent_id", "id");
+    }
+
+    /**
+     * 虚拟子节点（type=virtual，parent_id 指向本节点）
+     */
+    public function virtualChildren(): HasMany
+    {
+        return $this->hasMany(self::class, "parent_id", "id")->where(
+            "type",
+            self::TYPE_VIRTUAL,
+        );
     }
 
     public function stats(): HasMany

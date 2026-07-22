@@ -312,9 +312,13 @@ class ManageController extends Controller
         ]);
 
         try {
-            $deleted = Server::whereIn("id", $ids)->delete();
-            if ($deleted === false) {
-                return $this->fail([500, "批量删除失败"]);
+            // 必须逐模型 delete：mass delete 不触发 deleting 事件，
+            // 父节点的虚拟子节点级联删除依赖 Server::booted() 中的 deleting 钩子。
+            $servers = Server::whereIn("id", $ids)->get();
+            foreach ($servers as $server) {
+                if (!$server->delete()) {
+                    return $this->fail([500, "批量删除失败"]);
+                }
             }
 
             HookManager::call('admin.server.batch_delete.after', [

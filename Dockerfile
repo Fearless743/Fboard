@@ -30,21 +30,30 @@ COPY .docker/caddy/Caddyfile /etc/caddy/Caddyfile
 COPY .docker/php/zz-fboard.ini /usr/local/etc/php/conf.d/zz-fboard.ini
 
 # Layer 2: Composer dependencies
-# composer.lock 不变时该层命中缓存，不重跑 composer install
+# composer.lock 不变时该层命中缓存，不重跑 composer install。
+# classmap（database/seeders、database/factories）在 dump-autoload 时必须存在，
+# 否则 ClassMapGenerator 会报 "does not appear to be a file nor a folder"。
+# 此处先建空目录占位；真正的 seeder/factory 源码由下一层 COPY . 覆盖，
+# 再在 Layer 4 中 dump-autoload 以刷新 classmap。
 COPY composer.json composer.lock /www/
 RUN --mount=type=cache,id=composer,target=/root/.composer/cache \
-    composer install --no-dev --no-security-blocking
+    mkdir -p database/seeders database/factories \
+    && composer install --no-dev --no-scripts --no-security-blocking
 
 # Layer 3: Application source code (changes most often)
 # CI 构建前已将 admin SPA 产物输出到 public/assets/admin/，会随 COPY 一并带入
 COPY . /www/
 
-# Layer 4: Storage link & permissions
-RUN php artisan storage:link && \
-    chown -R www:www /www && \
-    chmod -R 775 /www && \
-    mkdir -p /data && \
-    chown redis:redis /data
+# Layer 4: Refresh classmap / package discovery (now that full app source exists)
+# + storage link & permissions
+# --no-scripts 装依赖时跳过了 post-autoload-dump；此处补回 classmap 与 package:discover
+RUN composer dump-autoload --optimize --no-dev --no-scripts \
+    && php artisan package:discover --ansi \
+    && php artisan storage:link \
+    && chown -R www:www /www \
+    && chmod -R 775 /www \
+    && mkdir -p /data \
+    && chown redis:redis /data
 
 ENV ENABLE_WEB=true \
     ENABLE_HORIZON=true \

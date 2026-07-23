@@ -14,7 +14,7 @@
 #
 # For independent scaling of each process: use compose.split.sample.yaml.
 services:
-  xboard:
+  fboard:
     image: ghcr.io/fearless743/fboard:latest
     restart: unless-stopped
     ports:

@@ -1,4 +1,4 @@
-# Xboard Deployment Guide for aaPanel Environment
+# Fboard Deployment Guide for aaPanel Environment
 
 ## Table of Contents
 1. [Requirements](#requirements)
@@ -64,7 +64,7 @@ Functions that need to be enabled:
    - Database: Select MySQL
    - PHP Version: Select 8.3
 
-#### 3.2 Deploy Xboard
+#### 3.2 Deploy Fboard
 ```bash
 # Enter site directory
 cd /www/wwwroot/your-domain
@@ -104,7 +104,7 @@ location ~ .*\.(js|css)?$
 ### 1. Configure Daemon Process
 1. Install Supervisor
 2. Add queue daemon process:
-   - Name: `Xboard`
+   - Name: `Fboard`
    - Run User: `www`
    - Running Directory: Site directory
    - Start Command: `php artisan horizon`
@@ -187,7 +187,7 @@ WebSocket enables real-time synchronization of configurations and user changes t
 ### 1. Start WS Server
 
 Add a WebSocket daemon process in aaPanel Supervisor:
-- Name: `Xboard-WS`
+- Name: `Fboard-WS`
 - Run User: `www`
 - Running Directory: Site directory
 - Start Command: `php artisan ws-server start`

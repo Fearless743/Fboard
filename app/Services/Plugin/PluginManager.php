@@ -507,8 +507,8 @@ class PluginManager
     protected function checkDependencies(array $requires): bool
     {
         foreach ($requires as $package => $version) {
-            if ($package === 'xboard') {
-                // 检查xboard版本
+            if ($package === 'fboard' || $package === 'xboard') {
+                // 检查 fboard 版本（xboard 为旧插件元数据兼容键）
                 // 实现版本比较逻辑
             }
         }

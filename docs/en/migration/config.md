@@ -1,6 +1,6 @@
 # Configuration Migration Guide
 
-This guide explains how to migrate configuration files from v2board to Xboard. Xboard stores configurations in the database instead of files.
+This guide explains how to migrate configuration files from v2board to Fboard. Fboard stores configurations in the database instead of files.
 
 ### 1. Docker Compose Environment
 

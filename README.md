@@ -14,7 +14,7 @@
 
 ## 📖 Introduction
 
-Xboard is a modern panel system built on Laravel 11, focusing on providing a clean and efficient user experience.
+Fboard is a modern panel system built on Laravel 11, focusing on providing a clean and efficient user experience.
 
 ## ✨ Features
 
@@ -35,7 +35,7 @@ docker compose run -it --rm \
     -e ENABLE_SQLITE=true \
     -e ENABLE_REDIS=true \
     -e ADMIN_ACCOUNT=admin@demo.com \
-    xboard php artisan xboard:install && \
+    fboard php artisan fboard:install && \
 docker compose up -d
 ```
 
@@ -50,7 +50,7 @@ docker compose up -d
 
 ### Development Guides
 
-- [Plugin Development Guide](./docs/en/development/plugin-development-guide.md) - Complete guide for developing XBoard plugins
+- [Plugin Development Guide](./docs/en/development/plugin-development-guide.md) - Complete guide for developing Fboard plugins
 
 ### Deployment Guides
 

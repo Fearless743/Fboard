@@ -128,25 +128,25 @@ redis_reachable() {
     esac
 }
 
-if [ ! -s /www/.env ] || ! grep -qE '^INSTALLED=(1|true)$' /www/.env || echo " $* " | grep -q ' xboard:install '; then
-    echo "[entrypoint] Skipping xboard:update (not yet installed or running xboard:install)."
+if [ ! -s /www/.env ] || ! grep -qE '^INSTALLED=(1|true)$' /www/.env || echo " $* " | grep -qE ' (fboard|xboard):install '; then
+    echo "[entrypoint] Skipping fboard:update (not yet installed or running fboard:install)."
 else
     if redis_reachable; then
-        echo "[entrypoint] Running xboard:update (redis reachable, real drivers)..."
-        php /www/artisan xboard:update --no-interaction || \
-            echo "[entrypoint] WARNING: xboard:update failed; continuing so supervisor can boot anyway." >&2
+        echo "[entrypoint] Running fboard:update (redis reachable, real drivers)..."
+        php /www/artisan fboard:update --no-interaction || \
+            echo "[entrypoint] WARNING: fboard:update failed; continuing so supervisor can boot anyway." >&2
     else
-        echo "[entrypoint] Running xboard:update (redis not yet up, using array/sync drivers)..."
+        echo "[entrypoint] Running fboard:update (redis not yet up, using array/sync drivers)..."
         CACHE_DRIVER=array QUEUE_CONNECTION=sync SESSION_DRIVER=array \
-            php /www/artisan xboard:update --no-interaction || \
-            echo "[entrypoint] WARNING: xboard:update failed; continuing so supervisor can boot anyway." >&2
+            php /www/artisan fboard:update --no-interaction || \
+            echo "[entrypoint] WARNING: fboard:update failed; continuing so supervisor can boot anyway." >&2
     fi
 fi
 
 echo "[entrypoint] Starting services (caddy=${ENABLE_CADDY} web=${ENABLE_WEB} horizon=${ENABLE_HORIZON} ws=${ENABLE_WS_SERVER})..."
 # Drop stale Octane/WorkerMan state files so the new master does not signal
 # PIDs left over from a previous container run (causes Swoole kill EPERM).
-rm -f /www/storage/logs/octane-server-state.json /www/storage/logs/xboard-ws-server.pid 2>/dev/null || true
+rm -f /www/storage/logs/octane-server-state.json /www/storage/logs/fboard-ws-server.pid /www/storage/logs/xboard-ws-server.pid 2>/dev/null || true
 chown -R www:www /www 2>/dev/null || true
 chown redis:redis /data 2>/dev/null || true
 exec "$@"

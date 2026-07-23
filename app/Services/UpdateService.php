@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\File;
 class UpdateService
 {
     const UPDATE_CHECK_INTERVAL = 86400; // 24 hours
-    const GITHUB_API_URL = 'https://api.github.com/repos/cedar2025/xboard/commits';
+    const GITHUB_API_URL = 'https://api.github.com/repos/Fearless743/Fboard/commits';
     const CACHE_UPDATE_INFO = 'UPDATE_INFO';
     const CACHE_LAST_CHECK = 'LAST_UPDATE_CHECK';
     const CACHE_UPDATE_LOCK = 'UPDATE_LOCK';
@@ -75,7 +75,7 @@ class UpdateService
             // Get remote latest commits
             $response = Http::withHeaders([
                 'Accept' => 'application/vnd.github.v3+json',
-                'User-Agent' => 'XBoard-Update-Checker'
+                'User-Agent' => 'Fboard-Update-Checker'
             ])->get(self::GITHUB_API_URL . '?per_page=50');
 
             if ($response->successful()) {

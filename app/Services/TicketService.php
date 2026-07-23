@@ -130,10 +130,10 @@ class TicketService
             Cache::put($cacheKey, 1, 1800);
             SendEmailJob::dispatch([
                 'email' => $user->email,
-                'subject' => '您在' . admin_setting('app_name', 'XBoard') . '的工单得到了回复',
+                'subject' => '您在' . admin_setting('app_name', 'Fboard') . '的工单得到了回复',
                 'template_name' => 'notify',
                 'template_value' => [
-                    'name' => admin_setting('app_name', 'XBoard'),
+                    'name' => admin_setting('app_name', 'Fboard'),
                     'url' => admin_setting('app_url'),
                     'content' => "主题：{$ticket->subject}\r\n回复内容：{$ticketMessage->message}"
                 ]

@@ -122,7 +122,7 @@ class MailTemplateController extends Controller
 
     private function getTestSubject(string $name): string
     {
-        $appName = admin_setting('app_name', 'XBoard');
+        $appName = admin_setting('app_name', 'Fboard');
         return match ($name) {
             'verify' => "{$appName} - 验证码测试",
             'notify' => "{$appName} - 通知测试",
@@ -135,7 +135,7 @@ class MailTemplateController extends Controller
 
     private function getTestVars(string $name): array
     {
-        $appName = admin_setting('app_name', 'XBoard');
+        $appName = admin_setting('app_name', 'Fboard');
         $appUrl = admin_setting('app_url', 'https://example.com');
 
         return match ($name) {
@@ -168,7 +168,7 @@ class MailTemplateController extends Controller
 
     private function getDefaultSubject(string $name): string
     {
-        $appName = admin_setting('app_name', 'XBoard');
+        $appName = admin_setting('app_name', 'Fboard');
         return match ($name) {
             'verify' => "{$appName} - 邮箱验证码",
             'notify' => "{$appName} - 站点通知",

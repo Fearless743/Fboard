@@ -1,13 +1,13 @@
 window.routerBase = 'http://127.0.0.1:8000/'
 window.settings = {
   // 站点名称
-  title: 'Xboard',
+  title: 'Fboard',
   // 主题色
   theme: {
     color: 'anyway', //可选default、blue、black、、darkblue
   },
   // 站点描述
-  description: 'Xboard',
+  description: 'Fboard',
   assets_path: '/assets',
   // 版本号
   version: '0.1.1-dev',

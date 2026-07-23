@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the design and implementation of the online device limit feature in Xboard.
+This document describes the design and implementation of the online device limit feature in Fboard.
 
 ## Design Goals
 

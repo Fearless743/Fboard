@@ -26,7 +26,7 @@ wget https://github.com/composer/composer/releases/latest/download/composer.phar
 php composer.phar update -vvv
 # 注意：若管理后台页面空白/异常，请手动构建 admin：
 # cd <fboard-admin-dir> && bun install && bun run build
-php artisan xboard:update
+php artisan fboard:update
 
 if [ -f "/etc/init.d/bt" ] || [ -f "/.dockerenv" ]; then
   chown -R www:www $(pwd);

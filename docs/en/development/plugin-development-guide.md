@@ -1,4 +1,4 @@
-# XBoard Plugin Development Guide
+# Fboard Plugin Development Guide
 
 ## 📦 Plugin Structure
 
@@ -30,7 +30,7 @@ plugins/
     "description": "Plugin functionality description",
     "author": "Author Name",
     "require": {
-        "xboard": ">=1.0.0" // Version not fully implemented yet
+        "fboard": ">=1.0.0" // Version not fully implemented yet
     },
     "config": {
         "api_key": {
@@ -136,7 +136,7 @@ $enabled = $this->isPluginEnabled();
 
 ### Popular Hooks (Recommended to follow)
 
-XBoard has built-in hooks for many business-critical nodes. Plugin developers can flexibly extend through `filter` or `listen` methods. Here are the most commonly used and valuable hooks:
+Fboard has built-in hooks for many business-critical nodes. Plugin developers can flexibly extend through `filter` or `listen` methods. Here are the most commonly used and valuable hooks:
 
 | Hook Name | Type | Typical Parameters | Description |
 |-----------|------|-------------------|-------------|
@@ -907,7 +907,7 @@ Artisan::call('other-plugin:command', ['arg' => 'value']);
 
 ### Summary
 
-The plugin command system provides powerful extension capabilities for XBoard:
+The plugin command system provides powerful extension capabilities for Fboard:
 
 - 🚀 **Development Efficiency**: Quickly create management commands
 - 🔧 **Operational Convenience**: Automate daily operations

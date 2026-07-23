@@ -4,5 +4,5 @@
     "type": "protocol",
     "version": "1.0.0",
     "description": "Shadowrocket 协议 - 生成 URI 格式配置",
-    "author": "XBoard Team"
+    "author": "Fboard Team"
 }

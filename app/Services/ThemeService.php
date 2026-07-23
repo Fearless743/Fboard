@@ -15,7 +15,11 @@ class ThemeService
     private const USER_THEME_DIR = '/storage/theme/';
     private const CONFIG_FILE = 'config.json';
     private const SETTING_PREFIX = 'theme_';
-    private const SYSTEM_THEMES = ['Xboard', 'v2board'];
+    private const SYSTEM_THEMES = ['Fboard', 'v2board'];
+
+    /** Legacy theme directory name kept for existing installations. */
+    private const LEGACY_DEFAULT_THEME = 'Xboard';
+    private const DEFAULT_THEME = 'Fboard';
 
     public function __construct()
     {
@@ -251,6 +255,25 @@ class ThemeService
     }
 
     /**
+     * Resolve configured theme name to an existing theme.
+     * Maps legacy "Fboard" to "Fboard" when the old directory is gone.
+     */
+    public function resolveTheme(?string $theme = null): string
+    {
+        $theme = $theme ?: admin_setting('frontend_theme', self::DEFAULT_THEME);
+
+        if ($this->exists($theme)) {
+            return $theme;
+        }
+
+        if ($theme === self::LEGACY_DEFAULT_THEME && $this->exists(self::DEFAULT_THEME)) {
+            return self::DEFAULT_THEME;
+        }
+
+        return self::DEFAULT_THEME;
+    }
+
+    /**
      * Check if theme exists
      */
     public function exists(string $theme): bool
@@ -271,6 +294,14 @@ class ThemeService
         $userPath = base_path(self::USER_THEME_DIR . $theme);
         if (File::exists($userPath)) {
             return $userPath;
+        }
+
+        // Legacy installs still store frontend_theme=Fboard after the rename.
+        if ($theme === self::LEGACY_DEFAULT_THEME) {
+            $legacyFallback = base_path(self::SYSTEM_THEME_DIR . self::DEFAULT_THEME);
+            if (File::exists($legacyFallback)) {
+                return $legacyFallback;
+            }
         }
 
         return null;

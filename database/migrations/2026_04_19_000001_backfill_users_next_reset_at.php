@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Schema;
 /**
  * One-shot backfill of users.next_reset_at for legacy installs.
  *
- * Replaces the previous `reset:traffic --force` step in `xboard:update`,
+ * Replaces the previous `reset:traffic --force` step in `fboard:update`,
  * which had to run on every container start. Now it runs exactly once per
  * database (Laravel migrations are tracked).
  */

@@ -25,7 +25,7 @@ class Surfboard extends AbstractProtocol
         $servers = $this->servers;
         $user = $this->user;
 
-        $appName = admin_setting('app_name', 'XBoard');
+        $appName = admin_setting('app_name', 'Fboard');
 
         $proxies = '';
         $proxyGroup = '';

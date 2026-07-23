@@ -1,9 +1,9 @@
 {
-    "name": "xboard/xboard",
+    "name": "fboard/fboard",
     "type": "project",
-    "description": "xboard is a proxy protocol manage.",
+    "description": "fboard is a proxy protocol manage.",
     "keywords": [
-        "xboard",
+        "fboard",
         "v2ray",
         "shadowsocks",
         "trojan",

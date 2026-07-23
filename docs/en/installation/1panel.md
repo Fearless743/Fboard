@@ -1,6 +1,6 @@
 # Quick Deployment Guide for 1Panel
 
-This guide explains how to deploy Xboard using 1Panel.
+This guide explains how to deploy Fboard using 1Panel.
 
 ## 1. Environment Preparation
 
@@ -18,8 +18,8 @@ sudo bash quick_start.sh
    - MySQL 5.7 (Use MariaDB for ARM architecture)
 
 2. Create Database:
-   - Database name: `xboard`
-   - Username: `xboard`
+   - Database name: `fboard`
+   - Username: `fboard`
    - Access rights: All hosts (%)
    - Save the database password for installation
 
@@ -28,7 +28,7 @@ sudo bash quick_start.sh
 1. Add Website:
    - Go to "Website" > "Create Website" > "Reverse Proxy"
    - Domain: Enter your domain
-   - Code: `xboard`
+   - Code: `fboard`
    - Proxy address: `127.0.0.1:7001`
 
 2. Configure Reverse Proxy:
@@ -48,10 +48,10 @@ location ^~ / {
 ```
 > The all-in-one container's embedded Caddy fuses HTTP and the panel↔node WebSocket on port 7001. The single `Upgrade`/`Connection` pair above is enough; no separate `/ws/` location is needed. To opt out and expose Octane / `:8076` directly, set `ENABLE_CADDY=false` in `compose.yaml`.
 
-3. Install Xboard:
+3. Install Fboard:
 ```bash
 # Enter site directory
-cd /opt/1panel/apps/openresty/openresty/www/sites/xboard/index
+cd /opt/1panel/apps/openresty/openresty/www/sites/fboard/index
 
 # Install Git (if not installed)
 ## Ubuntu/Debian
@@ -76,18 +76,18 @@ The file is gitignored so your edits survive `git pull`. See [docker-compose.md]
 
 5. Initialize Installation:
 ```bash
-docker compose run -it --rm xboard php artisan xboard:install
+docker compose run -it --rm fboard php artisan fboard:install
 ```
 
 ⚠️ Important Configuration Notes:
 1. Database Configuration
    - Database Host: Choose based on your deployment:
-     1. If database and Xboard are in the same network, use `mysql`
+     1. If database and Fboard are in the same network, use `mysql`
      2. If connection fails, go to: Database -> Select Database -> Connection Info -> Container Connection, and use the "Host" value
      3. If using external database, enter your actual database host
    - Database Port: `3306` (default port unless configured otherwise)
-   - Database Name: `xboard` (the database created earlier)
-   - Database User: `xboard` (the user created earlier)
+   - Database Name: `fboard` (the database created earlier)
+   - Database User: `fboard` (the user created earlier)
    - Database Password: Enter the password saved earlier
 
 2. Redis Configuration
@@ -114,11 +114,11 @@ docker compose up -d
 docker compose pull && docker compose up -d
 ```
 
-The container always runs `php artisan xboard:update` (migrate + plugin install + version cache + theme refresh) on boot, so no extra command is required.
+The container always runs `php artisan fboard:update` (migrate + plugin install + version cache + theme refresh) on boot, so no extra command is required.
 
-> **Using a `compose.yaml` from before 2026-04-19?** That template did not auto-run `xboard:update` on container start, so use the following command to upgrade instead:
+> **Using a `compose.yaml` from before 2026-04-19?** That template did not auto-run `fboard:update` on container start, so use the following command to upgrade instead:
 > ```bash
-> docker compose pull && docker compose run -it --rm web php artisan xboard:update && docker compose up -d
+> docker compose pull && docker compose run -it --rm web php artisan fboard:update && docker compose up -d
 > ```
 
 ## Important Notes

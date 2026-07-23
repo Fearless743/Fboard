@@ -31,11 +31,11 @@ docker compose run -it --rm \
     -e ENABLE_SQLITE=true \
     -e ENABLE_REDIS=true \
     -e ADMIN_ACCOUNT=admin@demo.com \
-    xboard php artisan xboard:install
+    fboard php artisan fboard:install
 ```
 - Custom configuration installation (Advanced users)
 ```bash
-docker compose run -it --rm xboard php artisan xboard:install
+docker compose run -it --rm fboard php artisan fboard:install
 ```
 > Please save the admin dashboard URL, username, and password shown after installation.
 >
@@ -64,16 +64,16 @@ cd Fboard
 docker compose pull && docker compose up -d
 ```
 
-The container always runs `php artisan xboard:update` (migrate + plugin install + version cache + theme refresh) on boot, so no extra command is required.
+The container always runs `php artisan fboard:update` (migrate + plugin install + version cache + theme refresh) on boot, so no extra command is required.
 
-> **Using a multi-service `compose.yaml` from before the all-in-one change?** Replace it with the new single-service `compose.yaml` (service name `xboard`), then:
+> **Using a multi-service `compose.yaml` from before the all-in-one change?** Replace it with the new single-service `compose.yaml` (service name `fboard`), then:
 > ```bash
 > docker compose down
 > docker compose pull && docker compose up -d
 > ```
-> Legacy templates that did not auto-run `xboard:update` on start can still use:
+> Legacy templates that did not auto-run `fboard:update` on start can still use:
 > ```bash
-> docker compose pull && docker compose run -it --rm xboard php artisan xboard:update && docker compose up -d
+> docker compose pull && docker compose run -it --rm fboard php artisan fboard:update && docker compose up -d
 > ```
 
 ### 4. Version Rollback

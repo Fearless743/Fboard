@@ -17,21 +17,21 @@ use function Laravel\Prompts\text;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\select;
 
-class XboardInstall extends Command
+class FboardInstall extends Command
 {
     /**
      * The name and signature of the console command.
      *
      * @var string
      */
-    protected $signature = 'xboard:install';
+    protected $signature = 'fboard:install';
 
     /**
      * The console command description.
      *
      * @var string
      */
-    protected $description = 'xboard 初始化安装';
+    protected $description = 'fboard 初始化安装';
 
     /**
      * Create a new command instance.
@@ -302,7 +302,7 @@ class XboardInstall extends Command
                 'DB_CONNECTION' => 'mysql',
                 'DB_HOST' => text(label: "请输入MySQL数据库地址", default: '127.0.0.1', required: true),
                 'DB_PORT' => text(label: '请输入MySQL数据库端口', default: '3306', required: true),
-                'DB_DATABASE' => text(label: '请输入MySQL数据库名', default: 'xboard', required: true),
+                'DB_DATABASE' => text(label: '请输入MySQL数据库名', default: 'fboard', required: true),
                 'DB_USERNAME' => text(label: '请输入MySQL数据库用户名', default: 'root', required: true),
                 'DB_PASSWORD' => text(label: '请输入MySQL数据库密码', required: false),
             ];
@@ -348,7 +348,7 @@ class XboardInstall extends Command
                 'DB_CONNECTION' => 'pgsql',
                 'DB_HOST' => text(label: "请输入PostgreSQL数据库地址", default: '127.0.0.1', required: true),
                 'DB_PORT' => text(label: '请输入PostgreSQL数据库端口', default: '5432', required: true),
-                'DB_DATABASE' => text(label: '请输入PostgreSQL数据库名', default: 'xboard', required: true),
+                'DB_DATABASE' => text(label: '请输入PostgreSQL数据库名', default: 'fboard', required: true),
                 'DB_USERNAME' => text(label: '请输入PostgreSQL数据库用户名', default: 'postgres', required: true),
                 'DB_PASSWORD' => text(label: '请输入PostgreSQL数据库密码', required: false),
             ];

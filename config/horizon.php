@@ -212,7 +212,7 @@ return [
             ],
         ],
         'local' => [
-            'Xboard' => [
+            'Fboard' => [
                 'connection' => 'redis',
                 'queue' => [
                     'default',

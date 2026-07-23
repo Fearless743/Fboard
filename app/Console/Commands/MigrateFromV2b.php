@@ -144,10 +144,10 @@ class MigrateFromV2b extends Command
                 $this->call('db:seed', ['--class' => 'OriginV2bMigrationsTableSeeder']);
                 $this->info('2️⃣、数据库迁移记录初始化成功');
 
-                $this->call('xboard:update');
+                $this->call('fboard:update');
                 $this->info('3️⃣、更新成功');
 
-                $this->info("🎉：成功从 $version 迁移到Xboard");
+                $this->info("🎉：成功从 $version 迁移到 Fboard");
             } catch (\Exception $e) {
                 // An error occurred, rollback the transaction
                 $this->error('迁移失败'. $e->getMessage() );

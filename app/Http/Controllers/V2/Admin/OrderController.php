@@ -85,6 +85,42 @@ class OrderController extends Controller
         });
     }
 
+    /**
+     * 仅这些字段在「无操作符 / 裸数字」时按数值精确匹配。
+     * trade_no、callback_no 等是字符串标识（generateOrderNo 产出纯数字长串），
+     * 若 is_numeric + (int) 会溢出/截断导致搜不到订单。
+     */
+    private const INTEGER_FILTER_FIELDS = [
+        'id',
+        'user_id',
+        'invite_user_id',
+        'plan_id',
+        'payment_id',
+        'status',
+        'commission_status',
+        'type',
+        'total_amount',
+        'commission_balance',
+        'discount_amount',
+        'balance_amount',
+        'handling_amount',
+        'refund_amount',
+    ];
+
+    private function isIntegerFilterField(string $field): bool
+    {
+        return in_array($field, self::INTEGER_FILTER_FIELDS, true);
+    }
+
+    private function castNumericFilterValue(mixed $value): mixed
+    {
+        if (!is_string($value) || !is_numeric($value)) {
+            return $value;
+        }
+
+        return str_contains($value, '.') ? (float) $value : (int) $value;
+    }
+
     private function buildFilterQuery(Builder $query, string $field, mixed $value): void
     {
         // Handle array values for 'in' operations
@@ -95,10 +131,11 @@ class OrderController extends Controller
 
         // 数值状态类（status / commission_status / type 等）必须精确匹配；
         // 若走 LIKE "%0%" 会把 10、20 等一并命中，也会扫出默认 0 的无意义行。
-        if (is_int($value) || is_float($value) || (is_string($value) && is_numeric($value) && !str_contains($value, ':'))) {
-            $query->where($field, is_string($value) && strpos($value, '.') !== false
-                ? (float) $value
-                : (int) $value);
+        // 注意：不可对 trade_no 等字符串字段做 is_numeric 强转。
+        if ($this->isIntegerFilterField($field)
+            && (is_int($value) || is_float($value) || (is_string($value) && is_numeric($value) && !str_contains($value, ':')))
+        ) {
+            $query->where($field, $this->castNumericFilterValue($value));
             return;
         }
 
@@ -110,15 +147,23 @@ class OrderController extends Controller
 
         [$operator, $filterValue] = explode(':', $value, 2);
 
-        // Convert numeric strings to appropriate type
-        if (is_numeric($filterValue)) {
-            $filterValue = strpos($filterValue, '.') !== false
-                ? (float) $filterValue
-                : (int) $filterValue;
+        // 仅整型列把操作符右侧 cast 成数字；字符串订单号保持原样
+        if ($this->isIntegerFilterField($field) && is_numeric($filterValue)) {
+            $filterValue = $this->castNumericFilterValue($filterValue);
         }
 
         // Apply operator
-        $query->where($field, match (strtolower($operator)) {
+        $operatorKey = strtolower($operator);
+        if ($operatorKey === 'null') {
+            $query->whereNull($field);
+            return;
+        }
+        if ($operatorKey === 'notnull') {
+            $query->whereNotNull($field);
+            return;
+        }
+
+        $query->where($field, match ($operatorKey) {
             'eq' => '=',
             'gt' => '>',
             'gte' => '>=',
@@ -126,12 +171,9 @@ class OrderController extends Controller
             'lte' => '<=',
             'like' => 'like',
             'notlike' => 'not like',
-            'null' => static fn($q) => $q->whereNull($field),
-            'notnull' => static fn($q) => $q->whereNotNull($field),
             default => 'like'
-        }, match (strtolower($operator)) {
+        }, match ($operatorKey) {
             'like', 'notlike' => "%{$filterValue}%",
-            'null', 'notnull' => null,
             default => $filterValue
         });
     }

@@ -94,18 +94,18 @@ class NodeConfigBuilders
             // Client port range (e.g. 10000-20000) → node multi-port listen for Hy2 hopping.
             // Subscription already exposes the same range via $server->ports; hop_interval is client-only.
             ...($hysteriaListenPorts !== null ? ['listen_ports' => $hysteriaListenPorts] : []),
-            'version' => (int) $protocolSettings['version'],
+            'version' => (int) ($protocolSettings['version'] ?? 2),
             'host' => $node->host,
-            'server_name' => $protocolSettings['tls']['server_name'],
-            'tls_settings' => $protocolSettings['tls'],
-            'up_mbps' => (int) $protocolSettings['bandwidth']['up'],
-            'down_mbps' => (int) $protocolSettings['bandwidth']['down'],
+            'server_name' => data_get($protocolSettings, 'tls.server_name', $node->host ?? ''),
+            'tls_settings' => $protocolSettings['tls'] ?? [],
+            'up_mbps' => (int) ($protocolSettings['bandwidth']['up'] ?? 100),
+            'down_mbps' => (int) ($protocolSettings['bandwidth']['down'] ?? 100),
             // Hysteria Realms URI (realm://token@host/name); empty = ordinary Hy2.
             'realm' => filled(data_get($protocolSettings, 'realm'))
                 ? trim((string) data_get($protocolSettings, 'realm'))
                 : null,
             'realm_insecure' => (bool) data_get($protocolSettings, 'realm_insecure', false),
-            ...match ((int) $protocolSettings['version']) {
+            ...match ((int) ($protocolSettings['version'] ?? 2)) {
                 1 => ['obfs' => $protocolSettings['obfs']['password'] ?? null],
                 2 => [
                     'obfs' => $protocolSettings['obfs']['open'] ? $protocolSettings['obfs']['type'] : null,
@@ -122,11 +122,11 @@ class NodeConfigBuilders
 
         return [
             ...$baseConfig,
-            'version' => (int) $protocolSettings['version'],
+            'version' => (int) ($protocolSettings['version'] ?? 2),
             'server_port' => (int) $node->server_port,
-            'server_name' => $protocolSettings['tls']['server_name'],
-            'congestion_control' => $protocolSettings['congestion_control'],
-            'tls_settings' => $protocolSettings['tls'],
+            'server_name' => data_get($protocolSettings, 'tls.server_name', $node->host ?? ''),
+            'congestion_control' => $protocolSettings['congestion_control'] ?? 'bbr',
+            'tls_settings' => $protocolSettings['tls'] ?? [],
             'auth_timeout' => '3s',
             'zero_rtt_handshake' => false,
             'heartbeat' => '3s',
@@ -142,9 +142,9 @@ class NodeConfigBuilders
             'server_port' => (int) $node->server_port,
             // AnyTLS always requires TLS; expose tls=1 so node kernels enable stream TLS.
             'tls' => 1,
-            'server_name' => $protocolSettings['tls']['server_name'],
-            'tls_settings' => $protocolSettings['tls'],
-            'padding_scheme' => $protocolSettings['padding_scheme'],
+            'server_name' => data_get($protocolSettings, 'tls.server_name', $node->host ?? ''),
+            'tls_settings' => $protocolSettings['tls'] ?? [],
+            'padding_scheme' => $protocolSettings['padding_scheme'] ?? false,
         ];
     }
 

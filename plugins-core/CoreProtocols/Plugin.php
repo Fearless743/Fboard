@@ -246,12 +246,12 @@ class Plugin extends AbstractPlugin
                     'config_path' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置路径', 'show_when' => ['enabled' => 'true']],
                 ], 'label' => 'ECH配置'],
             ], 'label' => 'TLS设置'],
-        ], [
+        ], array_merge([
             'version' => 'nullable|integer|in:3,4,5',
             'congestion_control' => 'nullable|string|in:cubic,bbr,new_reno',
             'alpn' => 'nullable|array',
             'udp_relay_mode' => 'nullable|string|in:native,quic',
-        ], '[tuic]', self::builder('tuic'));
+        ], self::getTlsObjectValidationRules()), '[tuic]', self::builder('tuic'));
     }
 
     private function registerAnyTLS(): void
@@ -297,7 +297,7 @@ class Plugin extends AbstractPlugin
                     'config_path' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置路径', 'show_when' => ['enabled' => 'true']],
                 ], 'label' => 'ECH配置'],
             ], 'label' => 'TLS设置'],
-        ], ['tls' => 'nullable|integer'], '[socks]', self::builder('socks'));
+        ], array_merge(['tls' => 'nullable|integer'], self::getTlsSettingsValidationRules()), '[socks]', self::builder('socks'));
     }
 
     private function registerNaive(): void
@@ -316,7 +316,7 @@ class Plugin extends AbstractPlugin
                     'config_path' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置路径', 'show_when' => ['enabled' => 'true']],
                 ], 'label' => 'ECH配置'],
             ], 'label' => 'TLS设置'],
-        ], ['tls' => 'required|integer'], '[naive]', self::builder('naive'));
+        ], array_merge(['tls' => 'required|integer'], self::getTlsSettingsValidationRules()), '[naive]', self::builder('naive'));
     }
 
     private function registerHTTP(): void
@@ -335,7 +335,7 @@ class Plugin extends AbstractPlugin
                     'config_path' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置路径', 'show_when' => ['enabled' => 'true']],
                 ], 'label' => 'ECH配置'],
             ], 'label' => 'TLS设置'],
-        ], ['tls' => 'required|integer'], '[http]', self::builder('http'));
+        ], array_merge(['tls' => 'required|integer'], self::getTlsSettingsValidationRules()), '[http]', self::builder('http'));
     }
 
     private function registerMieru(): void

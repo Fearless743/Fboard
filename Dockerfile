@@ -1,18 +1,12 @@
 # syntax=docker/dockerfile:1.7
 
 # ---------------------------------------------------------------------------
-# 前端构建说明（重要！）：
-# Dockerfile 不再内嵌构建 admin SPA，而是直接 COPY 已构建好的产物到
-# /www/public/assets/admin/。请在 docker build 之前先构建前端：
-#
-#   cd ../admin && bun install && bun run build
-#
-# 该命令会通过 admin/vite.config.ts 中配置的 outDir
-# (../Fboard/public/assets/admin) 直接把产物输出到本仓库内。
-# CI 流程在 .github/workflows/docker-publish.yml 中已加入对应步骤。
-#
-# 这种"先构建再打包"的模式可以彻底规避 BuildKit 对远程 git 仓库的
-# 缓存失效难题，前端版本与本地 Fboard 仓代码完全一致。
+# 优化说明：
+# - 不再在 Dockerfile 内 git clone，改为 COPY 构建上下文中的源码
+# - 将 composer 依赖与业务代码分层：composer.json/lock 单独 COPY
+#   → 只要 composer.lock 不变，依赖安装层就不会重跑
+# - 使用 BuildKit --mount=type=cache 实现 composer 下载缓存跨构建复用
+# - 前端 SPA 在 CI 中预先构建至 public/assets/admin/（不在 Dockerfile 内构建）
 # ---------------------------------------------------------------------------
 FROM phpswoole/swoole:php8.5-alpine
 
@@ -30,35 +24,27 @@ RUN CFLAGS="-O0" install-php-extensions pcntl && \
 
 WORKDIR /www
 
-COPY .docker /
-
-# Add build arguments
-ARG CACHEBUST=1
-ARG REPO_URL=https://github.com/Fearless743/Fboard
-ARG BRANCH_NAME=master
-
-RUN echo "Attempting to clone branch: ${BRANCH_NAME} from ${REPO_URL} with CACHEBUST: ${CACHEBUST}" && \
-    rm -rf ./* && \
-    rm -rf .git && \
-    git config --global --add safe.directory /www && \
-    git clone --depth 1 --branch ${BRANCH_NAME} ${REPO_URL} . \
-    && mkdir -p public/assets/admin
-
-# 前端 SPA 产物在镜像构建前由 admin/ 仓的 `bun run build` 输出到
-# public/assets/admin/。Dockerfile 仅负责 COPY，不再内嵌构建步骤，
-# 以彻底规避 BuildKit 缓存陷阱。
-COPY public/assets/admin/ /www/public/assets/admin/
-
+# Layer 1: Docker runtime config files (rarely changes)
 COPY .docker/supervisor/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY .docker/caddy/Caddyfile /etc/caddy/Caddyfile
 COPY .docker/php/zz-fboard.ini /usr/local/etc/php/conf.d/zz-fboard.ini
 
-RUN composer install --no-cache --no-dev --no-security-blocking \
-    && php artisan storage:link \
-    && chown -R www:www /www \
-    && chmod -R 775 /www \
-    && mkdir -p /data \
-    && chown redis:redis /data
+# Layer 2: Composer dependencies
+# composer.lock 不变时该层命中缓存，不重跑 composer install
+COPY composer.json composer.lock /www/
+RUN --mount=type=cache,id=composer,target=/root/.composer/cache \
+    composer install --no-dev --no-security-blocking
+
+# Layer 3: Application source code (changes most often)
+# CI 构建前已将 admin SPA 产物输出到 public/assets/admin/，会随 COPY 一并带入
+COPY . /www/
+
+# Layer 4: Storage link & permissions
+RUN php artisan storage:link && \
+    chown -R www:www /www && \
+    chmod -R 775 /www && \
+    mkdir -p /data && \
+    chown redis:redis /data
 
 ENV ENABLE_WEB=true \
     ENABLE_HORIZON=true \

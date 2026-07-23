@@ -6,12 +6,12 @@
 # in addition to publishing port 7001 for 1Panel's reverse proxy / website.
 # Still a single Fboard service (web + horizon + ws-server inside one container).
 #
-# During `php artisan xboard:install`, set:
+# During `php artisan fboard:install`, set:
 #   - Database Host: the container name shown in 1Panel under
 #                    Database -> Connection Info -> Host
 #   - Redis: choose the built-in Redis (already provided by this image)
 services:
-  xboard:
+  fboard:
     image: ghcr.io/fearless743/fboard:latest
     restart: unless-stopped
     ports:

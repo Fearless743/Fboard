@@ -39,11 +39,11 @@ class ConfigController extends Controller
     {
         $mailLog = MailService::sendEmail([
             'email' => $request->user()->email,
-            'subject' => 'This is xboard test email',
+            'subject' => 'This is fboard test email',
             'template_name' => 'notify',
             'template_value' => [
-                'name' => admin_setting('app_name', 'XBoard'),
-                'content' => 'This is xboard test email',
+                'name' => admin_setting('app_name', 'Fboard'),
+                'content' => 'This is fboard test email',
                 'url' => admin_setting('app_url')
             ]
         ]);
@@ -155,8 +155,8 @@ class ConfigController extends Controller
                 'logo' => admin_setting('logo'),
                 'force_https' => (int) admin_setting('force_https', 0),
                 'stop_register' => (int) admin_setting('stop_register', 0),
-                'app_name' => admin_setting('app_name', 'XBoard'),
-                'app_description' => admin_setting('app_description', 'XBoard is best!'),
+                'app_name' => admin_setting('app_name', 'Fboard'),
+                'app_description' => admin_setting('app_description', 'Fboard is best!'),
                 'app_url' => admin_setting('app_url'),
                 'subscribe_url' => admin_setting('subscribe_url'),
                 'try_out_plan_id' => (int) admin_setting('try_out_plan_id', 0),

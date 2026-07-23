@@ -114,7 +114,7 @@ class KnowledgeController extends Controller
             [
                 'type' => 'string',
                 'search' => '{{siteName}}',
-                'replacement' => admin_setting('app_name', 'XBoard')
+                'replacement' => admin_setting('app_name', 'Fboard')
             ],
             [
                 'type' => 'string',

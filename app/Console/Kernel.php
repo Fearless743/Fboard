@@ -29,7 +29,7 @@ class Kernel extends ConsoleKernel
     {
         Cache::put(CacheKey::get('SCHEDULE_LAST_CHECK_AT', null), time());
         // v2board
-        $schedule->command('xboard:statistics')->dailyAt('0:10')->onOneServer();
+        $schedule->command('fboard:statistics')->dailyAt('0:10')->onOneServer();
         // check
         $schedule->command('check:order')->everyMinute()->onOneServer()->withoutOverlapping(5);
         $schedule->command('check:commission')->everyMinute()->onOneServer()->withoutOverlapping(5);

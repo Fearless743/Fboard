@@ -3,9 +3,9 @@
     "code": "telegram",
     "version": "1.0.1",
     "description": "Telegram Bot 消息处理和命令系统",
-    "author": "XBoard Team",
+    "author": "Fboard Team",
     "require": {
-        "xboard": ">=1.0.0"
+        "fboard": ">=1.0.0"
     },
     "config": {
         "enable_ticket_notify": {
@@ -22,19 +22,19 @@
         },
         "start_welcome_title": {
             "type": "string",
-            "default": "🎉 欢迎使用 XBoard Telegram Bot！",
+            "default": "🎉 欢迎使用 Fboard Telegram Bot！",
             "label": "欢迎标题",
             "description": "/start 命令显示的欢迎标题"
         },
         "start_bot_description": {
             "type": "text",
-            "default": "🤖 我是您的专属助手，可以帮助您：\\n• 绑定您的 XBoard 账号\\n• 查看流量使用情况\\n• 获取最新订阅链接\\n• 管理账号绑定状态",
+            "default": "🤖 我是您的专属助手，可以帮助您：\\n• 绑定您的 Fboard 账号\\n• 查看流量使用情况\\n• 获取最新订阅链接\\n• 管理账号绑定状态",
             "label": "机器人描述",
             "description": "/start 命令显示的机器人功能介绍"
         },
         "start_bind_guide": {
             "type": "text",
-            "default": "🔗 请先绑定您的 XBoard 账号：\\n1. 登录您的 XBoard 账户\\n2. 复制您的订阅链接\\n3. 发送 /bind + 订阅链接",
+            "default": "🔗 请先绑定您的 Fboard 账号：\\n1. 登录您的 Fboard 账户\\n2. 复制您的订阅链接\\n3. 发送 /bind + 订阅链接",
             "label": "绑定指导",
             "description": "未绑定用户显示的绑定指导文本"
         },

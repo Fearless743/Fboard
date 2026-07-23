@@ -1,6 +1,6 @@
 # V2board Dev Migration Guide
 
-This guide explains how to migrate from V2board Dev version (2023/10/27) to Xboard.
+This guide explains how to migrate from V2board Dev version (2023/10/27) to Fboard.
 
 ⚠️ Please upgrade to version 2023/10/27 following the official guide before proceeding with migration.
 
@@ -19,7 +19,7 @@ This guide explains how to migrate from V2board Dev version (2023/10/27) to Xboa
 
 ### 2. Prerequisites
 
-⚠️ Please complete the basic Xboard installation first (SQLite not supported):
+⚠️ Please complete the basic Fboard installation first (SQLite not supported):
 - [Docker Compose Deployment](../installation/docker-compose.md)
 - [aaPanel + Docker Deployment](../installation/aapanel-docker.md)
 - [aaPanel Deployment](../installation/aapanel.md)
@@ -33,13 +33,13 @@ This guide explains how to migrate from V2board Dev version (2023/10/27) to Xboa
 docker compose down
 
 # 2. Clear database
-docker compose run -it --rm xboard php artisan db:wipe
+docker compose run -it --rm fboard php artisan db:wipe
 
 # 3. Import old database (Important)
 # Please manually import the V2board Dev database
 
 # 4. Execute migration
-docker compose run -it --rm xboard php artisan migratefromv2b dev231027
+docker compose run -it --rm fboard php artisan migratefromv2b dev231027
 ```
 
 #### aaPanel Environment

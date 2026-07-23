@@ -162,8 +162,8 @@ class Plugin extends AbstractPlugin
 
   public function handleStartCommand(object $msg): void
   {
-    $welcomeTitle = $this->getConfig('start_welcome_title', '🎉 欢迎使用 XBoard Telegram Bot！');
-    $botDescription = $this->getConfig('start_bot_description', '🤖 我是您的专属助手，可以帮助您：\\n• 绑定您的 XBoard 账号\\n• 查看流量使用情况\\n• 获取最新订阅链接\\n• 管理账号绑定状态');
+    $welcomeTitle = $this->getConfig('start_welcome_title', '🎉 欢迎使用 Fboard Telegram Bot！');
+    $botDescription = $this->getConfig('start_bot_description', '🤖 我是您的专属助手，可以帮助您：\\n• 绑定您的 Fboard 账号\\n• 查看流量使用情况\\n• 获取最新订阅链接\\n• 管理账号绑定状态');
     $footer = $this->getConfig('start_footer', '💡 提示：所有命令都需要在私聊中使用');
 
     $welcomeText = $welcomeTitle . "\n\n" . $botDescription . "\n\n";
@@ -173,7 +173,7 @@ class Plugin extends AbstractPlugin
       $welcomeText .= "✅ 您已绑定账号：{$user->email}\n\n";
       $welcomeText .= $this->getConfig('start_unbind_guide', '📋 可用命令：\\n/traffic - 查看流量使用情况\\n/getlatesturl - 获取订阅链接\\n/unbind - 解绑账号');
     } else {
-      $welcomeText .= $this->getConfig('start_bind_guide', '🔗 请先绑定您的 XBoard 账号：\\n1. 登录您的 XBoard 账户\\n2. 复制您的订阅链接\\n3. 发送 /bind + 订阅链接') . "\n\n";
+      $welcomeText .= $this->getConfig('start_bind_guide', '🔗 请先绑定您的 Fboard 账号：\\n1. 登录您的 Fboard 账户\\n2. 复制您的订阅链接\\n3. 发送 /bind + 订阅链接') . "\n\n";
       $welcomeText .= $this->getConfig('start_bind_commands', '📋 可用命令：\\n/bind [订阅链接] - 绑定账号');
     }
 

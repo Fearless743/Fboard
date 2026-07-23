@@ -178,11 +178,11 @@ class MailService
         SendEmailJob::dispatch([
             'email' => $user->email,
             'subject' => __('The traffic usage in :app_name has reached 80%', [
-                'app_name' => admin_setting('app_name', 'XBoard')
+                'app_name' => admin_setting('app_name', 'Fboard')
             ]),
             'template_name' => 'remindTraffic',
             'template_value' => [
-                'name' => admin_setting('app_name', 'XBoard'),
+                'name' => admin_setting('app_name', 'Fboard'),
                 'url' => admin_setting('app_url')
             ]
         ]);
@@ -197,11 +197,11 @@ class MailService
         SendEmailJob::dispatch([
             'email' => $user->email,
             'subject' => __('The service in :app_name is about to expire', [
-                'app_name' => admin_setting('app_name', 'XBoard')
+                'app_name' => admin_setting('app_name', 'Fboard')
             ]),
             'template_name' => 'remindExpire',
             'template_value' => [
-                'name' => admin_setting('app_name', 'XBoard'),
+                'name' => admin_setting('app_name', 'Fboard'),
                 'url' => admin_setting('app_url')
             ]
         ]);
@@ -246,7 +246,7 @@ class MailService
             Config::set('mail.username', admin_setting('email_username', config('mail.username')));
             Config::set('mail.password', admin_setting('email_password', config('mail.password')));
             Config::set('mail.from.address', admin_setting('email_from_address', config('mail.from.address')));
-            Config::set('mail.from.name', admin_setting('app_name', 'XBoard'));
+            Config::set('mail.from.name', admin_setting('app_name', 'Fboard'));
         }
         $email = $params['email'];
         $subject = $params['subject'];

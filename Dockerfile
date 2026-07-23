@@ -51,7 +51,7 @@ COPY public/assets/admin/ /www/public/assets/admin/
 
 COPY .docker/supervisor/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY .docker/caddy/Caddyfile /etc/caddy/Caddyfile
-COPY .docker/php/zz-xboard.ini /usr/local/etc/php/conf.d/zz-xboard.ini
+COPY .docker/php/zz-fboard.ini /usr/local/etc/php/conf.d/zz-fboard.ini
 
 RUN composer install --no-cache --no-dev --no-security-blocking \
     && php artisan storage:link \

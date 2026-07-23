@@ -1,4 +1,4 @@
-# Xboard protocol fusion entrypoint.
+# Fboard protocol fusion entrypoint.
 #
 # Caddy listens on a single public port and dispatches HTTP traffic to Octane
 # while transparently upgrading WebSocket requests to the ws-server worker.

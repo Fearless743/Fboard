@@ -29,16 +29,20 @@ Route::get('/', function (Request $request) {
         }
     }
 
-    $theme = admin_setting('frontend_theme', 'Xboard');
     $themeService = new ThemeService();
+    $requestedTheme = admin_setting('frontend_theme', 'Fboard');
+    $theme = $themeService->resolveTheme($requestedTheme);
 
     try {
+        if ($theme !== $requestedTheme) {
+            Log::warning('Theme not found, switching to default theme', [
+                'theme' => $requestedTheme,
+                'resolved' => $theme,
+            ]);
+            admin_setting(['frontend_theme' => $theme]);
+        }
+
         if (!$themeService->exists($theme)) {
-            if ($theme !== 'Xboard') {
-                Log::warning('Theme not found, switching to default theme', ['theme' => $theme]);
-                $theme = 'Xboard';
-                admin_setting(['frontend_theme' => $theme]);
-            }
             $themeService->switch($theme);
         }
 
@@ -56,10 +60,10 @@ Route::get('/', function (Request $request) {
         }
 
         $renderParams = [
-            'title' => admin_setting('app_name', 'Xboard'),
+            'title' => admin_setting('app_name', 'Fboard'),
             'theme' => $theme,
             'version' => app(UpdateService::class)->getCurrentVersion(),
-            'description' => admin_setting('app_description', 'Xboard is best'),
+            'description' => admin_setting('app_description', 'Fboard is best'),
             'logo' => admin_setting('logo'),
             'theme_config' => $themeService->getConfig($theme)
         ];
@@ -76,7 +80,7 @@ Route::get('/', function (Request $request) {
 //TODO:: 兼容
 Route::get('/' . admin_setting('secure_path', admin_setting('frontend_admin_path', hash('crc32b', config('app.key')))), function () {
     return view('admin', [
-        'title' => admin_setting('app_name', 'XBoard'),
+        'title' => admin_setting('app_name', 'Fboard'),
         'version' => app(UpdateService::class)->getCurrentVersion(),
         'logo' => admin_setting('logo'),
         'secure_path' => admin_setting('secure_path', admin_setting('frontend_admin_path', hash('crc32b', config('app.key'))))

@@ -4,5 +4,5 @@
     "type": "protocol",
     "version": "1.0.0",
     "description": "Sing-Box 协议 - 生成 JSON 配置",
-    "author": "XBoard Team"
+    "author": "Fboard Team"
 }

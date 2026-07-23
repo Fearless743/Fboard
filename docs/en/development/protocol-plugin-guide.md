@@ -2,7 +2,7 @@
 
 Protocol plugins convert internal server configurations into client-readable subscription formats (YAML, JSON, URI, etc.). Each protocol plugin runs independently and is auto-discovered by the system.
 
-> **Note**: XBoard has two types of "protocol plugins":
+> **Note**: Fboard has two types of "protocol plugins":
 > 1. **Output format plugins** (first half of this guide) — Convert server configs to client subscription formats like Clash, SingBox
 > 2. **Protocol type definition plugins** (second half) — Define supported protocol types and their configuration fields like Shadowsocks, VMess
 

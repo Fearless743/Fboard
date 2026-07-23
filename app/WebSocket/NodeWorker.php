@@ -39,7 +39,7 @@ class NodeWorker
     {
         $this->worker = new Worker("websocket://{$host}:{$port}");
         $this->worker->count = 1;
-        $this->worker->name = 'xboard-ws-server';
+        $this->worker->name = 'fboard-ws-server';
     }
 
     public function run(): void
@@ -55,8 +55,8 @@ class NodeWorker
         if (!is_dir($logPath)) {
             mkdir($logPath, 0777, true);
         }
-        Worker::$logFile = $logPath . '/xboard-ws-server.log';
-        Worker::$pidFile = $logPath . '/xboard-ws-server.pid';
+        Worker::$logFile = $logPath . '/fboard-ws-server.log';
+        Worker::$pidFile = $logPath . '/fboard-ws-server.pid';
     }
 
     private function setupCallbacks(): void

@@ -1,6 +1,6 @@
-# Xboard — AGENTS.md
+# Fboard — AGENTS.md
 
-This is **Xboard**, a Laravel 12 + Octane (Swoole) proxy protocol management panel. The repo directory is named `Fboard` but the application brand is Xboard (namespace `xboard/xboard`).
+This is **Fboard**, a Laravel 13 + Octane (Swoole) proxy protocol management panel. The repo directory is named `Fboard` but the application brand is Fboard (namespace `fboard/fboard`).
 
 ## Quick commands
 
@@ -8,8 +8,8 @@ This is **Xboard**, a Laravel 12 + Octane (Swoole) proxy protocol management pan
 |------|---------|
 | Dev server (Octane/Swoole) | `php artisan octane:start --server=swoole` |
 | Queue (sync by default) | `php artisan horizon` (production) or `QUEUE_CONNECTION=sync` |
-| Install | `php artisan xboard:install` |
-| Update (migrate+plugins) | `php artisan xboard:update` |
+| Install | `php artisan fboard:install` |
+| Update (migrate+plugins) | `php artisan fboard:update` |
 | List all hooks | `php artisan hook:list` |
 | Run tests | `php artisan test` or `./vendor/bin/phpunit` |
 | PHPStan (level 5) | `./vendor/bin/phpstan analyse` |
@@ -20,7 +20,7 @@ This is **Xboard**, a Laravel 12 + Octane (Swoole) proxy protocol management pan
 - **Octane (Swoole)** replaces FPM — uses `config/octane.php`, runs on port 7001. Swoole-specific config under `OCTANE_*` env vars.
 - **Dual API versions**: `app/Http/Routes/V1/` (legacy) and `app/Http/Routes/V2/` (current). Controllers mirror this split.
 - **Plugin system**: plugins live in `plugins/` (user) and `plugins-core/` (built-in), PHP namespace `Plugin\`. Plugin manager is a scoped singleton via `PluginServiceProvider`. Hook system uses `HookManager`.
-- **Theme system**: `theme/` directory with frontend Vue3 views. Default theme is `Xboard`. Theme assets are copied to `public/theme/{name}` at runtime.
+- **Theme system**: `theme/` directory with frontend Vue3 views. Default theme is `Fboard`. Theme assets are copied to `public/theme/{name}` at runtime.
 - **Admin panel**: React app at `public/assets/admin/` (compiled, no source in this repo).
 - **WebSocket server**: `app/WebSocket/NodeWorker.php` — separate workerman process for node communication.
 - **Settings**: stored in DB (`v2_settings` table), accessed via `admin_setting('key')` helper (see `app/Helpers/Functions.php`).
@@ -35,7 +35,7 @@ This is **Xboard**, a Laravel 12 + Octane (Swoole) proxy protocol management pan
 | `app/Http/Routes/V2/` | Current API routes |
 | `plugins-core/` | Built-in protocol/plugin implementations |
 | `plugins/` | Third-party/user plugins (initially empty) |
-| `theme/Xboard/` | Default user frontend (Vue3) |
+| `theme/Fboard/` | Default user frontend (Vue3) |
 | `public/assets/admin/` | Admin panel built assets (React SPA) |
 
 ## Conventions
@@ -52,10 +52,10 @@ This is **Xboard**, a Laravel 12 + Octane (Swoole) proxy protocol management pan
 - Based on `phpswoole/swoole:php8.5-alpine`.
 - Caddy reverse-proxies to Octane (default) or Octane binds directly (`ENABLE_CADDY=false`).
 - Entrypoint auto-tunes worker counts based on cgroup memory/cpu limits.
-- `xboard:update` runs on every container start.
+- `fboard:update` runs on every container start.
 
 ## Testing
 
-- PHPUnit 11 with standard Laravel `RefreshDatabase` trait.
+- PHPUnit 12 with standard Laravel `RefreshDatabase` trait.
 - Sparse tests: `tests/Feature/Server/ServerHandshakeTest.php` and `tests/Unit/Services/Auth/`.
 - No CI workflows in `.github/workflows/`.

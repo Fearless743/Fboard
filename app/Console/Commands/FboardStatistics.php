@@ -7,14 +7,14 @@ use Illuminate\Console\Command;
 use App\Models\Stat;
 use Illuminate\Support\Facades\Log;
 
-class XboardStatistics extends Command
+class FboardStatistics extends Command
 {
     /**
      * The name and signature of the console command.
      *
      * @var string
      */
-    protected $signature = 'xboard:statistics';
+    protected $signature = 'fboard:statistics';
 
     /**
      * The console command description.

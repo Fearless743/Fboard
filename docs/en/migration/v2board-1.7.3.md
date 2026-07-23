@@ -1,6 +1,6 @@
 # V2board 1.7.3 Migration Guide
 
-This guide explains how to migrate from V2board version 1.7.3 to Xboard.
+This guide explains how to migrate from V2board version 1.7.3 to Fboard.
 
 ### 1. Database Changes Overview
 
@@ -21,7 +21,7 @@ This guide explains how to migrate from V2board version 1.7.3 to Xboard.
 
 ### 2. Prerequisites
 
-⚠️ Please complete the basic Xboard installation first (SQLite not supported):
+⚠️ Please complete the basic Fboard installation first (SQLite not supported):
 - [Docker Compose Deployment](../installation/docker-compose.md)
 - [aaPanel + Docker Deployment](../installation/aapanel-docker.md)
 - [aaPanel Deployment](../installation/aapanel.md)
@@ -35,13 +35,13 @@ This guide explains how to migrate from V2board version 1.7.3 to Xboard.
 docker compose down
 
 # 2. Clear database
-docker compose run -it --rm xboard php artisan db:wipe
+docker compose run -it --rm fboard php artisan db:wipe
 
 # 3. Import old database (Important)
 # Please manually import the V2board 1.7.3 database
 
 # 4. Execute migration
-docker compose run -it --rm xboard php artisan migratefromv2b 1.7.3
+docker compose run -it --rm fboard php artisan migratefromv2b 1.7.3
 ```
 
 #### aaPanel Environment

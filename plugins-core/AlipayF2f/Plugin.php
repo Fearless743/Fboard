@@ -64,7 +64,7 @@ class Plugin extends AbstractPlugin implements PaymentInterface
             $gateway->setAlipayPublicKey($this->getConfig('public_key'));
             $gateway->setNotifyUrl($order['notify_url']);
             $gateway->setBizContent([
-                'subject' => $this->getConfig('product_name') ?? (admin_setting('app_name', 'XBoard') . ' - 订阅'),
+                'subject' => $this->getConfig('product_name') ?? (admin_setting('app_name', 'Fboard') . ' - 订阅'),
                 'out_trade_no' => $order['trade_no'],
                 'total_amount' => $order['total_amount'] / 100
             ]);

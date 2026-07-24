@@ -52,6 +52,8 @@ class Plan extends Model
     public const PRICE_TYPE_RESET_TRAFFIC = 'reset_traffic';  // 重置流量价格
 
     // 定义可用的订阅周期
+    public const PERIOD_HOURLY = 'hourly';
+    public const PERIOD_DAILY = 'daily';
     public const PERIOD_MONTHLY = 'monthly';
     public const PERIOD_QUARTERLY = 'quarterly';
     public const PERIOD_HALF_YEARLY = 'half_yearly';
@@ -61,8 +63,10 @@ class Plan extends Model
     public const PERIOD_ONETIME = 'onetime';
     public const PERIOD_RESET_TRAFFIC = 'reset_traffic';
 
-    // 定义旧版周期映射
+    // 定义旧版周期映射（用户端/兼容 API 使用 *_price 字段名）
     public const LEGACY_PERIOD_MAPPING = [
+        'hour_price' => self::PERIOD_HOURLY,
+        'day_price' => self::PERIOD_DAILY,
         'month_price' => self::PERIOD_MONTHLY,
         'quarter_price' => self::PERIOD_QUARTERLY,
         'half_year_price' => self::PERIOD_HALF_YEARLY,
@@ -128,6 +132,17 @@ class Plan extends Model
     public static function getAvailablePeriods(): array
     {
         return [
+            self::PERIOD_HOURLY => [
+                'name' => '时付',
+                // 约 1/24 天；value 为相对月（1/720）用于均价估算
+                'days' => 1 / 24,
+                'value' => 1 / 720,
+            ],
+            self::PERIOD_DAILY => [
+                'name' => '日付',
+                'days' => 1,
+                'value' => 1 / 30,
+            ],
             self::PERIOD_MONTHLY => [
                 'name' => '月付',
                 'days' => 30,
@@ -280,10 +295,10 @@ class Plan extends Model
      * 计算指定周期的有效天数
      *
      * @param string $period
-     * @return int -1表示永久有效
+     * @return int|float -1表示永久有效；时付为 1/24
      * @throws InvalidArgumentException
      */
-    public static function getPeriodDays(string $period): int
+    public static function getPeriodDays(string $period): int|float
     {
         $periods = self::getAvailablePeriods();
         if (!isset($periods[$period])) {

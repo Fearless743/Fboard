@@ -18,13 +18,19 @@ use App\Services\PlanService;
 
 class OrderService
 {
+    /**
+     * 周期 → 相对月数（用于折抵估算；时/天为分数月）
+     * 实际到期时间见 getTime()，时/天走 addHours/addDays。
+     */
     const STR_TO_TIME = [
+        Plan::PERIOD_HOURLY => 1 / 720,
+        Plan::PERIOD_DAILY => 1 / 30,
         Plan::PERIOD_MONTHLY => 1,
         Plan::PERIOD_QUARTERLY => 3,
         Plan::PERIOD_HALF_YEARLY => 6,
         Plan::PERIOD_YEARLY => 12,
         Plan::PERIOD_TWO_YEARLY => 24,
-        Plan::PERIOD_THREE_YEARLY => 36
+        Plan::PERIOD_THREE_YEARLY => 36,
     ];
     public $order;
     public $user;
@@ -507,13 +513,20 @@ class OrderService
     {
         $timestamp = $timestamp < time() ? time() : $timestamp;
         $periodKey = PlanService::getPeriodKey($periodKey);
+        $base = Carbon::createFromTimestamp($timestamp);
 
-        if (isset(self::STR_TO_TIME[$periodKey])) {
-            $months = self::STR_TO_TIME[$periodKey];
-            return Carbon::createFromTimestamp($timestamp)->addMonths($months)->timestamp;
-        }
-
-        throw new ApiException('无效的套餐周期');
+        // 时/天用精确加减，避免分数月带来的日历误差
+        return match ($periodKey) {
+            Plan::PERIOD_HOURLY => $base->addHours(1)->timestamp,
+            Plan::PERIOD_DAILY => $base->addDays(1)->timestamp,
+            Plan::PERIOD_MONTHLY,
+            Plan::PERIOD_QUARTERLY,
+            Plan::PERIOD_HALF_YEARLY,
+            Plan::PERIOD_YEARLY,
+            Plan::PERIOD_TWO_YEARLY,
+            Plan::PERIOD_THREE_YEARLY => $base->addMonths((int) self::STR_TO_TIME[$periodKey])->timestamp,
+            default => throw new ApiException('无效的套餐周期'),
+        };
     }
 
     private function openEvent($eventId)

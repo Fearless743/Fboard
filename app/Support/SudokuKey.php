@@ -43,19 +43,6 @@ class SudokuKey
         return $v;
     }
 
-    public static function generateMasterKeyPair(): array
-    {
-        // SetUniformBytes(64 random) -> canonical scalar
-        $seed = random_bytes(64);
-        $scalar = self::scalarReduce($seed);
-        $public = self::scalarBaseMult($scalar);
-
-        return [
-            'master_private_key' => bin2hex($scalar),
-            'master_public_key' => bin2hex($public),
-        ];
-    }
-
     public static function deriveAvailablePrivateKey(string $masterPrivateHex, string $userUuid): string
     {
         $master = self::parseScalarBytes(trim($masterPrivateHex));

@@ -111,14 +111,31 @@ class PlanController extends Controller
 
     public function drop(Request $request)
     {
-        if (Order::where('plan_id', $request->input('id'))->first()) {
-            return $this->fail([400201, '该订阅下存在订单无法删除']);
+        $planId = $request->input('id');
+
+        // 仅拦截进行中的订单；已完成/已取消/已折抵为历史记录，不挡删除
+        $hasActiveOrders = Order::where('plan_id', $planId)
+            ->whereIn('status', [
+                Order::STATUS_PENDING,
+                Order::STATUS_PROCESSING,
+            ])
+            ->exists();
+        if ($hasActiveOrders) {
+            return $this->fail([400201, '该订阅下存在未完成订单无法删除']);
         }
-        if (User::where('plan_id', $request->input('id'))->first()) {
+
+        // 仅拦截未过期订阅（含永久 expired_at=null）；已过期用户允许删除
+        $hasActiveUsers = User::where('plan_id', $planId)
+            ->where(function ($query) {
+                $query->where('expired_at', '>', time())
+                    ->orWhereNull('expired_at');
+            })
+            ->exists();
+        if ($hasActiveUsers) {
             return $this->fail([400201, '该订阅下存在用户无法删除']);
         }
 
-        $plan = Plan::find($request->input('id'));
+        $plan = Plan::find($planId);
         if (!$plan) {
             return $this->fail([400202, '该订阅不存在']);
         }
@@ -128,7 +145,17 @@ class PlanController extends Controller
             'request' => $request,
         ]);
 
-        $result = $plan->delete();
+        DB::beginTransaction();
+        try {
+            // 已过期用户仍挂着 plan_id，解除关联后再删套餐
+            User::where('plan_id', $planId)->update(['plan_id' => null]);
+            $result = $plan->delete();
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error($e);
+            return $this->fail([500, '删除失败']);
+        }
 
         HookManager::call('admin.plan.drop.after', [
             'plan' => $plan,

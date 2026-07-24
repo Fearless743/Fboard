@@ -122,14 +122,14 @@ class NodeConfigBuildersTest extends TestCase
     {
         $node = $this->server('anytls', [
             'tls' => ['server_name' => 'any.example.com'],
-            'padding_scheme' => ['stop=8'],
+            'padding_scheme' => "stop=8\n0=30-30",
         ]);
 
         $config = NodeConfigBuilders::anytls($node, $this->baseConfig('anytls'));
 
         $this->assertSame(1, $config['tls']);
         $this->assertSame('any.example.com', $config['server_name']);
-        $this->assertSame(['stop=8'], $config['padding_scheme']);
+        $this->assertSame("stop=8\n0=30-30", $config['padding_scheme']);
     }
 
     public function test_sudoku_maps_httpmask_and_master_key(): void

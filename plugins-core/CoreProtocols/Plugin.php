@@ -257,12 +257,18 @@ class Plugin extends AbstractPlugin
     private function registerAnyTLS(): void
     {
         $this->registerProtocolDefinition(ProtocolTypes::ANYTLS, 'AnyTLS', [
-            'padding_scheme' => ['type' => 'array', 'default' => [
-                "stop=8", "0=30-30", "1=100-400",
-                "2=400-500,c,500-1000,c,500-1000,c,500-1000,c,500-1000",
-                "3=9-9,500-1000", "4=500-1000", "5=500-1000",
-                "6=500-1000", "7=500-1000"
-            ], 'label' => '填充方案'],
+            // 与 Xray-core proxy/anytls 默认 padding scheme 一致（多行字符串，非数组）
+            'padding_scheme' => ['type' => 'string', 'default' => implode("\n", [
+                'stop=8',
+                '0=30-30',
+                '1=100-400',
+                '2=400-500,c,500-1000,c,500-1000,c,500-1000,c,500-1000',
+                '3=9-9,500-1000',
+                '4=500-1000',
+                '5=500-1000',
+                '6=500-1000',
+                '7=500-1000',
+            ]), 'label' => '填充方案'],
             'tls' => ['type' => 'object', 'fields' => [
                 'server_name' => ['type' => 'string', 'default' => null, 'label' => '服务器名称'],
                 'allow_insecure' => ['type' => 'boolean', 'default' => false, 'label' => '允许不安全连接'],
@@ -276,7 +282,7 @@ class Plugin extends AbstractPlugin
                 ], 'label' => 'ECH配置'],
             ], 'label' => 'TLS设置'],
         ], array_merge(
-            ['padding_scheme' => 'nullable|array'],
+            ['padding_scheme' => 'nullable|string'],
             self::getTlsObjectValidationRules(true),
         ), '[anytls]', self::builder('anytls'));
     }

@@ -709,9 +709,10 @@ class ManageController extends Controller
     }
 
     /**
-     * 生成 Reality x25519 密钥对。
+     * 生成 Reality x25519 密钥对 + short_id。
      * 编码必须使用 base64.RawURLEncoding（无填充、URL 安全），
      * 与 Xray / mihomo / Clash.Meta 客户端一致。
+     * short_id 为 0-f 十六进制，长度 0–16（最多 8 字节）；默认生成 8 字节（16 位 hex）。
      */
     public function generateRealityKey()
     {
@@ -722,6 +723,7 @@ class ManageController extends Controller
         return $this->success([
             "public_key" => Helper::base64EncodeUrlSafe($publicKey),
             "private_key" => Helper::base64EncodeUrlSafe($secretKey),
+            "short_id" => bin2hex(random_bytes(8)),
         ]);
     }
 

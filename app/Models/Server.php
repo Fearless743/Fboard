@@ -187,7 +187,10 @@ class Server extends Model
         return match ($config["type"]) {
             "integer" => (int) $value,
             "boolean" => (bool) $value,
-            "string" => (string) $value,
+            // 兼容历史 array 存法（如 anytls padding_scheme）：按行拼成字符串
+            "string" => is_array($value)
+                ? implode("\n", array_map(static fn($v) => (string) $v, $value))
+                : (string) $value,
             "array" => (array) $value,
             "object" => is_array($value)
                 ? $this->castSettingsWithConfig($value, $config["fields"])

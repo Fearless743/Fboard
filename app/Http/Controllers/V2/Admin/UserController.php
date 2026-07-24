@@ -138,9 +138,17 @@ class UserController extends Controller
         }
 
         collect($request->input('sort'))->each(function ($sort) use ($builder) {
-            $field = $sort['id'];
-            $direction = $sort['desc'] ? 'DESC' : 'ASC';
-            $builder->orderBy($field, $direction);
+            $field = $sort['id'] ?? null;
+            if (!$field) {
+                return;
+            }
+            $direction = !empty($sort['desc']) ? 'DESC' : 'ASC';
+            // 计算字段需用表达式排序（selectRaw 别名在部分驱动/分页下不可靠）
+            $orderField = match ($field) {
+                'total_used' => DB::raw('(u + d)'),
+                default => $field,
+            };
+            $builder->orderBy($orderField, $direction);
         });
     }
 
@@ -193,7 +201,15 @@ class UserController extends Controller
 
         $this->applyFiltersAndSorts($request, $userModel);
 
-        $users = $userModel->orderBy('id', 'desc')
+        // 无自定义排序时默认按 id 降序；有 sort 时不再强制追加 id，避免覆盖主排序
+        $hasCustomSort = $request->has('sort')
+            && is_array($request->input('sort'))
+            && collect($request->input('sort'))->contains(fn ($s) => !empty($s['id'] ?? null));
+        if (!$hasCustomSort) {
+            $userModel->orderBy('id', 'desc');
+        }
+
+        $users = $userModel
             ->paginate($pageSize, ['*'], 'page', $current);
 
         $users->getCollection()->transform(function ($user): array {

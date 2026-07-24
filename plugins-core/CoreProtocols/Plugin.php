@@ -86,8 +86,8 @@ class Plugin extends AbstractPlugin
                 'ech' => ['type' => 'object', 'fields' => [
                     'enabled' => ['type' => 'boolean', 'default' => false, 'label' => 'ECH'],
                     'config' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置', 'show_when' => ['enabled' => 'true']],
-                    'query_server_name' => ['type' => 'string', 'default' => null, 'label' => 'ECH查询域名', 'show_when' => ['enabled' => 'true']],
                     'key' => ['type' => 'string', 'default' => null, 'label' => 'ECH密钥', 'show_when' => ['enabled' => 'true']],
+                    'query_server_name' => ['type' => 'string', 'default' => null, 'label' => 'ECH查询域名', 'show_when' => ['enabled' => 'true']],
                     'key_path' => ['type' => 'string', 'default' => null, 'label' => 'ECH密钥路径', 'show_when' => ['enabled' => 'true']],
                     'config_path' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置路径', 'show_when' => ['enabled' => 'true']],
                 ], 'label' => 'ECH配置'],
@@ -112,8 +112,8 @@ class Plugin extends AbstractPlugin
                 'ech' => ['type' => 'object', 'fields' => [
                     'enabled' => ['type' => 'boolean', 'default' => false, 'label' => 'ECH'],
                     'config' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置', 'show_when' => ['enabled' => 'true']],
-                    'query_server_name' => ['type' => 'string', 'default' => null, 'label' => 'ECH查询域名', 'show_when' => ['enabled' => 'true']],
                     'key' => ['type' => 'string', 'default' => null, 'label' => 'ECH密钥', 'show_when' => ['enabled' => 'true']],
+                    'query_server_name' => ['type' => 'string', 'default' => null, 'label' => 'ECH查询域名', 'show_when' => ['enabled' => 'true']],
                     'key_path' => ['type' => 'string', 'default' => null, 'label' => 'ECH密钥路径', 'show_when' => ['enabled' => 'true']],
                     'config_path' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置路径', 'show_when' => ['enabled' => 'true']],
                 ], 'label' => 'ECH配置'],
@@ -159,8 +159,8 @@ class Plugin extends AbstractPlugin
                 'ech' => ['type' => 'object', 'fields' => [
                     'enabled' => ['type' => 'boolean', 'default' => false, 'label' => 'ECH'],
                     'config' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置', 'show_when' => ['enabled' => 'true']],
-                    'query_server_name' => ['type' => 'string', 'default' => null, 'label' => 'ECH查询域名', 'show_when' => ['enabled' => 'true']],
                     'key' => ['type' => 'string', 'default' => null, 'label' => 'ECH密钥', 'show_when' => ['enabled' => 'true']],
+                    'query_server_name' => ['type' => 'string', 'default' => null, 'label' => 'ECH查询域名', 'show_when' => ['enabled' => 'true']],
                     'key_path' => ['type' => 'string', 'default' => null, 'label' => 'ECH密钥路径', 'show_when' => ['enabled' => 'true']],
                     'config_path' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置路径', 'show_when' => ['enabled' => 'true']],
                 ], 'label' => 'ECH配置'],
@@ -197,8 +197,8 @@ class Plugin extends AbstractPlugin
                 'ech' => ['type' => 'object', 'fields' => [
                     'enabled' => ['type' => 'boolean', 'default' => false, 'label' => 'ECH'],
                     'config' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置', 'show_when' => ['enabled' => 'true']],
-                    'query_server_name' => ['type' => 'string', 'default' => null, 'label' => 'ECH查询域名', 'show_when' => ['enabled' => 'true']],
                     'key' => ['type' => 'string', 'default' => null, 'label' => 'ECH密钥', 'show_when' => ['enabled' => 'true']],
+                    'query_server_name' => ['type' => 'string', 'default' => null, 'label' => 'ECH查询域名', 'show_when' => ['enabled' => 'true']],
                     'key_path' => ['type' => 'string', 'default' => null, 'label' => 'ECH密钥路径', 'show_when' => ['enabled' => 'true']],
                     'config_path' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置路径', 'show_when' => ['enabled' => 'true']],
                 ], 'label' => 'ECH配置'],
@@ -240,8 +240,8 @@ class Plugin extends AbstractPlugin
                 'ech' => ['type' => 'object', 'fields' => [
                     'enabled' => ['type' => 'boolean', 'default' => false, 'label' => 'ECH'],
                     'config' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置', 'show_when' => ['enabled' => 'true']],
-                    'query_server_name' => ['type' => 'string', 'default' => null, 'label' => 'ECH查询域名', 'show_when' => ['enabled' => 'true']],
                     'key' => ['type' => 'string', 'default' => null, 'label' => 'ECH密钥', 'show_when' => ['enabled' => 'true']],
+                    'query_server_name' => ['type' => 'string', 'default' => null, 'label' => 'ECH查询域名', 'show_when' => ['enabled' => 'true']],
                     'key_path' => ['type' => 'string', 'default' => null, 'label' => 'ECH密钥路径', 'show_when' => ['enabled' => 'true']],
                     'config_path' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置路径', 'show_when' => ['enabled' => 'true']],
                 ], 'label' => 'ECH配置'],
@@ -258,25 +258,31 @@ class Plugin extends AbstractPlugin
     {
         $this->registerProtocolDefinition(ProtocolTypes::ANYTLS, 'AnyTLS', [
             // 与 Xray-core proxy/anytls 默认 padding scheme 一致（多行字符串，非数组）
-            'padding_scheme' => ['type' => 'string', 'default' => implode("\n", [
-                'stop=8',
-                '0=30-30',
-                '1=100-400',
-                '2=400-500,c,500-1000,c,500-1000,c,500-1000,c,500-1000',
-                '3=9-9,500-1000',
-                '4=500-1000',
-                '5=500-1000',
-                '6=500-1000',
-                '7=500-1000',
-            ]), 'label' => '填充方案'],
+            'padding_scheme' => [
+                'type' => 'string',
+                'default' => implode("\n", [
+                    'stop=8',
+                    '0=30-30',
+                    '1=100-400',
+                    '2=400-500,c,500-1000,c,500-1000,c,500-1000,c,500-1000',
+                    '3=9-9,500-1000',
+                    '4=500-1000',
+                    '5=500-1000',
+                    '6=500-1000',
+                    '7=500-1000',
+                ]),
+                'label' => '填充方案',
+                'placeholder' => "stop=8\n0=30-30\n1=100-400\n...",
+                'description' => '每行一条规则；勿填 JSON 数组。节点侧会原样作为多行字符串下发。',
+            ],
             'tls' => ['type' => 'object', 'fields' => [
                 'server_name' => ['type' => 'string', 'default' => null, 'label' => '服务器名称'],
                 'allow_insecure' => ['type' => 'boolean', 'default' => false, 'label' => '允许不安全连接'],
                 'ech' => ['type' => 'object', 'fields' => [
                     'enabled' => ['type' => 'boolean', 'default' => false, 'label' => 'ECH'],
                     'config' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置', 'show_when' => ['enabled' => 'true']],
-                    'query_server_name' => ['type' => 'string', 'default' => null, 'label' => 'ECH查询域名', 'show_when' => ['enabled' => 'true']],
                     'key' => ['type' => 'string', 'default' => null, 'label' => 'ECH密钥', 'show_when' => ['enabled' => 'true']],
+                    'query_server_name' => ['type' => 'string', 'default' => null, 'label' => 'ECH查询域名', 'show_when' => ['enabled' => 'true']],
                     'key_path' => ['type' => 'string', 'default' => null, 'label' => 'ECH密钥路径', 'show_when' => ['enabled' => 'true']],
                     'config_path' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置路径', 'show_when' => ['enabled' => 'true']],
                 ], 'label' => 'ECH配置'],
@@ -297,8 +303,8 @@ class Plugin extends AbstractPlugin
                 'ech' => ['type' => 'object', 'fields' => [
                     'enabled' => ['type' => 'boolean', 'default' => false, 'label' => 'ECH'],
                     'config' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置', 'show_when' => ['enabled' => 'true']],
-                    'query_server_name' => ['type' => 'string', 'default' => null, 'label' => 'ECH查询域名', 'show_when' => ['enabled' => 'true']],
                     'key' => ['type' => 'string', 'default' => null, 'label' => 'ECH密钥', 'show_when' => ['enabled' => 'true']],
+                    'query_server_name' => ['type' => 'string', 'default' => null, 'label' => 'ECH查询域名', 'show_when' => ['enabled' => 'true']],
                     'key_path' => ['type' => 'string', 'default' => null, 'label' => 'ECH密钥路径', 'show_when' => ['enabled' => 'true']],
                     'config_path' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置路径', 'show_when' => ['enabled' => 'true']],
                 ], 'label' => 'ECH配置'],
@@ -316,8 +322,8 @@ class Plugin extends AbstractPlugin
                 'ech' => ['type' => 'object', 'fields' => [
                     'enabled' => ['type' => 'boolean', 'default' => false, 'label' => 'ECH'],
                     'config' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置', 'show_when' => ['enabled' => 'true']],
-                    'query_server_name' => ['type' => 'string', 'default' => null, 'label' => 'ECH查询域名', 'show_when' => ['enabled' => 'true']],
                     'key' => ['type' => 'string', 'default' => null, 'label' => 'ECH密钥', 'show_when' => ['enabled' => 'true']],
+                    'query_server_name' => ['type' => 'string', 'default' => null, 'label' => 'ECH查询域名', 'show_when' => ['enabled' => 'true']],
                     'key_path' => ['type' => 'string', 'default' => null, 'label' => 'ECH密钥路径', 'show_when' => ['enabled' => 'true']],
                     'config_path' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置路径', 'show_when' => ['enabled' => 'true']],
                 ], 'label' => 'ECH配置'],
@@ -335,8 +341,8 @@ class Plugin extends AbstractPlugin
                 'ech' => ['type' => 'object', 'fields' => [
                     'enabled' => ['type' => 'boolean', 'default' => false, 'label' => 'ECH'],
                     'config' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置', 'show_when' => ['enabled' => 'true']],
-                    'query_server_name' => ['type' => 'string', 'default' => null, 'label' => 'ECH查询域名', 'show_when' => ['enabled' => 'true']],
                     'key' => ['type' => 'string', 'default' => null, 'label' => 'ECH密钥', 'show_when' => ['enabled' => 'true']],
+                    'query_server_name' => ['type' => 'string', 'default' => null, 'label' => 'ECH查询域名', 'show_when' => ['enabled' => 'true']],
                     'key_path' => ['type' => 'string', 'default' => null, 'label' => 'ECH密钥路径', 'show_when' => ['enabled' => 'true']],
                     'config_path' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置路径', 'show_when' => ['enabled' => 'true']],
                 ], 'label' => 'ECH配置'],
@@ -348,7 +354,13 @@ class Plugin extends AbstractPlugin
     {
         $this->registerProtocolDefinition(ProtocolTypes::MIERU, 'Mieru', [
             'transport' => ['type' => 'string', 'default' => 'TCP', 'label' => '传输方式', 'options' => ['TCP' => 'TCP', 'UDP' => 'UDP']],
-            'traffic_pattern' => ['type' => 'string', 'default' => '', 'label' => '流量模式'],
+            'traffic_pattern' => [
+                'type' => 'string',
+                'default' => '',
+                'label' => '流量特征伪装 (Base64)',
+                'description' => '可选。官方 mieru Traffic Pattern 的 Base64 串，用于 TCP 分片 / Nonce 前缀等抗 DPI 流量整形；留空则使用默认行为。可用 mita/mieru export traffic-pattern 导出。',
+                'placeholder' => '留空使用默认；或点击右侧按钮生成',
+            ],
             ...self::getMultiplexFields(),
         ], array_merge(
             ['transport' => 'required|string|in:TCP,UDP', 'traffic_pattern' => 'string'],

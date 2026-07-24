@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\V2\Admin\Server;
 
-use App\Exceptions\ApiException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ServerSave;
 use App\Jobs\NodeRestartJob;
@@ -11,8 +10,6 @@ use App\Models\Server;
 use App\Models\ServerGroup;
 use App\Services\Plugin\HookManager;
 use App\Services\ServerService;
-use App\Support\SudokuKey;
-use App\Utils\Helper;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -644,99 +641,6 @@ class ManageController extends Controller
             Log::error("保存虚拟节点失败", ["error" => $e->getMessage()]);
             return $this->fail([500, "保存失败"]);
         }
-    }
-
-    /**
-     * Generate ECH (Encrypted Client Hello) key pair.
-     * Returns PEM-encoded ECH key (server-side) and ECH config (client-side).
-     */
-    public function generateEchKey(Request $request)
-    {
-        $publicName = $request->input("public_name", "ech.example.com");
-        if (strlen($publicName) < 1 || strlen($publicName) > 253) {
-            throw new ApiException(
-                "public_name must be a valid domain (1-253 bytes)",
-            );
-        }
-
-        // Generate X25519 key pair
-        $privateKey = random_bytes(32);
-        $publicKey = sodium_crypto_scalarmult_base($privateKey);
-
-        $configId = random_int(0, 255);
-
-        // Build ECHConfigContents (draft-ietf-tls-esni-18)
-        $contents = "";
-        $contents .= pack("C", $configId); // config_id
-        $contents .= pack("n", 0x0020); // kem_id: DHKEM(X25519)
-        $contents .= pack("n", 32) . $publicKey; // public_key (length-prefixed)
-        // cipher_suites: 2 suites × 4 bytes = 8 bytes
-        $contents .= pack("n", 8); // cipher_suites byte length
-        $contents .= pack("nn", 0x0001, 0x0001); // HKDF-SHA256 + AES-128-GCM
-        $contents .= pack("nn", 0x0001, 0x0003); // HKDF-SHA256 + ChaCha20Poly1305
-        $contents .= pack("C", 0); // max_name_length
-        $contents .= pack("C", strlen($publicName)) . $publicName;
-        $contents .= pack("n", 0); // extensions: empty
-
-        // ECHConfig = version(2) + length(2) + contents
-        $echConfig =
-            pack("n", 0xfe0d) . pack("n", strlen($contents)) . $contents;
-
-        // ECHConfigList = total_length(2) + configs
-        $echConfigList = pack("n", strlen($echConfig)) . $echConfig;
-
-        // ECH Keys = private_key_len(2) + key(32) + config_len(2) + config
-        $echKeysPayload =
-            pack("n", 32) .
-            $privateKey .
-            pack("n", strlen($echConfig)) .
-            $echConfig;
-
-        $keyPem =
-            "-----BEGIN ECH KEYS-----\n" .
-            chunk_split(base64_encode($echKeysPayload), 64, "\n") .
-            "-----END ECH KEYS-----";
-
-        $configPem =
-            "-----BEGIN ECH CONFIGS-----\n" .
-            chunk_split(base64_encode($echConfigList), 64, "\n") .
-            "-----END ECH CONFIGS-----";
-
-        return $this->success([
-            "key" => $keyPem,
-            "config" => $configPem,
-        ]);
-    }
-
-    /**
-     * 生成 Reality x25519 密钥对 + short_id。
-     * 编码必须使用 base64.RawURLEncoding（无填充、URL 安全），
-     * 与 Xray / mihomo / Clash.Meta 客户端一致。
-     * short_id 为 0-f 十六进制，长度 0–16（最多 8 字节）；默认生成 8 字节（16 位 hex）。
-     */
-    public function generateRealityKey()
-    {
-        $keypair = sodium_crypto_box_keypair();
-        $secretKey = sodium_crypto_box_secretkey($keypair);
-        $publicKey = sodium_crypto_box_publickey($keypair);
-
-        return $this->success([
-            "public_key" => Helper::base64EncodeUrlSafe($publicKey),
-            "private_key" => Helper::base64EncodeUrlSafe($secretKey),
-            "short_id" => bin2hex(random_bytes(8)),
-        ]);
-    }
-
-    /**
-     * 生成 Sudoku Master 密钥对（hex）
-     */
-    public function generateSudokuKey()
-    {
-        $pair = SudokuKey::generateMasterKeyPair();
-        return $this->success([
-            "master_public_key" => $pair["master_public_key"],
-            "master_private_key" => $pair["master_private_key"],
-        ]);
     }
 
     /**

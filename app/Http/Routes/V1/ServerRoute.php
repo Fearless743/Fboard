@@ -1,7 +1,6 @@
 <?php
 namespace App\Http\Routes\V1;
 
-use App\Http\Controllers\V1\Server\DeepbworkController;
 use App\Http\Controllers\V1\Server\ShadowsocksTidalabController;
 use App\Http\Controllers\V1\Server\TrojanTidalabController;
 use App\Http\Controllers\V1\Server\UniProxyController;

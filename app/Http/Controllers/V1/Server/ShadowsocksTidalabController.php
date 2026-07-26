@@ -2,9 +2,7 @@
 
 namespace App\Http\Controllers\V1\Server;
 
-use App\Exceptions\ApiException;
 use App\Http\Controllers\Controller;
-use App\Models\ServerShadowsocks;
 use App\Services\ServerService;
 use App\Services\UserService;
 use App\Utils\CacheKey;

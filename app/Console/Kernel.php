@@ -7,6 +7,7 @@ use App\Utils\CacheKey;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class Kernel extends ConsoleKernel
 {
@@ -28,28 +29,18 @@ class Kernel extends ConsoleKernel
     protected function schedule(Schedule $schedule): void
     {
         Cache::put(CacheKey::get('SCHEDULE_LAST_CHECK_AT', null), time());
-        // v2board
         $schedule->command('fboard:statistics')->dailyAt('0:10')->onOneServer();
-        // check
         $schedule->command('check:order')->everyMinute()->onOneServer()->withoutOverlapping(5);
         $schedule->command('check:commission')->everyMinute()->onOneServer()->withoutOverlapping(5);
         $schedule->command('check:ticket')->everyMinute()->onOneServer()->withoutOverlapping(5);
         $schedule->command('check:traffic-exceeded')->everyMinute()->onOneServer()->withoutOverlapping(10)->runInBackground();
-        // reset
         $schedule->command('reset:traffic')->everyMinute()->onOneServer()->withoutOverlapping(10);
         $schedule->command('reset:log')->daily()->onOneServer();
-        // send
         $schedule->command('send:remindMail', ['--force'])->dailyAt('11:30')->onOneServer();
-        // horizon metrics
         $schedule->command('horizon:snapshot')->everyFiveMinutes()->onOneServer();
-        // cleanup stale online_count (GC for Redis TTL expiration)
         $schedule->command('cleanup:online-status')->everyFiveMinutes()->onOneServer();
-        // backup Timing
-        // if (env('ENABLE_AUTO_BACKUP_AND_UPDATE', false)) {
-        //     $schedule->command('backup:database', ['true'])->daily()->onOneServer();
-        // }
+        // 自动备份：ENABLE_AUTO_BACKUP_AND_UPDATE=true 时由运维自行加入 schedule 或 cron
         app(PluginManager::class)->registerPluginSchedules($schedule);
-
     }
 
     /**
@@ -63,7 +54,8 @@ class Kernel extends ConsoleKernel
 
         try {
             app(PluginManager::class)->initializeEnabledPlugins();
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            Log::warning('Failed to initialize plugins in console: ' . $e->getMessage());
         }
         require base_path('routes/console.php');
     }

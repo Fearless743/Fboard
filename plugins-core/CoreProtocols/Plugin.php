@@ -3,6 +3,7 @@
 namespace Plugin\CoreProtocols;
 
 use App\Services\Plugin\AbstractPlugin;
+use App\Utils\Helper;
 
 class Plugin extends AbstractPlugin
 {
@@ -521,7 +522,7 @@ class Plugin extends AbstractPlugin
                     'type' => 'string',
                     'default' => 'chrome',
                     'label' => '指纹',
-                    'options' => \App\Utils\Helper::getUtlsFingerprintOptions(),
+                    'options' => Helper::getUtlsFingerprintOptions(),
                     'show_when' => ['enabled' => 'true'],
                 ],
             ], 'label' => 'uTLS设置'],
@@ -555,7 +556,7 @@ class Plugin extends AbstractPlugin
 
     private static function getUtlsValidationRules(): array
     {
-        $allowed = array_keys(\App\Utils\Helper::getUtlsFingerprintOptions());
+        $allowed = array_keys(Helper::getUtlsFingerprintOptions());
         $in = $allowed !== [] ? implode(',', $allowed) : 'chrome';
 
         return [

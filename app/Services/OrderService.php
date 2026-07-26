@@ -119,12 +119,11 @@ class OrderService
     public function open(): void
     {
         $order = $this->order;
-        $plan = Plan::find($order->plan_id);
 
         HookManager::call('order.open.before', $order);
 
         $opened = false;
-        DB::transaction(function () use ($order, $plan, &$opened) {
+        DB::transaction(function () use ($order, &$opened) {
             // 锁订单行并抢占 PROCESSING：Job 重试 / 并发 open 不得二次加 surplus_credit / 延订阅
             $locked = Order::query()->whereKey($order->id)->lockForUpdate()->first();
             if (!$locked) {
@@ -141,24 +140,47 @@ class OrderService
             }
 
             $this->user = User::lockForUpdate()->find($order->user_id);
-
-            if ($order->surplus_credit) {
-                $this->user->balance += $order->surplus_credit;
+            if (!$this->user) {
+                throw new \RuntimeException('用户不存在');
             }
 
-            if ($order->surplus_order_ids) {
-                Order::whereIn('id', $order->surplus_order_ids)
-                    ->update(['status' => Order::STATUS_DISCOUNTED]);
+            // 以锁后行数据判定，避免锁前快照与落库不一致
+            if (self::isDepositOrder($order)) {
+                // surplus_amount 在创建时冻结赠送金额；缺失时回退现算（兼容历史单）
+                $bonus = $order->surplus_amount !== null
+                    ? max(0, (int) $order->surplus_amount)
+                    : self::calculateDepositBonus((int) $order->total_amount);
+                $credit = max(0, (int) $order->total_amount) + $bonus;
+                if ($credit <= 0) {
+                    throw new \RuntimeException('充值金额无效');
+                }
+                $this->user->balance = (int) $this->user->balance + $credit;
+            } else {
+                $plan = Plan::find($order->plan_id);
+                if (!$plan) {
+                    throw new \RuntimeException('订阅计划不存在');
+                }
+
+                if ($order->surplus_credit) {
+                    $this->user->balance += $order->surplus_credit;
+                }
+
+                if ($order->surplus_order_ids) {
+                    Order::whereIn('id', $order->surplus_order_ids)
+                        ->where('period', '!=', Order::PERIOD_DEPOSIT)
+                        ->where('type', '!=', Order::TYPE_DEPOSIT)
+                        ->update(['status' => Order::STATUS_DISCOUNTED]);
+                }
+
+                match ((string) $order->period) {
+                    Plan::PERIOD_ONETIME => $this->buyByOneTime($plan),
+                    Plan::PERIOD_RESET_TRAFFIC => app(TrafficResetService::class)->performReset($this->user, TrafficResetLog::SOURCE_ORDER),
+                    default => $this->buyByPeriod($order, $plan),
+                };
+
+                $this->setSpeedLimit($plan->speed_limit);
+                $this->setDeviceLimit($plan->device_limit);
             }
-
-            match ((string) $order->period) {
-                Plan::PERIOD_ONETIME => $this->buyByOneTime($plan),
-                Plan::PERIOD_RESET_TRAFFIC => app(TrafficResetService::class)->performReset($this->user, TrafficResetLog::SOURCE_ORDER),
-                default => $this->buyByPeriod($order, $plan),
-            };
-
-            $this->setSpeedLimit($plan->speed_limit);
-            $this->setDeviceLimit($plan->device_limit);
 
             if (!$this->user->save()) {
                 throw new \RuntimeException('用户信息保存失败');
@@ -192,6 +214,52 @@ class OrderService
         }
 
         HookManager::call('order.open.after', $order);
+    }
+
+    public static function isDepositOrder(Order $order): bool
+    {
+        return (string) $order->period === Order::PERIOD_DEPOSIT
+            || (int) $order->type === Order::TYPE_DEPOSIT;
+    }
+
+    /**
+     * 按阶梯计算充值赠送金额（单位：分）
+     * 配置 deposit_bonus：数组项为 "门槛元:赠送元"，取满足门槛的最大赠送
+     */
+    public static function calculateDepositBonus(int $totalAmountCents): int
+    {
+        if ($totalAmountCents <= 0) {
+            return 0;
+        }
+
+        $tiers = admin_setting('deposit_bonus', []);
+        if (!is_array($tiers) || empty($tiers)) {
+            $tiers = admin_setting('deposit_bounus', []);
+        }
+        if (!is_array($tiers) || empty($tiers)) {
+            return 0;
+        }
+
+        $bonus = 0;
+        foreach ($tiers as $tier) {
+            if (!is_string($tier) || !str_contains($tier, ':')) {
+                continue;
+            }
+            [$thresholdYuan, $bonusYuan] = array_pad(explode(':', $tier, 2), 2, 0);
+            if (!is_numeric($thresholdYuan) || !is_numeric($bonusYuan)) {
+                continue;
+            }
+            $thresholdCents = (int) round((float) $thresholdYuan * 100);
+            $bonusCents = (int) round((float) $bonusYuan * 100);
+            if ($thresholdCents < 0 || $bonusCents < 0) {
+                continue;
+            }
+            if ($totalAmountCents >= $thresholdCents) {
+                $bonus = max($bonus, $bonusCents);
+            }
+        }
+
+        return $bonus;
     }
 
 
@@ -281,8 +349,11 @@ class OrderService
 
     private function haveValidOrder(User $user): Order|null
     {
+        // 余额充值不算「有效套餐订单」，避免阻断首单返佣
         return Order::where('user_id', $user->id)
             ->whereNotIn('status', [Order::STATUS_PENDING, Order::STATUS_CANCELLED])
+            ->where('period', '!=', Order::PERIOD_DEPOSIT)
+            ->where('type', '!=', Order::TYPE_DEPOSIT)
             ->first();
     }
 
@@ -307,14 +378,16 @@ class OrderService
             $result = $trafficUnitPrice * $notUsedTraffic;
             $order->surplus_amount = (int) ($result > 0 ? $result : 0);
             $order->surplus_order_ids = Order::where('user_id', $user->id)
-                ->where('period', '!=', Plan::PERIOD_RESET_TRAFFIC)
+                ->whereNotIn('period', [Plan::PERIOD_RESET_TRAFFIC, Order::PERIOD_DEPOSIT])
+                ->where('type', '!=', Order::TYPE_DEPOSIT)
                 ->where('status', Order::STATUS_COMPLETED)
                 ->pluck('id')
                 ->all();
         } else {
             $orders = Order::query()
                 ->where('user_id', $user->id)
-                ->whereNotIn('period', [Plan::PERIOD_RESET_TRAFFIC, Plan::PERIOD_ONETIME])
+                ->whereNotIn('period', [Plan::PERIOD_RESET_TRAFFIC, Plan::PERIOD_ONETIME, Order::PERIOD_DEPOSIT])
+                ->where('type', '!=', Order::TYPE_DEPOSIT)
                 ->where('status', Order::STATUS_COMPLETED)
                 ->get();
 

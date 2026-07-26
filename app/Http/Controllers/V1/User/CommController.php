@@ -23,7 +23,11 @@ class CommController extends Controller
             'commission_distribution_enable' => (int)admin_setting('commission_distribution_enable', 0),
             'commission_distribution_l1' => admin_setting('commission_distribution_l1'),
             'commission_distribution_l2' => admin_setting('commission_distribution_l2'),
-            'commission_distribution_l3' => admin_setting('commission_distribution_l3')
+            'commission_distribution_l3' => admin_setting('commission_distribution_l3'),
+            'deposit_enable' => (int) admin_setting('deposit_enable', 1),
+            'deposit_min_amount' => (int) admin_setting('deposit_min_amount', 100),
+            'deposit_max_amount' => (int) admin_setting('deposit_max_amount', 999999900),
+            'deposit_bonus' => admin_setting('deposit_bonus', admin_setting('deposit_bounus', [])),
         ];
         return $this->success($data);
     }

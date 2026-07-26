@@ -32,23 +32,22 @@ class RouteController extends Controller
             'action.in' => '动作类型参数有误'
         ]);
         $params['match'] = array_filter($params['match']);
-        // TODO: remove on 1.8.0
-        if ($request->input('id')) {
-            try {
+        try {
+            if ($request->input('id')) {
                 $route = ServerRoute::find($request->input('id'));
+                if (!$route) {
+                    throw new ApiException('路由不存在');
+                }
                 $route->update($params);
-                return $this->success(true);
-            } catch (\Exception $e) {
-                Log::error($e);
-                return $this->fail([500,'保存失败']);
+            } else {
+                ServerRoute::create($params);
             }
-        }
-        try{
-            ServerRoute::create($params);
             return $this->success(true);
-        }catch(\Exception $e){
+        } catch (ApiException $e) {
+            throw $e;
+        } catch (\Exception $e) {
             Log::error($e);
-            return $this->fail([500,'创建失败']);
+            return $this->fail([500, $request->input('id') ? '保存失败' : '创建失败']);
         }
     }
 

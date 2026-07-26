@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Services\Plugin\HookManager;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
@@ -80,7 +81,7 @@ class ProtocolManager
 
     protected function discoverFromHook(): void
     {
-        $extraClasses = \App\Services\Plugin\HookManager::filter('protocols.register', []);
+        $extraClasses = HookManager::filter('protocols.register', []);
         foreach ($extraClasses as $className) {
             if (!in_array($className, $this->protocolClasses, true)
                 && class_exists($className)

@@ -1,6 +1,7 @@
 <?php
 namespace App\Http\Routes\V1;
 
+use App\Http\Controllers\V1\User\BalanceDepositController;
 use App\Http\Controllers\V1\User\CommController;
 use App\Http\Controllers\V1\User\CouponController;
 use App\Http\Controllers\V1\User\GiftCardController;
@@ -20,9 +21,21 @@ class UserRoute
 {
     public function map(Registrar $router)
     {
+        $auth = ['user', 'maintenance'];
+
+        // 顶层别名：/api/v1/balance_deposit/*、/api/v1/balance_recharge/*
+        $router->group(['middleware' => $auth], function ($router) {
+            foreach (['balance_deposit', 'balance_recharge'] as $prefix) {
+                $router->group(['prefix' => $prefix], function ($router) {
+                    $router->post('/create', [BalanceDepositController::class, 'create']);
+                    $router->get('/detail', [BalanceDepositController::class, 'detail']);
+                });
+            }
+        });
+
         $router->group([
             'prefix' => 'user',
-            'middleware' => ['user', 'maintenance']
+            'middleware' => $auth,
         ], function ($router) {
             // User
             $router->get('/resetSecurity', [UserController::class, 'resetSecurity']);
@@ -44,6 +57,11 @@ class UserRoute
             $router->get('/order/fetch', [OrderController::class, 'fetch']);
             $router->get('/order/getPaymentMethod', [OrderController::class, 'getPaymentMethod']);
             $router->post('/order/cancel', [OrderController::class, 'cancel']);
+            // Balance deposit（与 order 同级）
+            $router->group(['prefix' => 'balance_deposit'], function ($router) {
+                $router->post('/create', [BalanceDepositController::class, 'create']);
+                $router->get('/detail', [BalanceDepositController::class, 'detail']);
+            });
             // Plan
             $router->get('/plan/fetch', [PlanController::class, 'fetch']);
             // Invite

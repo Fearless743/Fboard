@@ -1,6 +1,6 @@
 # Fboard — AGENTS.md
 
-This is **Fboard**, a Laravel 13 + Octane (Swoole) proxy protocol management panel. The repo directory is named `Fboard` but the application brand is Fboard (namespace `fboard/fboard`).
+This is **Fboard**, a Laravel 12 + Octane (Swoole) proxy protocol management panel. Package name is `fboard/fboard`; Artisan commands use the `fboard:*` prefix.
 
 ## Quick commands
 
@@ -24,7 +24,7 @@ This is **Fboard**, a Laravel 13 + Octane (Swoole) proxy protocol management pan
 - **Admin panel**: React app at `public/assets/admin/` (compiled, no source in this repo).
 - **WebSocket server**: `app/WebSocket/NodeWorker.php` — separate workerman process for node communication.
 - **Settings**: stored in DB (`v2_settings` table), accessed via `admin_setting('key')` helper (see `app/Helpers/Functions.php`).
-- **Protocol definitions**: `plugins-core/CoreProtocols/` + `ProtocolServiceProvider`. Each protocol implements `ProtocolPluginInterface`.
+- **Protocol definitions**: `plugins-core/CoreProtocols/` registers schemas via hooks; subscription clients (`Clash`, `SingBox`, …) extend `App\Support\AbstractProtocol`. Protocol plugins may also use `ProtocolPluginInterface` / `AbstractProtocolPlugin`.
 - **Jobs** use Redis + Horizon in production. Queue names: `traffic_fetch`, `stat`, `order_handle`, `send_email`, `send_telegram`, `node_sync`, `user_alive_sync`.
 
 ## Key directories

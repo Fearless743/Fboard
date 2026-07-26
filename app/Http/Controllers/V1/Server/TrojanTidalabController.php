@@ -2,14 +2,13 @@
 
 namespace App\Http\Controllers\V1\Server;
 
-use App\Exceptions\ApiException;
 use App\Http\Controllers\Controller;
-use App\Models\ServerTrojan;
 use App\Services\ServerService;
 use App\Services\UserService;
 use App\Utils\CacheKey;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 /*
  * Tidal Lab Trojan
@@ -100,7 +99,7 @@ class TrojanTidalabController extends Controller
         try {
             $json = $this->getTrojanConfig($server, $request->input('local_port'));
         } catch (\Exception $e) {
-            \Log::error($e);
+            Log::error($e);
             return $this->fail([500, '配置获取失败']);
         }
 

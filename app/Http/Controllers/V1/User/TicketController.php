@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\V1\User;
 
+use App\Exceptions\ApiException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\User\TicketSave;
 use App\Http\Requests\User\TicketWithdraw;
@@ -9,10 +10,10 @@ use App\Http\Resources\TicketResource;
 use App\Models\Ticket;
 use App\Models\TicketMessage;
 use App\Models\User;
+use App\Services\Plugin\HookManager;
 use App\Services\TicketService;
 use App\Utils\Dict;
 use Illuminate\Http\Request;
-use App\Services\Plugin\HookManager;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -140,23 +141,23 @@ class TicketController extends Controller
             $ticket = DB::transaction(function () use ($request, $limit) {
                 $user = User::query()->lockForUpdate()->find($request->user()->id);
                 if (!$user) {
-                    throw new \App\Exceptions\ApiException(__('The user does not exist'));
+                    throw new ApiException(__('The user does not exist'));
                 }
 
                 $balanceCents = (int) $user->commission_balance;
                 if ($limit > ($balanceCents / 100)) {
-                    throw new \App\Exceptions\ApiException(
+                    throw new ApiException(
                         __('The current required minimum withdrawal commission is :limit', ['limit' => $limit])
                     );
                 }
                 if ($balanceCents <= 0) {
-                    throw new \App\Exceptions\ApiException(__('Insufficient commission balance'));
+                    throw new ApiException(__('Insufficient commission balance'));
                 }
 
                 // 无 amount 字段：整笔佣金一并冻结；运营按工单金额打款
                 $user->commission_balance = 0;
                 if (!$user->save()) {
-                    throw new \App\Exceptions\ApiException(__('Transfer failed'));
+                    throw new ApiException(__('Transfer failed'));
                 }
 
                 $ticketService = new TicketService();
@@ -175,7 +176,7 @@ class TicketController extends Controller
                     $message
                 );
             });
-        } catch (\App\Exceptions\ApiException $e) {
+        } catch (ApiException $e) {
             throw $e;
         } catch (\Exception $e) {
             throw $e;

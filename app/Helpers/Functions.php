@@ -1,4 +1,6 @@
 <?php
+
+use App\Models\SubscribeTemplate;
 use App\Support\Setting;
 
 if (!function_exists('admin_setting')) {
@@ -7,7 +9,7 @@ if (!function_exists('admin_setting')) {
      *
      * @param  string|array  $key
      * @param  mixed  $default
-     * @return App\Support\Setting|mixed
+     * @return Setting|mixed
      */
     function admin_setting($key = null, $default = null)
     {
@@ -33,7 +35,7 @@ if (!function_exists('subscribe_template')) {
      */
     function subscribe_template(string $name): ?string
     {
-        return \App\Models\SubscribeTemplate::getContent($name);
+        return SubscribeTemplate::getContent($name);
     }
 }
 

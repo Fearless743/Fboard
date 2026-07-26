@@ -49,7 +49,7 @@ class OrderController extends Controller
             return $this->fail([400, __('Order does not exist or has been paid')]);
         }
         $order['try_out_plan_id'] = (int) admin_setting('try_out_plan_id');
-        if (!$order->plan) {
+        if (!OrderService::isDepositOrder($order) && !$order->plan) {
             return $this->fail([400, __('Subscription plan does not exist')]);
         }
         if ($order->surplus_order_ids) {

@@ -6,6 +6,7 @@ use App\Models\Server;
 use App\Services\DeviceStateService;
 use App\Services\NodeRegistry;
 use App\Services\ServerService;
+use App\Utils\CacheKey;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Redis;
 use Workerman\Connection\TcpConnection;
@@ -29,7 +30,7 @@ class NodeEventHandlers
         if (!$node) return;
 
         $nodeType = strtoupper($node->type);
-        Cache::put(\App\Utils\CacheKey::get('SERVER_' . $nodeType . '_LAST_CHECK_AT', $nodeId), time(), 3600);
+        Cache::put(CacheKey::get('SERVER_' . $nodeType . '_LAST_CHECK_AT', $nodeId), time(), 3600);
         ServerService::updateMetrics($node, $data);
 
         WsLog::debug("[WS] Node#{$nodeId} status updated");

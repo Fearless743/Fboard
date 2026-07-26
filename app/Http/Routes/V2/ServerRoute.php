@@ -1,11 +1,9 @@
 <?php
 namespace App\Http\Routes\V2;
 
-use App\Http\Controllers\V1\Server\ShadowsocksTidalabController;
-use App\Http\Controllers\V1\Server\TrojanTidalabController;
 use App\Http\Controllers\V1\Server\UniProxyController;
-use App\Http\Controllers\V2\Server\ServerController;
 use App\Http\Controllers\V2\Server\MachineController;
+use App\Http\Controllers\V2\Server\ServerController;
 use Illuminate\Contracts\Routing\Registrar;
 
 class ServerRoute

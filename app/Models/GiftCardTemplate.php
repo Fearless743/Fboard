@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use Dflydev\DotAccessData\Data;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -93,14 +92,6 @@ class GiftCardTemplate extends Model
      * 关联使用记录
      */
     public function usages(): HasMany
-    {
-        return $this->hasMany(GiftCardUsage::class, 'template_id');
-    }
-
-    /**
-     * 关联统计数据
-     */
-    public function stats(): HasMany
     {
         return $this->hasMany(GiftCardUsage::class, 'template_id');
     }

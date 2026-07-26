@@ -8,9 +8,11 @@ use App\Models\SubscribeTemplate;
 use App\Services\MailService;
 use App\Services\NodeSyncService;
 use App\Services\Plugin\HookManager;
+use App\Services\ProtocolDefinitionRegistry;
 use App\Services\TelegramService;
 use App\Services\ThemeService;
 use App\Utils\Dict;
+use App\Utils\Helper;
 use Illuminate\Http\Request;
 
 class ConfigController extends Controller
@@ -179,6 +181,11 @@ class ConfigController extends Controller
                 'default_remind_expire' => (bool) admin_setting('default_remind_expire', 1),
                 'default_remind_traffic' => (bool) admin_setting('default_remind_traffic', 1),
                 'subscribe_path' => admin_setting('subscribe_path', 's'),
+                'deposit_enable' => (bool) admin_setting('deposit_enable', 1),
+                'deposit_min_amount' => (int) admin_setting('deposit_min_amount', 100),
+                'deposit_max_amount' => (int) admin_setting('deposit_max_amount', 999999900),
+                'deposit_commission_enable' => (bool) admin_setting('deposit_commission_enable', 1),
+                'deposit_bonus' => admin_setting('deposit_bonus', admin_setting('deposit_bounus', [])),
             ],
             'server' => [
                 'server_token' => admin_setting('server_token'),
@@ -190,7 +197,7 @@ class ConfigController extends Controller
                 'server_ws_log_enable' => (bool) admin_setting('server_ws_log_enable', 0),
                 'node_install_script_url' => admin_setting('node_install_script_url', ''),
                 // 仅具体指纹（不含 random/randomized，二者下发节点表单时自动追加）
-                'utls_fingerprints' => \App\Utils\Helper::getUtlsFingerprints(),
+                'utls_fingerprints' => Helper::getUtlsFingerprints(),
             ],
             'email' => [
                 'email_host' => admin_setting('email_host'),
@@ -287,7 +294,7 @@ class ConfigController extends Controller
             }
             // 规范化指纹列表：trim + 小写 + 去重；剔除 random/randomized 元选项
             if ($k === 'utls_fingerprints' && is_array($v)) {
-                $meta = array_fill_keys(\App\Utils\Dict::UTLS_FINGERPRINT_META, true);
+                $meta = array_fill_keys(Dict::UTLS_FINGERPRINT_META, true);
                 $normalized = [];
                 foreach ($v as $item) {
                     $value = strtolower(trim((string) $item));
@@ -301,7 +308,7 @@ class ConfigController extends Controller
                 }
                 $v = array_values($normalized);
                 if ($v === []) {
-                    $v = \App\Utils\Dict::UTLS_FINGERPRINTS_DEFAULT;
+                    $v = Dict::UTLS_FINGERPRINTS_DEFAULT;
                 }
             }
             admin_setting([$k => $v]);
@@ -310,7 +317,7 @@ class ConfigController extends Controller
         // 指纹列表变更后重置协议定义缓存，下一次请求重新注入 options
         if (array_key_exists('utls_fingerprints', $data)) {
             try {
-                app(\App\Services\ProtocolDefinitionRegistry::class)->reset();
+                app(ProtocolDefinitionRegistry::class)->reset();
             } catch (\Throwable) {
                 // ignore when registry not bound in this context
             }

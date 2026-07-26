@@ -47,6 +47,12 @@ class ConfigSave extends FormRequest
         'show_info_to_server_enable' => '',
         'show_protocol_to_server_enable' => '',
         'subscribe_path' => '',
+        'deposit_enable' => 'boolean',
+        'deposit_min_amount' => 'integer|min:1',
+        'deposit_max_amount' => 'integer|min:1',
+        'deposit_commission_enable' => 'boolean',
+        'deposit_bonus' => 'nullable|array',
+        'deposit_bonus.*' => 'string|regex:/^\d+(\.\d+)?:\d+(\.\d+)?$/',
         // server
         'server_token' => 'nullable|min:16',
         'server_pull_interval' => 'integer',

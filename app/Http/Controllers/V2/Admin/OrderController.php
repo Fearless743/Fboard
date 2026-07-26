@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\V2\Admin;
 
+use App\Exceptions\ApiException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\OrderAssign;
 use App\Http\Requests\Admin\OrderUpdate;
@@ -12,9 +13,9 @@ use App\Services\OrderService;
 use App\Services\PlanService;
 use App\Services\UserService;
 use App\Utils\Helper;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Log;
 
 class OrderController extends Controller
@@ -36,7 +37,8 @@ class OrderController extends Controller
     {
         $current = $request->input('current', 1);
         $pageSize = $request->input('pageSize', 10);
-        $orderModel = Order::with('plan:id,name');
+        // 列表需要展示用户邮箱；仅选 id/email 避免把用户整行敏感字段带出
+        $orderModel = Order::with(['plan:id,name', 'user:id,email']);
 
         if ($request->boolean('is_commission')) {
             $orderModel->whereNotNull('invite_user_id')
@@ -123,6 +125,12 @@ class OrderController extends Controller
 
     private function buildFilterQuery(Builder $query, string $field, mixed $value): void
     {
+        // 邮箱在 user 表，走关联筛选（OrderFetch 白名单含 email）
+        if ($field === 'email') {
+            $this->buildUserEmailFilterQuery($query, $value);
+            return;
+        }
+
         // Handle array values for 'in' operations
         if (is_array($value)) {
             $query->whereIn($field, $value);
@@ -175,6 +183,65 @@ class OrderController extends Controller
         }, match ($operatorKey) {
             'like', 'notlike' => "%{$filterValue}%",
             default => $filterValue
+        });
+    }
+
+    /**
+     * 按用户邮箱筛选订单（关联 v2_user.email，大小写不敏感）。
+     */
+    private function buildUserEmailFilterQuery(Builder $query, mixed $value): void
+    {
+        if (is_array($value)) {
+            $emails = array_values(array_filter(array_map(
+                static fn ($v) => is_string($v) ? strtolower(trim($v)) : null,
+                $value
+            )));
+            if ($emails === []) {
+                $query->whereRaw('0 = 1');
+                return;
+            }
+            $query->whereHas('user', function (Builder $userQuery) use ($emails) {
+                $userQuery->whereIn('email', $emails);
+            });
+            return;
+        }
+
+        if (!is_string($value) || $value === '') {
+            return;
+        }
+
+        if (!str_contains($value, ':')) {
+            $email = strtolower(trim($value));
+            $query->whereHas('user', function (Builder $userQuery) use ($email) {
+                $userQuery->where('email', 'like', "%{$email}%");
+            });
+            return;
+        }
+
+        [$operator, $filterValue] = explode(':', $value, 2);
+        $operatorKey = strtolower($operator);
+        $email = strtolower(trim($filterValue));
+
+        if ($operatorKey === 'null') {
+            $query->whereDoesntHave('user');
+            return;
+        }
+        if ($operatorKey === 'notnull') {
+            $query->whereHas('user');
+            return;
+        }
+
+        $query->whereHas('user', function (Builder $userQuery) use ($operatorKey, $email) {
+            $userQuery->where('email', match ($operatorKey) {
+                'eq' => '=',
+                'like' => 'like',
+                'notlike' => 'not like',
+                default => 'like'
+            }, match ($operatorKey) {
+                'eq' => $email,
+                'like', 'notlike' => "%{$email}%",
+                default => "%{$email}%",
+            });
         });
     }
 
@@ -265,12 +332,12 @@ class OrderController extends Controller
             $tradeNo = DB::transaction(function () use ($request, $plan, $user) {
                 $lockedUser = User::query()->lockForUpdate()->find($user->id);
                 if (!$lockedUser) {
-                    throw new \App\Exceptions\ApiException('该用户不存在');
+                    throw new ApiException('该用户不存在');
                 }
 
                 $userService = new UserService();
                 if ($userService->isNotCompleteOrderByUserId($lockedUser->id)) {
-                    throw new \App\Exceptions\ApiException('该用户还有待支付的订单，无法分配');
+                    throw new ApiException('该用户还有待支付的订单，无法分配');
                 }
 
                 $order = new Order();
@@ -298,12 +365,12 @@ class OrderController extends Controller
                 $orderService->setInvite($lockedUser);
 
                 if (!$order->save()) {
-                    throw new \App\Exceptions\ApiException('订单创建失败');
+                    throw new ApiException('订单创建失败');
                 }
 
                 return $order->trade_no;
             });
-        } catch (\App\Exceptions\ApiException $e) {
+        } catch (ApiException $e) {
             return $this->fail([400, $e->getMessage()]);
         } catch (\Exception $e) {
             Log::error($e);

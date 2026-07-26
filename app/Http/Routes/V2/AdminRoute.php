@@ -19,6 +19,7 @@ use App\Http\Controllers\V2\Admin\CouponController;
 use App\Http\Controllers\V2\Admin\GiftCardController;
 use App\Http\Controllers\V2\Admin\KnowledgeController;
 use App\Http\Controllers\V2\Admin\PaymentController;
+use App\Http\Controllers\V2\Admin\PluginController;
 use App\Http\Controllers\V2\Admin\SystemController;
 use App\Http\Controllers\V2\Admin\ThemeController;
 use App\Http\Controllers\V2\Admin\TrafficResetController;
@@ -311,20 +312,20 @@ class AdminRoute
             $router->group([
                 'prefix' => 'plugin'
             ], function ($router) {
-                $router->get('/types', [\App\Http\Controllers\V2\Admin\PluginController::class, 'types']);
-                $router->get('/getPlugins', [\App\Http\Controllers\V2\Admin\PluginController::class, 'index']);
-                $router->post('/upload', [\App\Http\Controllers\V2\Admin\PluginController::class, 'upload']);
-                $router->post('/delete', [\App\Http\Controllers\V2\Admin\PluginController::class, 'delete']);
-                $router->post('install', [\App\Http\Controllers\V2\Admin\PluginController::class, 'install']);
-                $router->post('uninstall', [\App\Http\Controllers\V2\Admin\PluginController::class, 'uninstall']);
-                $router->post('enable', [\App\Http\Controllers\V2\Admin\PluginController::class, 'enable']);
-                $router->post('disable', [\App\Http\Controllers\V2\Admin\PluginController::class, 'disable']);
-                $router->get('config', [\App\Http\Controllers\V2\Admin\PluginController::class, 'getConfig']);
-                $router->post('config', [\App\Http\Controllers\V2\Admin\PluginController::class, 'updateConfig']);
-                $router->post('upgrade', [\App\Http\Controllers\V2\Admin\PluginController::class, 'upgrade']);
-                $router->get('readme', [\App\Http\Controllers\V2\Admin\PluginController::class, 'getReadme']);
-                $router->get('staticFiles', [\App\Http\Controllers\V2\Admin\PluginController::class, 'staticFiles']);
-                $router->post('action', [\App\Http\Controllers\V2\Admin\PluginController::class, 'executeAction']);
+                $router->get('/types', [PluginController::class, 'types']);
+                $router->get('/getPlugins', [PluginController::class, 'index']);
+                $router->post('/upload', [PluginController::class, 'upload']);
+                $router->post('/delete', [PluginController::class, 'delete']);
+                $router->post('install', [PluginController::class, 'install']);
+                $router->post('uninstall', [PluginController::class, 'uninstall']);
+                $router->post('enable', [PluginController::class, 'enable']);
+                $router->post('disable', [PluginController::class, 'disable']);
+                $router->get('config', [PluginController::class, 'getConfig']);
+                $router->post('config', [PluginController::class, 'updateConfig']);
+                $router->post('upgrade', [PluginController::class, 'upgrade']);
+                $router->get('readme', [PluginController::class, 'getReadme']);
+                $router->get('staticFiles', [PluginController::class, 'staticFiles']);
+                $router->post('action', [PluginController::class, 'executeAction']);
             });
 
             // 流量重置管理

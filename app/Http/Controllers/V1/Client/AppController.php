@@ -7,6 +7,7 @@ use App\Services\ServerService;
 use App\Services\UserService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
+use Plugin\Clash\Clash;
 use Symfony\Component\Yaml\Yaml;
 
 class AppController extends Controller
@@ -39,15 +40,15 @@ class AppController extends Controller
                     'chacha20-ietf-poly1305'
                 ])
             ) {
-                array_push($proxy, \App\Protocols\Clash::buildShadowsocks($user['uuid'], $item));
+                array_push($proxy, Clash::buildShadowsocks($user['uuid'], $item));
                 array_push($proxies, $item['name']);
             }
             if ($item['type'] === 'vmess') {
-                array_push($proxy, \App\Protocols\Clash::buildVmess($user['uuid'], $item));
+                array_push($proxy, Clash::buildVmess($user['uuid'], $item));
                 array_push($proxies, $item['name']);
             }
             if ($item['type'] === 'trojan') {
-                array_push($proxy, \App\Protocols\Clash::buildTrojan($user['uuid'], $item));
+                array_push($proxy, Clash::buildTrojan($user['uuid'], $item));
                 array_push($proxies, $item['name']);
             }
         }

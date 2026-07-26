@@ -36,7 +36,6 @@ class AlipayF2F
         } else {
             $result = (openssl_verify($data, base64_decode($sign), $res) === 1);
         }
-        openssl_free_key(openssl_get_publickey($res));
         return $result;
     }
 
@@ -153,14 +152,10 @@ class AlipayF2F
         $signature = '';
 
         if ("RSA2" == $this->signType) {
-
             openssl_sign($signData, $signature, $privateId, OPENSSL_ALGO_SHA256);
         } else {
-
             openssl_sign($signData, $signature, $privateId, OPENSSL_ALGO_SHA1);
         }
-
-        openssl_free_key($privateId);
 
         //加密后的内容通常含有特殊字符，需要编码转换下
         $signature = base64_encode($signature);

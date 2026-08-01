@@ -9,8 +9,10 @@ use App\Models\User;
 use App\Services\Plugin\HookManager;
 use App\Utils\CacheKey;
 use App\Utils\Helper;
+use App\WebSocket\NodeEventHandlers;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Redis;
 
 class ServerService
 {
@@ -200,10 +202,10 @@ class ServerService
         // Signal the WS worker to fan-out sync.devices to every online node.
         // Prefer the dedicated helper when available; fall back to the Redis
         // flag so this still works from the Octane process.
-        if (class_exists(\App\WebSocket\NodeEventHandlers::class)) {
-            \App\WebSocket\NodeEventHandlers::markAllOnlineNodesForDevicePush();
+        if (class_exists(NodeEventHandlers::class)) {
+            NodeEventHandlers::markAllOnlineNodesForDevicePush();
         } else {
-            \Illuminate\Support\Facades\Redis::setex('device:push_all', 60, '1');
+            Redis::setex('device:push_all', 60, '1');
         }
     }
 

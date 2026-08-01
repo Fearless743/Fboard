@@ -19,8 +19,10 @@ class MachineController extends Controller
     /**
      * 获取机器列表（附带关联节点数，分页）
      *
-     * 可选搜索参数：
+     * 可选参数：
      *   - search: 在 name / notes 上做大小写不敏感的模糊匹配
+     *   - status: all / online / offline / inactive / high_load（仅做 SQL 粗筛，
+     *     在线/高负载的精确判断由前端二次过滤兜底，见 index.tsx）
      *
      * 响应额外字段 summary（全局概览，不受 search 影响）：
      *   total / online / offline / high_load / nodes
@@ -39,6 +41,29 @@ class MachineController extends Controller
                 $q->where('name', 'like', $like)
                   ->orWhere('notes', 'like', $like);
             });
+        }
+
+        // 状态粗筛：inactive 可直接用 DB 字段；在线/离线/高负载只约束
+        // 可用子集，精确判断交给前端二次过滤
+        $status = (string) $request->input('status', 'all');
+        if ($status === 'inactive') {
+            $query->where('is_active', false);
+        } elseif ($status === 'online') {
+            $query->where('is_active', true)
+                  ->where(function ($q) {
+                      $q->whereNotNull('last_seen_at')
+                        ->where('last_seen_at', '>=', time() - Server::CHECK_INTERVAL);
+                  });
+        } elseif ($status === 'offline') {
+            $query->where('is_active', true)
+                  ->where(function ($q) {
+                      $q->whereNull('last_seen_at')
+                        ->orWhere('last_seen_at', '<', time() - Server::CHECK_INTERVAL);
+                  });
+        } elseif ($status === 'high_load') {
+            $query->where('is_active', true)
+                  ->whereNotNull('last_seen_at')
+                  ->where('last_seen_at', '>=', time() - Server::CHECK_INTERVAL);
         }
 
         $machines = $query->orderBy('id')->paginate(perPage: $pageSize, page: $current);

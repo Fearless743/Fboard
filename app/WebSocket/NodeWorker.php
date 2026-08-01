@@ -109,14 +109,23 @@ class NodeWorker
         });
 
         Timer::add(10, function () {
-            $pendingNodeIds = Redis::spop('device:push_pending_nodes', 100);
+            // HTTP alive path (Octane) cannot see NodeRegistry; it sets this flag.
+            $pushAll = (bool) Redis::get('device:push_all');
+            if ($pushAll) {
+                Redis::del('device:push_all');
+                $pendingNodeIds = NodeRegistry::getConnectedNodeIds();
+            } else {
+                $pendingNodeIds = Redis::spop('device:push_pending_nodes', 100);
+            }
             if (empty($pendingNodeIds)) {
                 return;
             }
 
+            // Deduplicate and always fan-out whatever is pending.
+            $pendingNodeIds = array_values(array_unique(array_map('intval', (array) $pendingNodeIds)));
+
             $service = app(DeviceStateService::class);
             foreach ($pendingNodeIds as $nodeId) {
-                $nodeId = (int) $nodeId;
                 if (NodeRegistry::get($nodeId) !== null) {
                     NodeEventHandlers::pushDeviceStateToNode($nodeId, $service);
                 }
@@ -355,6 +364,9 @@ class NodeWorker
                 NodeRegistry::removeMachine((int) $conn->machineId, $conn);
             }
 
+            // Remaining nodes must drop this machine's device occupancy.
+            NodeEventHandlers::markAllOnlineNodesForDevicePush();
+
             WsLog::debug("[WS] Machine#{$machineId} disconnected", [
                 'nodes' => $conn->machineNodeIds,
                 'total' => NodeRegistry::count(),
@@ -373,6 +385,8 @@ class NodeWorker
             foreach ($affectedUserIds as $userId) {
                 $service->notifyUpdate($userId);
             }
+
+            NodeEventHandlers::markAllOnlineNodesForDevicePush();
 
             WsLog::debug("[WS] Node#{$nodeId} disconnected", [
                 'total' => NodeRegistry::count(),

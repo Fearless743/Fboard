@@ -196,6 +196,15 @@ class ServerService
         foreach ($alive as $uid => $ips) {
             $service->setDevices((int) $uid, $nodeId, (array) $ips);
         }
+
+        // Signal the WS worker to fan-out sync.devices to every online node.
+        // Prefer the dedicated helper when available; fall back to the Redis
+        // flag so this still works from the Octane process.
+        if (class_exists(\App\WebSocket\NodeEventHandlers::class)) {
+            \App\WebSocket\NodeEventHandlers::markAllOnlineNodesForDevicePush();
+        } else {
+            \Illuminate\Support\Facades\Redis::setex('device:push_all', 60, '1');
+        }
     }
 
     /**

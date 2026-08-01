@@ -73,10 +73,31 @@ class NodeEventHandlers
             $service->setDevices($userId, $nodeId, $ips);
         }
 
-        // Mark for push
-        Redis::sadd('device:push_pending_nodes', $nodeId);
+        // Fan-out to every online node: multi-node device limits only work when
+        // peers receive the fleet-wide snapshot, not just the reporter.
+        self::markAllOnlineNodesForDevicePush();
 
         WsLog::debug("[WS] Node#{$nodeId} synced " . count($newDevices) . " users, removed " . count($removedUsers));
+    }
+
+    /**
+     * Queue sync.devices for all currently connected nodes.
+     *
+     * When called inside the Workerman process, connected node IDs are known
+     * via NodeRegistry. When called from Octane (HTTP /alive|/report), the
+     * registry is empty — fall back to a Redis flag that the WS timer expands
+     * into a full fan-out on the next tick.
+     */
+    public static function markAllOnlineNodesForDevicePush(): void
+    {
+        $nodeIds = NodeRegistry::getConnectedNodeIds();
+        if (!empty($nodeIds)) {
+            Redis::sadd('device:push_pending_nodes', ...$nodeIds);
+            return;
+        }
+
+        // Cross-process signal for the NodeWorker timer.
+        Redis::setex('device:push_all', 60, '1');
     }
 
     /**

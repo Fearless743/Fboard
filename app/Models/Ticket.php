@@ -60,4 +60,12 @@ class Ticket extends Model
     {
         return $this->hasMany(TicketMessage::class, 'ticket_id', 'id');
     }
+
+    /**
+     * 关联的提现单（反向关联：withdrawal.ticket_id = ticket.id）
+     */
+    public function withdrawal()
+    {
+        return $this->hasOne(Withdrawal::class, 'ticket_id', 'id');
+    }
 }

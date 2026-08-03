@@ -144,5 +144,6 @@
     "traffic_reset.source.user_access": "用户访问",
     "traffic_reset.reset_success": "流量重置成功",
     "traffic_reset.reset_failed": "流量重置失败，请查看日志获取详细信息",
-    "traffic_reset.user_cannot_reset": "该用户当前不能重置流量（用户未激活或无有效套餐）"
+    "traffic_reset.user_cannot_reset": "该用户当前不能重置流量（用户未激活或无有效套餐）",
+    "Withdrawal ID": "提现单ID"
 }

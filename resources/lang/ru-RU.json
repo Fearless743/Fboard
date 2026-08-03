@@ -144,5 +144,6 @@
     "traffic_reset.source.user_access": "Доступ пользователя",
     "traffic_reset.reset_success": "Трафик успешно сброшен",
     "traffic_reset.reset_failed": "Ошибка сброса трафика, подробности в логах",
-    "traffic_reset.user_cannot_reset": "Пользователь не может сбросить трафик (аккаунт не активен или нет действующего тарифа)"
+    "traffic_reset.user_cannot_reset": "Пользователь не может сбросить трафик (аккаунт не активен или нет действующего тарифа)",
+    "Withdrawal ID": "ID выплаты"
 }

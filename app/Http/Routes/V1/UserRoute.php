@@ -15,6 +15,7 @@ use App\Http\Controllers\V1\User\StatController;
 use App\Http\Controllers\V1\User\TelegramController;
 use App\Http\Controllers\V1\User\TicketController;
 use App\Http\Controllers\V1\User\UserController;
+use App\Http\Controllers\V1\User\WithdrawalController;
 use Illuminate\Contracts\Routing\Registrar;
 
 class UserRoute
@@ -76,6 +77,11 @@ class UserRoute
             $router->post('/ticket/save', [TicketController::class, 'save']);
             $router->get('/ticket/fetch', [TicketController::class, 'fetch']);
             $router->post('/ticket/withdraw', [TicketController::class, 'withdraw']);
+            // Withdrawal
+            $router->get('/withdrawal/fetch', [WithdrawalController::class, 'fetch']);
+            $router->post('/withdrawal/detail', [WithdrawalController::class, 'detail']);
+            $router->post('/withdrawal/reply', [WithdrawalController::class, 'reply']);
+            $router->post('/withdrawal/close', [WithdrawalController::class, 'close']);
             // Server
             $router->get('/server/fetch', [ServerController::class, 'fetch']);
             // Coupon

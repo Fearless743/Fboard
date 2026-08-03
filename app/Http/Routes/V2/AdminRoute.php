@@ -23,6 +23,7 @@ use App\Http\Controllers\V2\Admin\PluginController;
 use App\Http\Controllers\V2\Admin\SystemController;
 use App\Http\Controllers\V2\Admin\ThemeController;
 use App\Http\Controllers\V2\Admin\TrafficResetController;
+use App\Http\Controllers\V2\Admin\WithdrawalController;
 use Illuminate\Contracts\Routing\Registrar;
 
 class AdminRoute
@@ -211,6 +212,17 @@ class AdminRoute
                 $router->any('/fetch', [TicketController::class, 'fetch']);
                 $router->post('/reply', [TicketController::class, 'reply']);
                 $router->post('/close', [TicketController::class, 'close']);
+            });
+
+            // Withdrawal
+            $router->group([
+                'prefix' => 'withdrawal'
+            ], function ($router) {
+                $router->any('/fetch', [WithdrawalController::class, 'fetch']);
+                $router->post('/confirm', [WithdrawalController::class, 'confirm']);
+                $router->post('/close', [WithdrawalController::class, 'close']);
+                $router->get('/{withdrawal}/messages', [WithdrawalController::class, 'messages']);
+                $router->post('/{withdrawal}/reply', [WithdrawalController::class, 'reply']);
             });
 
             // Coupon

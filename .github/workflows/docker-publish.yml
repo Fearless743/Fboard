@@ -100,6 +100,34 @@ jobs:
           sed -i "s/'version' => '.*'/'version' => '$VERSION'/g" config/app.php
           echo "Updated version to: $VERSION"
 
+      # ---------------------------------------------------------------------------
+      # Composer 依赖共享：多架构（amd64/arm64）构建共用一次 composer install。
+      # 1. 此处以单平台 amd64 构建 Dockerfile 的 vendor stage 并推送为共享镜像
+      #    <image>:vendor-cache。vendor stage 的 cache-from 复用 build-push-action
+      #    写入 gha 的层缓存，composer.lock 不变时直接命中（拉一个已存在镜像，
+      #    秒级完成，不再执行 composer install）。
+      # 2. 下方主构建通过命名 build context 传入 `vendor=docker-image://<共享镜像>`，
+      #    BuildKit 用该镜像覆盖同名 vendor stage（只取 /www/vendor），
+      #    两个平台都不再执行 composer install。
+      # 3. composer.json/lock 变更时，vendor stage 指令变化导致 gha 缓存 miss，
+      #    此步重新 composer install 并更新共享镜像，主构建自动拿到新 vendor。
+      # 注：vendor 必须与运行环境同基础镜像（phpswoole/swoole:php8.5-alpine），
+      # 否则 FROM 匹配不上。依赖为纯 PHP，跨架构通用；若将来引入平台相关包
+      # （C 扩展、预编译二进制），需重新评估此共享。
+      # ---------------------------------------------------------------------------
+      - name: Build and push shared vendor image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          target: vendor
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:vendor-cache
+          provenance: false
+          outputs: type=registry,push=true
+
       - name: Build and push
         id: build-and-push
         uses: docker/build-push-action@v5
@@ -109,6 +137,10 @@ jobs:
           platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # 命名 build context：共享 vendor 镜像覆盖 Dockerfile 同名 vendor stage。
+          # BuildKit 直接取该镜像 /www/vendor，两个架构共享同一份 composer 依赖，
+          # vendor stage（含 composer install）不再执行。
+          build-contexts: vendor=docker-image://${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:vendor-cache
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           provenance: false

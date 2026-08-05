@@ -7,7 +7,32 @@
 #   → 只要 composer.lock 不变，依赖安装层就不会重跑
 # - 使用 BuildKit --mount=type=cache 实现 composer 下载缓存跨构建复用
 # - 前端 SPA 在 CI 中预先构建至 public/assets/admin/（不在 Dockerfile 内构建）
+# - composer 依赖抽为独立 vendor stage，多架构构建共用一次 composer install：
+#   CI 先以单平台（amd64）构建 vendor stage 并推送为共享镜像（仅含基础镜像
+#   + composer.json/lock + vendor/），多架构主构建通过 buildx 命名 build
+#   context 传入 `vendor=docker-image://<共享镜像>`，同名 context 优先于
+#   stage，BuildKit 直接取镜像内的 /www/vendor，vendor stage 不再执行，
+#   两个平台共享同一份依赖。依赖均为纯 PHP，跨架构通用；若将来引入平台
+#   相关包（C 扩展、预编译二进制），需重新评估此共享。
+#   本地构建不传 build context 时，回落到 vendor stage 内的 composer install
+#   （与原有行为一致，直接 docker build 即可）。
 # ---------------------------------------------------------------------------
+
+# ---- vendor stage: composer dependencies (single-arch, shared across platforms) ----
+FROM phpswoole/swoole:php8.5-alpine AS vendor
+
+WORKDIR /www
+# composer.lock 不变时该层命中缓存，不重跑 composer install。
+# classmap（database/seeders、database/factories）在 dump-autoload 时必须存在，
+# 否则 ClassMapGenerator 会报 "does not appear to be a file nor a folder"。
+# 此处先建空目录占位；真正的 seeder/factory 源码由下一层 COPY . 覆盖，
+# 再在 Layer 4 中 dump-autoload 以刷新 classmap。
+COPY composer.json composer.lock /www/
+RUN --mount=type=cache,id=composer,target=/root/.composer/cache \
+    mkdir -p database/seeders database/factories \
+    && composer install --no-dev --no-scripts --no-security-blocking
+
+# ---- runtime stage ----
 FROM phpswoole/swoole:php8.5-alpine
 
 COPY --from=mlocati/php-extension-installer /usr/bin/install-php-extensions /usr/local/bin/
@@ -30,15 +55,10 @@ COPY .docker/caddy/Caddyfile /etc/caddy/Caddyfile
 COPY .docker/php/zz-fboard.ini /usr/local/etc/php/conf.d/zz-fboard.ini
 
 # Layer 2: Composer dependencies
-# composer.lock 不变时该层命中缓存，不重跑 composer install。
-# classmap（database/seeders、database/factories）在 dump-autoload 时必须存在，
-# 否则 ClassMapGenerator 会报 "does not appear to be a file nor a folder"。
-# 此处先建空目录占位；真正的 seeder/factory 源码由下一层 COPY . 覆盖，
-# 再在 Layer 4 中 dump-autoload 以刷新 classmap。
-COPY composer.json composer.lock /www/
-RUN --mount=type=cache,id=composer,target=/root/.composer/cache \
-    mkdir -p database/seeders database/factories \
-    && composer install --no-dev --no-scripts --no-security-blocking
+# CI 多架构构建时来自共享 vendor 镜像（build context `vendor` 覆盖同名 stage，
+# 只取 /www/vendor，不执行 vendor stage 的 composer install）；
+# 本地构建时来自 vendor stage 内的 composer install。两者都是纯 PHP 的 vendor/。
+COPY --from=vendor /www/vendor /www/vendor
 
 # Layer 3: Application source code (changes most often)
 # CI 构建前已将 admin SPA 产物输出到 public/assets/admin/，会随 COPY 一并带入

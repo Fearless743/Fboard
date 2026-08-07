@@ -7,7 +7,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build:
@@ -22,6 +21,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
+
+      # Docker 仓库名必须全小写。github.repository（Fearless743/Fboard）含大写 F，
+      # 直接拼 tag 会触发 "invalid tag: repository name must be lowercase"，
+      # 这里统一转小写后供后续 tag / build-context 使用。
+      - name: Compute lowercase image name
+        id: lower
+        run: echo "image=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
       - name: Checkout admin SPA
         uses: actions/checkout@v4
@@ -79,7 +85,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ steps.lower.outputs.image }}
           tags: |
             type=ref,event=branch
             type=sha,format=short,prefix=,enable=true
@@ -124,7 +130,7 @@ jobs:
           target: vendor
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:vendor-cache
+          tags: ${{ env.REGISTRY }}/${{ steps.lower.outputs.image }}:vendor-cache
           provenance: false
           outputs: type=registry,push=true
 
@@ -140,7 +146,7 @@ jobs:
           # 命名 build context：共享 vendor 镜像覆盖 Dockerfile 同名 vendor stage。
           # BuildKit 直接取该镜像 /www/vendor，两个架构共享同一份 composer 依赖，
           # vendor stage（含 composer install）不再执行。
-          build-contexts: vendor=docker-image://${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:vendor-cache
+          build-contexts: vendor=docker-image://${{ env.REGISTRY }}/${{ steps.lower.outputs.image }}:vendor-cache
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           provenance: false

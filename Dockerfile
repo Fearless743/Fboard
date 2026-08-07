@@ -28,9 +28,12 @@ WORKDIR /www
 # 此处先建空目录占位；真正的 seeder/factory 源码由下一层 COPY . 覆盖，
 # 再在 Layer 4 中 dump-autoload 以刷新 classmap。
 COPY composer.json composer.lock /www/
+# horizon 要求 ext-pcntl，但 pcntl 只在 runtime stage 安装（见下）。
+# vendor stage 只做纯 PHP 依赖解析/下载，不需要真正加载 pcntl，
+# 因此忽略该平台要求；最终镜像由 runtime stage 提供 pcntl。
 RUN --mount=type=cache,id=composer,target=/root/.composer/cache \
     mkdir -p database/seeders database/factories \
-    && composer install --no-dev --no-scripts --no-security-blocking
+    && composer install --no-dev --no-scripts --no-security-blocking --ignore-platform-req=ext-pcntl
 
 # ---- runtime stage ----
 FROM phpswoole/swoole:php8.5-alpine

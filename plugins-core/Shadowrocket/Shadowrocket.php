@@ -34,6 +34,7 @@ class Shadowrocket extends AbstractProtocol
     {
         $servers = $this->servers;
         $user = $this->user;
+        $appName = admin_setting('app_name', 'Fboard');
 
         $uri = '';
         //display remaining traffic and expire date
@@ -41,6 +42,7 @@ class Shadowrocket extends AbstractProtocol
         $download = round($user['d'] / (1024 * 1024 * 1024), 2);
         $totalTraffic = round($user['transfer_enable'] / (1024 * 1024 * 1024), 2);
         $expiredDate = $user['expired_at'] === null ? 'N/A' : date('Y-m-d', $user['expired_at']);
+        $uri .= "REMARKS=$appName\r\n";
         $uri .= "STATUS=🚀↑:{$upload}GB,↓:{$download}GB,TOT:{$totalTraffic}GB💡Expires:{$expiredDate}\r\n";
         foreach ($servers as $item) {
             if ($item['type'] === ProtocolTypes::SHADOWSOCKS) {

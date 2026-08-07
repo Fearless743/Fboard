@@ -128,8 +128,12 @@ jobs:
           push: true
           platforms: linux/amd64
           target: vendor
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # vendor 镜像本体已是跨构建的“层缓存”；这里再配 registry 缓存
+          # 可让 gha 之外的层（基础镜像）也命中，兼容两种缓存来源。
+          cache-from: |
+            type=registry,ref=${{ env.REGISTRY }}/${{ steps.lower.outputs.image }}:buildcache
+            type=gha
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ steps.lower.outputs.image }}:buildcache,mode=max
           tags: ${{ env.REGISTRY }}/${{ steps.lower.outputs.image }}:vendor-cache
           provenance: false
           outputs: type=registry,push=true
@@ -141,8 +145,12 @@ jobs:
           context: .
           push: true
           platforms: linux/amd64,linux/arm64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # registry 缓存（存 ghcr.io）比 gha 缓存更适合多架构：
+          # arm64 扩展编译层可跨 run 命中，避免每次现场编译 5 分钟。
+          cache-from: |
+            type=registry,ref=${{ env.REGISTRY }}/${{ steps.lower.outputs.image }}:buildcache
+            type=gha
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ steps.lower.outputs.image }}:buildcache,mode=max
           # 命名 build context：共享 vendor 镜像覆盖 Dockerfile 同名 vendor stage。
           # BuildKit 直接取该镜像 /www/vendor，两个架构共享同一份 composer 依赖，
           # vendor stage（含 composer install）不再执行。

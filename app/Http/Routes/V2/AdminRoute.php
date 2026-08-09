@@ -10,6 +10,7 @@ use App\Http\Controllers\V2\Admin\Server\RouteController;
 use App\Http\Controllers\V2\Admin\Server\ManageController;
 use App\Http\Controllers\V2\Admin\Server\MachineController;
 use App\Http\Controllers\V2\Admin\Server\NetworkSettingsTemplateController;
+use App\Http\Controllers\V2\Admin\Server\CertTemplateController;
 use App\Http\Controllers\V2\Admin\OrderController;
 use App\Http\Controllers\V2\Admin\UserController;
 use App\Http\Controllers\V2\Admin\StatController;
@@ -89,6 +90,13 @@ class AdminRoute
                 $router->get('/fetch', [NetworkSettingsTemplateController::class, 'fetch']);
                 $router->post('/save', [NetworkSettingsTemplateController::class, 'save']);
                 $router->post('/drop', [NetworkSettingsTemplateController::class, 'drop']);
+            });
+            $router->group([
+                'prefix' => 'server/cert-template'
+            ], function ($router) {
+                $router->get('/fetch', [CertTemplateController::class, 'fetch']);
+                $router->post('/save', [CertTemplateController::class, 'save']);
+                $router->post('/drop', [CertTemplateController::class, 'drop']);
             });
             // 节点管理接口
             $router->group([

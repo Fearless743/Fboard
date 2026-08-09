@@ -15,6 +15,19 @@ use App\Utils\Helper;
  */
 class NodeConfigBuilders
 {
+    /**
+     * 将通用多路复用对象归一为 mihomo 字符串开关（on/off）。
+     * 保留旧字段单值（'off'/'auto'/'on'）透传。
+     */
+    private static function mapMultiplexString(mixed $multiplex): string
+    {
+        if (is_array($multiplex)) {
+            return !empty($multiplex['enabled']) ? 'on' : 'off';
+        }
+        $value = (string) $multiplex;
+        return $value === 'auto' ? 'auto' : ($value === 'on' ? 'on' : 'off');
+    }
+
     public static function shadowsocks(Server $node, array $baseConfig): array
     {
         $protocolSettings = $node->protocol_settings;
@@ -29,6 +42,7 @@ class NodeConfigBuilders
                 '2022-blake3-aes-256-gcm' => Helper::getServerKey($node->created_at, 32),
                 default => null,
             },
+            'multiplex' => data_get($protocolSettings, 'multiplex'),
         ];
     }
 
@@ -193,6 +207,7 @@ class NodeConfigBuilders
             'server_port' => (int) $node->server_port,
             'transport' => data_get($protocolSettings, 'transport', 'TCP'),
             'traffic_pattern' => $protocolSettings['traffic_pattern'],
+            'multiplex' => data_get($protocolSettings, 'multiplex'),
         ];
     }
 
@@ -208,6 +223,7 @@ class NodeConfigBuilders
             'congestion_control' => data_get($protocolSettings, 'congestion_control', 'bbr'),
             'zero_rtt' => (bool) data_get($protocolSettings, 'zero_rtt', true),
             'alpn' => data_get($protocolSettings, 'alpn', ['h3']),
+            'multiplex' => data_get($protocolSettings, 'multiplex'),
         ];
     }
 
@@ -234,7 +250,7 @@ class NodeConfigBuilders
                     data_get($protocolSettings, 'httpmask.path_root')
                 ),
                 'fallback' => data_get($protocolSettings, 'fallback'),
-                'multiplex' => data_get($protocolSettings, 'multiplex', 'off'),
+                'multiplex' => self::mapMultiplexString(data_get($protocolSettings, 'multiplex', 'off')),
             ],
         ];
     }

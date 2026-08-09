@@ -63,14 +63,18 @@ class Plugin extends AbstractPlugin
                 'kcptun' => 'KCPTun',
             ]],
             'plugin_opts' => ['type' => 'string', 'default' => null, 'label' => '插件参数'],
-        ], [
-            'cipher' => 'required|string|in:aes-256-gcm,aes-128-gcm,chacha20-ietf-poly1305,2022-blake3-aes-256-gcm,2022-blake3-aes-128-gcm,2022-blake3-chacha20-poly1305,none',
-            'obfs' => 'nullable|string|in:http,tls,websocket',
-            'obfs_settings.path' => 'nullable|string',
-            'obfs_settings.host' => 'nullable|string',
-            'plugin' => 'nullable|string|in:simple-obfs,v2ray-plugin,gost-plugin,shadow-tls,restls,kcptun',
-            'plugin_opts' => 'nullable|string',
-        ], '[ss]', self::builder('shadowsocks'), self::password('shadowsocks'), [], false, [PasswordGenerators::class, 'shadowsocksServerKey']);
+            ...self::getMultiplexFields(),
+        ], array_merge(
+            [
+                'cipher' => 'required|string|in:aes-256-gcm,aes-128-gcm,chacha20-ietf-poly1305,2022-blake3-aes-256-gcm,2022-blake3-aes-128-gcm,2022-blake3-chacha20-poly1305,none',
+                'obfs' => 'nullable|string|in:http,tls,websocket',
+                'obfs_settings.path' => 'nullable|string',
+                'obfs_settings.host' => 'nullable|string',
+                'plugin' => 'nullable|string|in:simple-obfs,v2ray-plugin,gost-plugin,shadow-tls,restls,kcptun',
+                'plugin_opts' => 'nullable|string',
+            ],
+            self::getMultiplexValidationRules(),
+        ), '[ss]', self::builder('shadowsocks'), self::password('shadowsocks'), [], false, [PasswordGenerators::class, 'shadowsocksServerKey']);
     }
 
     private function registerVMess(): void
@@ -362,11 +366,10 @@ class Plugin extends AbstractPlugin
                 'description' => '可选。官方 mieru Traffic Pattern 的 Base64 串，用于 TCP 分片 / Nonce 前缀等抗 DPI 流量整形；留空则使用默认行为。可用 mita/mieru export traffic-pattern 导出。',
                 'placeholder' => '留空使用默认；或点击右侧按钮生成',
             ],
-            ...self::getMultiplexFields(),
-        ], array_merge(
-            ['transport' => 'required|string|in:TCP,UDP', 'traffic_pattern' => 'string'],
-            self::getMultiplexValidationRules(),
-        ), '[mieru]', self::builder('mieru'));
+        ], [
+            'transport' => 'required|string|in:TCP,UDP',
+            'traffic_pattern' => 'string',
+        ], '[mieru]', self::builder('mieru'));
     }
 
 
@@ -409,14 +412,18 @@ class Plugin extends AbstractPlugin
                 'label' => 'UDP over Stream',
                 'description' => '仅影响客户端订阅；服务端同时支持 datagram 与 stream 关联',
             ],
-        ], [
-            'jls_upstream' => 'required|string',
-            'server_name' => 'nullable|string',
-            'alpn' => 'nullable|array',
-            'congestion_control' => 'nullable|string|in:bbr,cubic,new_reno',
-            'zero_rtt' => 'nullable|boolean',
-            'udp_over_stream' => 'nullable|boolean',
-        ], '[shadowquic]', self::builder('shadowquic'));
+            ...self::getMultiplexFields(),
+        ], array_merge(
+            [
+                'jls_upstream' => 'required|string',
+                'server_name' => 'nullable|string',
+                'alpn' => 'nullable|array',
+                'congestion_control' => 'nullable|string|in:bbr,cubic,new_reno',
+                'zero_rtt' => 'nullable|boolean',
+                'udp_over_stream' => 'nullable|boolean',
+            ],
+            self::getMultiplexValidationRules(),
+        ), '[shadowquic]', self::builder('shadowquic'));
     }
 
     private function registerSudoku(): void
@@ -459,25 +466,28 @@ class Plugin extends AbstractPlugin
                     'placeholder' => 'aabbcc',
                 ],
             ], 'label' => 'HTTPMask'],
-        ], [
-            'master_public_key' => 'required|string',
-            'master_private_key' => 'required|string',
-            'aead_method' => 'nullable|string|in:chacha20-poly1305,aes-128-gcm,none',
-            'padding_min' => 'nullable|integer|min:0|max:100',
-            'padding_max' => 'nullable|integer|min:0|max:100',
-            'table_type' => 'nullable|string|in:prefer_entropy,prefer_ascii,up_ascii_down_entropy,up_entropy_down_ascii',
-            'enable_pure_downlink' => 'nullable|boolean',
-            'custom_table' => 'nullable|string',
-            'custom_tables' => 'nullable|array',
-            'handshake_timeout' => 'nullable|integer|min:0',
-            'fallback' => 'nullable|string',
-            'multiplex' => 'nullable|string|in:off,auto,on',
-            'httpmask' => 'nullable|array',
-            'httpmask.disable' => 'nullable|boolean',
-            'httpmask.mode' => 'nullable|string|in:legacy,stream,poll,auto,ws',
-            // 允许可选首尾斜杠；多级路径 / 非法字符由 regex 拒绝（与 mihomo Validate 一致）
-            'httpmask.path_root' => ['nullable', 'string', 'regex:/^\/?[A-Za-z0-9_-]+\/?$/'],
-        ], '[sudoku]', self::builder('sudoku'), self::password('sudoku'), [], true);
+            ...self::getMultiplexFields(),
+        ], array_merge(
+            [
+                'master_public_key' => 'required|string',
+                'master_private_key' => 'required|string',
+                'aead_method' => 'nullable|string|in:chacha20-poly1305,aes-128-gcm,none',
+                'padding_min' => 'nullable|integer|min:0|max:100',
+                'padding_max' => 'nullable|integer|min:0|max:100',
+                'table_type' => 'nullable|string|in:prefer_entropy,prefer_ascii,up_ascii_down_entropy,up_entropy_down_ascii',
+                'enable_pure_downlink' => 'nullable|boolean',
+                'custom_table' => 'nullable|string',
+                'custom_tables' => 'nullable|array',
+                'handshake_timeout' => 'nullable|integer|min:0',
+                'fallback' => 'nullable|string',
+                'httpmask' => 'nullable|array',
+                'httpmask.disable' => 'nullable|boolean',
+                'httpmask.mode' => 'nullable|string|in:legacy,stream,poll,auto,ws',
+                // 允许可选首尾斜杠；多级路径 / 非法字符由 regex 拒绝（与 mihomo Validate 一致）
+                'httpmask.path_root' => ['nullable', 'string', 'regex:/^\/?[A-Za-z0-9_-]+\/?$/'],
+            ],
+            self::getMultiplexValidationRules(),
+        ), '[sudoku]', self::builder('sudoku'), self::password('sudoku'), [], true);
     }
 
     private static function getRealityFields(): array

@@ -465,6 +465,118 @@ class ManageController extends Controller
     }
 
     /**
+     * 批量替换节点字段值：对指定字段做「搜索值 → 替换值」的字符串替换。
+     * 标量字段直接替换；JSON 字段对序列化文本替换（数组元素、嵌套值一并命中）。
+     *
+     * @param \Illuminate\Http\Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function batchReplace(Request $request)
+    {
+        $params = $request->validate([
+            "field" => "required|string",
+            "search" => "required|string",
+            "replace" => "present|string",
+        ]);
+
+        $field = $params["field"];
+        $search = $params["search"];
+        $replace = $params["replace"];
+
+        // 字段白名单，防止任意列被写入；按存储形态区分替换策略
+        // 仅保留 v2_server 真实存在的列（listen_address / dynamic_rate / ech 为前端展示字段或存于 protocol_settings）
+        $allowedFields = [
+            // 标量字段：直接字符串替换
+            "name" => "scalar",
+            "host" => "scalar",
+            "port" => "scalar",
+            "code" => "scalar",
+            // JSON 字段：对序列化后的 JSON 文本替换，覆盖数组元素与嵌套值
+            "group_ids" => "json",
+            "route_ids" => "json",
+            "tags" => "json",
+            "protocol_settings" => "json",
+            "custom_outbounds" => "json",
+            "custom_routes" => "json",
+            "cert_config" => "json",
+            "rate_time_ranges" => "json",
+        ];
+
+        if (!isset($allowedFields[$field])) {
+            return $this->fail([400, "该字段不支持批量替换"]);
+        }
+
+        $kind = $allowedFields[$field];
+        $changed = 0;
+
+        HookManager::call('admin.server.batch_replace.before', [
+            'field' => $field,
+            'search' => $search,
+            'replace' => $replace,
+            'request' => $request,
+        ]);
+
+        try {
+            DB::transaction(function () use (
+                $field,
+                $kind,
+                $search,
+                $replace,
+                &$changed
+            ) {
+                $servers = Server::query()->get();
+                /** @var Server $server */
+                foreach ($servers as $server) {
+                    if ($kind === "json") {
+                        $raw = $server->getRawOriginal($field);
+                        if ($raw === null || $raw === "") {
+                            continue;
+                        }
+                        $newRaw = str_replace($search, $replace, (string) $raw);
+                        if ($newRaw === (string) $raw) {
+                            continue;
+                        }
+                        $server->{$field} = json_decode($newRaw, true);
+                    } else {
+                        $old = $server->{$field};
+                        if ($old === null) {
+                            continue;
+                        }
+                        $new = str_replace($search, $replace, (string) $old);
+                        if ($new === (string) $old) {
+                            continue;
+                        }
+                        $server->{$field} = $new;
+                    }
+
+                    $server->save();
+                    $changed++;
+                }
+            });
+
+            HookManager::call('admin.server.batch_replace.after', [
+                'field' => $field,
+                'search' => $search,
+                'replace' => $replace,
+                'changed' => $changed,
+                'request' => $request,
+            ]);
+
+            Log::info("Server batch replace", [
+                "field" => $field,
+                "changed" => $changed,
+            ]);
+
+            return $this->success(["changed" => $changed]);
+        } catch (\InvalidArgumentException $e) {
+            return $this->fail([400, $e->getMessage()]);
+        } catch (\Exception $e) {
+            Log::error($e);
+            return $this->fail([500, "批量替换失败"]);
+        }
+    }
+
+    /**
      * 复制节点
      * @param \Illuminate\Http\Request $request
      * @return \Illuminate\Http\JsonResponse

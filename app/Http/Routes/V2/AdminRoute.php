@@ -116,6 +116,7 @@ class AdminRoute
                 $router->post('/sort', [ManageController::class, 'sort']);
                 $router->post('/batchDelete', [ManageController::class, 'batchDelete']);
                 $router->post('/batchUpdate', [ManageController::class, 'batchUpdate']);
+                $router->post('/batchReplace', [ManageController::class, 'batchReplace']);
                 $router->post('/resetTraffic', [ManageController::class, 'resetTraffic']);
                 $router->post('/batchResetTraffic', [ManageController::class, 'batchResetTraffic']);
                 $router->post('/restart', [ManageController::class, 'restart']);

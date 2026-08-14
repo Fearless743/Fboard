@@ -30,11 +30,7 @@ class PaymentController extends Controller
 
         $search = trim((string) $request->input('search', ''));
         if ($search !== '') {
-            $like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $search) . '%';
-            $query->where(function ($q) use ($like) {
-                $q->where('name', 'like', $like)
-                  ->orWhere('payment', 'like', $like);
-            });
+            $query->pinyinSearch($search, ['name', 'payment']);
         }
 
         $payments = $query->orderBy('sort', 'ASC')->get()->makeVisible('config');

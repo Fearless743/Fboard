@@ -34,12 +34,16 @@ class ManageController extends Controller
 
         $query->whereNot("type", "virtual");
 
-        // 搜索过滤
+        // 搜索过滤：name 支持拼音（含 pinyin_index 匹配），host/id 仅原文匹配
         if ($search) {
-            $query->where(function ($q) use ($search) {
-                $q->where("name", "like", "%{$search}%")
-                    ->orWhere("host", "like", "%{$search}%")
-                    ->orWhere("id", "like", "%{$search}%");
+            $escaped = str_replace(['%', '_'], ['\\%', '\\_'], $search);
+            $like = "%{$escaped}%";
+            $query->where(function ($q) use ($like, $search) {
+                // name 支持拼音搜索（原文 + pinyin_index）
+                $q->pinyinSearch($search, ['name']);
+                // host / id 仅原文 LIKE
+                $q->orWhere('host', 'like', $like)
+                  ->orWhere('id', 'like', $like);
             });
         }
 

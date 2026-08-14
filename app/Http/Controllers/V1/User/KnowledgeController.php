@@ -58,10 +58,9 @@ class KnowledgeController extends Controller
 
         $keyword = $request->input('keyword');
         if ($keyword) {
-            $builder = $builder->where(function ($query) use ($keyword) {
-                $query->where('title', 'LIKE', "%{$keyword}%")
-                    ->orWhere('body', 'LIKE', "%{$keyword}%");
-            });
+            // title 支持拼音匹配；body 仅原文 LIKE（body 是长文，不做拼音索引）
+            $builder->pinyinSearch($keyword, ['title'])
+                ->orWhere('body', 'LIKE', "%{$keyword}%");
         }
 
         $knowledges = $builder->get()

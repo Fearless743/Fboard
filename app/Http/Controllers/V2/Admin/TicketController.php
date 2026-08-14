@@ -22,6 +22,11 @@ class TicketController extends Controller
                         $query->whereIn($key, $value);
                     } else {
                         $query->where($key, 'like', "%{$value}%");
+                        // subject 字段支持拼音索引匹配
+                        if ($key === 'subject' && $builder->getModel() instanceof \App\Models\Ticket) {
+                            $escaped = str_replace(['%', '_'], ['\\%', '\\_'], $value);
+                            $query->orWhere('pinyin_index', 'like', "%{$escaped}%");
+                        }
                     }
                 });
             });

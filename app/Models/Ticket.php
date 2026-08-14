@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\HasPinyinSearch;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -24,6 +25,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class Ticket extends Model
 {
+    use HasPinyinSearch;
+
     protected $table = 'v2_ticket';
     protected $dateFormat = 'U';
     protected $guarded = ['id'];
@@ -31,6 +34,11 @@ class Ticket extends Model
         'created_at' => 'timestamp',
         'updated_at' => 'timestamp'
     ];
+
+    /**
+     * 需要生成拼音索引的字段
+     */
+    protected array $pinyinSearchable = ['subject'];
 
     const STATUS_OPENING = 0;
     const STATUS_CLOSED = 1;

@@ -3,10 +3,13 @@
 namespace App\Models;
 
 use App\Services\PlanService;
+use App\Traits\HasPinyinSearch;
 use Illuminate\Database\Eloquent\Model;
 
 class Coupon extends Model
 {
+    use HasPinyinSearch;
+
     protected $table = 'v2_coupon';
     protected $dateFormat = 'U';
     protected $guarded = ['id'];
@@ -17,6 +20,11 @@ class Coupon extends Model
         'limit_period' => 'array',
         'show' => 'boolean',
     ];
+
+    /**
+     * 需要生成拼音索引的字段
+     */
+    protected array $pinyinSearchable = ['name'];
 
     public function getLimitPeriodAttribute($value)
     {

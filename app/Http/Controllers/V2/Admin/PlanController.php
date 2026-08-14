@@ -31,8 +31,15 @@ class PlanController extends Controller
                           ->orWhereNull('expired_at');
                     });
                 }
-            ])
-            ->paginate(
+            ]);
+
+        // 名称模糊搜索（含拼音支持）
+        $search = trim((string) $request->input('search', ''));
+        if ($search !== '') {
+            $plans->pinyinSearch($search, ['name']);
+        }
+
+        $plans = $plans->paginate(
                 perPage: $pageSize,
                 page: $current
             );

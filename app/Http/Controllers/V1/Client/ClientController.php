@@ -10,6 +10,7 @@ use App\Services\ServerService;
 use App\Services\UserService;
 use App\Support\AbstractProtocol;
 use App\Utils\Helper;
+use App\Utils\PinyinHelper;
 use Illuminate\Http\Request;
 
 class ClientController extends Controller
@@ -123,8 +124,10 @@ class ClientController extends Controller
             // Condition 2: If filterKeywords are provided, at least one keyword must match
             if (!empty($filterKeywords)) { // Check if $filterKeywords is not empty
                 $keywordMatch = collect($filterKeywords)->contains(function ($keyword) use ($server) {
-                    return stripos($server['name'], $keyword) !== false
-                        || in_array($keyword, $server['tags'] ?? []);
+                    return stripos((string) $server['name'], $keyword) !== false
+                        || stripos(PinyinHelper::toIndex((string) $server['name']), $keyword) !== false
+                        || in_array($keyword, $server['tags'] ?? [])
+                        || collect($server['tags'] ?? [])->contains(fn ($tag) => stripos(PinyinHelper::toIndex((string) $tag), $keyword) !== false);
                 });
                 if (!$keywordMatch) {
                     return false; // Filter out if no keywords match

@@ -38,11 +38,7 @@ class GiftCardController extends Controller
 
         $search = trim((string) $request->input('search', ''));
         if ($search !== '') {
-            $like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $search) . '%';
-            $query->where(function ($q) use ($like) {
-                $q->where('name', 'like', $like)
-                  ->orWhere('description', 'like', $like);
-            });
+            $query->pinyinSearch($search, ['name', 'description']);
         }
 
         $perPage = $request->input('per_page', 15);

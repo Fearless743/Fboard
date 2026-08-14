@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\App;
+use App\Traits\HasPinyinSearch;
 use App\Utils\CacheKey;
 use App\Utils\Helper;
 use App\Models\User;
@@ -62,6 +63,9 @@ use Illuminate\Database\Eloquent\Casts\Attribute;
  */
 class Server extends Model
 {
+    use HasPinyinSearch;
+
+    /**
     /**
      * 虚拟节点（非协议类型；展示用，继承父节点配置）。
      * 协议 type 字符串常量见 Plugin\CoreProtocols\ProtocolTypes。
@@ -124,6 +128,12 @@ class Server extends Model
     protected $table = "v2_server";
 
     protected $guarded = ["id"];
+
+    /**
+     * 需要生成拼音索引的字段
+     */
+    protected array $pinyinSearchable = ["name"];
+
     protected $casts = [
         "group_ids" => "array",
         "route_ids" => "array",

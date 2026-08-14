@@ -7,6 +7,7 @@ use App\Models\Plugin;
 use App\Services\Plugin\HookManager;
 use App\Services\Plugin\PluginManager;
 use App\Services\Plugin\PluginConfigService;
+use App\Utils\PinyinHelper;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
@@ -103,10 +104,15 @@ class PluginController extends Controller
                 }
 
                 // 名称/描述模糊匹配（插件是文件系统扫描，in-memory 过滤即可）
+                // 除原文匹配外，还支持拼音匹配（全拼/首字母）
                 if ($search !== '' && $searchLower !== '') {
-                    $nameMatch = mb_stripos((string) ($config['name'] ?? ''), $searchLower) !== false;
-                    $descMatch = mb_stripos((string) ($config['description'] ?? ''), $searchLower) !== false;
-                    if (!$nameMatch && !$descMatch) {
+                    $name = (string) ($config['name'] ?? '');
+                    $desc = (string) ($config['description'] ?? '');
+                    $nameMatch = mb_stripos($name, $searchLower) !== false;
+                    $descMatch = mb_stripos($desc, $searchLower) !== false;
+                    $pinyinName = mb_stripos(PinyinHelper::toIndex($name), $searchLower) !== false;
+                    $pinyinDesc = mb_stripos(PinyinHelper::toIndex($desc), $searchLower) !== false;
+                    if (!$nameMatch && !$descMatch && !$pinyinName && !$pinyinDesc) {
                         continue;
                     }
                 }

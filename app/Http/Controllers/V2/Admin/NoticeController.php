@@ -17,11 +17,7 @@ class NoticeController extends Controller
 
         $search = trim((string) $request->input('search', ''));
         if ($search !== '') {
-            $like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $search) . '%';
-            $query->where(function ($q) use ($like) {
-                $q->where('title', 'like', $like)
-                  ->orWhere('tags', 'like', $like);
-            });
+            $query->pinyinSearch($search, ['title', 'tags']);
         }
 
         return $this->success(

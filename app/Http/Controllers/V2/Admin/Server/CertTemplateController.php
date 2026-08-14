@@ -16,10 +16,7 @@ class CertTemplateController extends Controller
 
         $search = $request->query("search");
         if ($search !== null && $search !== "") {
-            $query->where(function ($q) use ($search) {
-                $q->where("name", "like", "%" . $search . "%")
-                    ->orWhere("description", "like", "%" . $search . "%");
-            });
+            $query->pinyinSearch($search, ["name", "description"]);
         }
 
         return [

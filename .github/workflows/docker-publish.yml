@@ -9,22 +9,55 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
-  build:
+  # 预构建 vendor 镜像（php 依赖），供 amd64/arm64 两个 job 共享
+  vendor:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-      id-token: write
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      # Docker 仓库名必须全小写。github.repository（Fearless743/Fboard）含大写 F，
-      # 直接拼 tag 会触发 "invalid tag: repository name must be lowercase"，
-      # 这里统一转小写后供后续 tag / build-context 使用。
+      - name: Compute lowercase image name
+        id: lower
+        run: echo "image=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Login to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push shared vendor image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          target: vendor
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: ${{ env.REGISTRY }}/${{ steps.lower.outputs.image }}:vendor-cache
+          provenance: false
+          outputs: type=registry,push=true
+
+  # amd64 原生构建
+  build-amd64:
+    needs: vendor
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build-and-push.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
       - name: Compute lowercase image name
         id: lower
         run: echo "image=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
@@ -40,26 +73,14 @@ jobs:
       - name: Build admin SPA
         working-directory: admin
         env:
-          # admin 仓作为 Fboard 仓的子目录被 checkout，outDir 相对
-          # admin/ 解析，必须指向 Fboard/public/assets/admin。
           FBOARD_PUBLIC_ASSETS_DIR: ../public/assets/admin
         run: |
           npm install -g bun
           bun install --frozen-lockfile
           bun run build
-        # bun run build 会通过 vite.config.ts 的 outDir 把产物输出到
-        # Fboard/public/assets/admin/，正好命中 Dockerfile 的 COPY 源。
-        # 注意：这一步必须在 docker build 之前，否则 COPY 会拿到陈旧产物。
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
 
       - name: Free Disk Space
         run: |
-          # 并行清理预装工具链与无用镜像，缩短墙钟时间
           sudo rm -rf /usr/share/dotnet &
           sudo rm -rf /usr/local/lib/android &
           sudo rm -rf /opt/ghc &
@@ -73,6 +94,16 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get version
+        id: get_version
+        run: echo "version=$(git describe --tags --always)" >> $GITHUB_OUTPUT
+
+      - name: Update version in app.php
+        run: |
+          VERSION=$(date '+%Y%m%d')-$(git rev-parse --short HEAD)
+          sed -i "s/'version' => '.*'/'version' => '$VERSION'/g" config/app.php
+          echo "Updated version to: $VERSION"
 
       - name: Extract metadata
         id: meta
@@ -89,6 +120,65 @@ jobs:
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
 
+      - name: Build and push amd64
+        id: build-and-push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-contexts: vendor=docker-image://${{ env.REGISTRY }}/${{ steps.lower.outputs.image }}:vendor-cache
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: false
+          outputs: type=registry,push=true
+          allow: |
+            network.host
+
+  # arm64 原生构建（GitHub ARM runner，无需 QEMU）
+  build-arm64:
+    needs: vendor
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build-and-push.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Compute lowercase image name
+        id: lower
+        run: echo "image=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout admin SPA
+        uses: actions/checkout@v4
+        with:
+          repository: Fearless743/Fboard-admin
+          ref: main
+          path: admin
+          fetch-depth: 1
+
+      - name: Build admin SPA
+        working-directory: admin
+        env:
+          FBOARD_PUBLIC_ASSETS_DIR: ../public/assets/admin
+        run: |
+          npm install -g bun
+          bun install --frozen-lockfile
+          bun run build
+
+      - name: Login to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Get version
         id: get_version
         run: echo "version=$(git describe --tags --always)" >> $GITHUB_OUTPUT
@@ -99,33 +189,30 @@ jobs:
           sed -i "s/'version' => '.*'/'version' => '$VERSION'/g" config/app.php
           echo "Updated version to: $VERSION"
 
-      # ---------------------------------------------------------------------------
-      # Composer 依赖共享：vendor stage 预构建并推送为共享镜像，主构建通过
-      # build context 复用，避免重复 composer install。
-      # ---------------------------------------------------------------------------
-      - name: Build and push shared vendor image
-        uses: docker/build-push-action@v5
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
         with:
-          context: .
-          push: true
-          platforms: linux/amd64
-          target: vendor
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          tags: ${{ env.REGISTRY }}/${{ steps.lower.outputs.image }}:vendor-cache
-          provenance: false
-          outputs: type=registry,push=true
+          images: ${{ env.REGISTRY }}/${{ steps.lower.outputs.image }}
+          tags: |
+            type=ref,event=branch
+            type=sha,format=short,prefix=,enable=true
+            type=raw,value=new,enable=${{ github.ref == 'refs/heads/master' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
+            type=raw,value=${{ steps.get_version.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
 
-      - name: Build and push
+      - name: Build and push arm64
         id: build-and-push
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          platforms: linux/amd64
+          platforms: linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          # 命名 build context：共享 vendor 镜像覆盖 Dockerfile 同名 vendor stage。
           build-contexts: vendor=docker-image://${{ env.REGISTRY }}/${{ steps.lower.outputs.image }}:vendor-cache
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -134,3 +221,60 @@ jobs:
           allow: |
             network.host
 
+  # 合并 amd64 + arm64 为多架构 manifest
+  merge:
+    needs: [build-amd64, build-arm64]
+    if: success()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Compute lowercase image name
+        id: lower
+        run: echo "image=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Login to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get version
+        id: get_version
+        run: echo "version=$(git describe --tags --always)" >> $GITHUB_OUTPUT
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ steps.lower.outputs.image }}
+          tags: |
+            type=ref,event=branch
+            type=sha,format=short,prefix=,enable=true
+            type=raw,value=new,enable=${{ github.ref == 'refs/heads/master' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
+            type=raw,value=${{ steps.get_version.outputs.version }}
+
+      - name: Create multi-arch manifest
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          AMD64_DIGEST: ${{ needs.build-amd64.outputs.digest }}
+          ARM64_DIGEST: ${{ needs.build-arm64.outputs.digest }}
+          IMAGE: ${{ env.REGISTRY }}/${{ steps.lower.outputs.image }}
+        run: |
+          TAG_ARGS=()
+          while IFS= read -r tag; do
+            [ -n "$tag" ] && TAG_ARGS+=("--tag" "$tag")
+          done <<< "$TAGS"
+          docker buildx imagetools create "${TAG_ARGS[@]}" \
+            "$IMAGE@$AMD64_DIGEST" \
+            "$IMAGE@$ARM64_DIGEST"
+
+      - name: Inspect image
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          FIRST_TAG=$(echo "$TAGS" | head -1)
+          docker buildx imagetools inspect "$FIRST_TAG"

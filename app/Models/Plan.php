@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use InvalidArgumentException;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use App\Traits\HasPinyinSearch;
 
 /**
  * App\Models\Plan
@@ -36,9 +37,13 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class Plan extends Model
 {
     use HasFactory;
+    use HasPinyinSearch;
 
     protected $table = 'v2_plan';
     protected $dateFormat = 'U';
+
+    /** 拼音搜索字段 */
+    protected array $pinyinSearchable = ['name'];
 
     // 定义流量重置方式
     public const RESET_TRAFFIC_FOLLOW_SYSTEM = null;    // 跟随系统设置

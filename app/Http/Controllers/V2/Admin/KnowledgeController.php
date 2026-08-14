@@ -25,11 +25,7 @@ class KnowledgeController extends Controller
 
         $search = trim((string) $request->input('search', ''));
         if ($search !== '') {
-            $like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $search) . '%';
-            $query->where(function ($q) use ($like) {
-                $q->where('title', 'like', $like)
-                  ->orWhere('category', 'like', $like);
-            });
+            $query->pinyinSearch($search, ['title', 'category']);
         }
 
         $data = $query->orderBy('sort', 'ASC')->get();

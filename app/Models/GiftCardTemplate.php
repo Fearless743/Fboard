@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\HasPinyinSearch;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -26,8 +27,15 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class GiftCardTemplate extends Model
 {
+    use HasPinyinSearch;
+
     protected $table = 'v2_gift_card_template';
     protected $dateFormat = 'U';
+
+    /**
+     * 需要生成拼音索引的字段
+     */
+    protected array $pinyinSearchable = ['name', 'description'];
 
     // 卡片类型常量
     const TYPE_GENERAL = 1;         // 通用礼品卡

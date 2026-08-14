@@ -36,11 +36,7 @@ class MachineController extends Controller
 
         $search = trim((string) $request->input('search', ''));
         if ($search !== '') {
-            $like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $search) . '%';
-            $query->where(function ($q) use ($like) {
-                $q->where('name', 'like', $like)
-                  ->orWhere('notes', 'like', $like);
-            });
+            $query->pinyinSearch($search, ['name', 'notes']);
         }
 
         // 状态粗筛：inactive 可直接用 DB 字段；在线/离线/高负载只约束

@@ -22,6 +22,7 @@ class ManageController extends Controller
         $pageSize = max(1, min(200, (int) $request->input("pageSize", 20)));
         $search = $request->input("search", "");
         $typeFilter = $request->input("type", "");
+        $machineId = $request->input("machine_id", "");
         // 运行状态：0 未运行 / 1 无人使用或异常 / 2 运行正常（来自 available_status，非 DB 字段）
         $statusFilter = $request->input("status", "");
 
@@ -33,6 +34,11 @@ class ManageController extends Controller
         }
 
         $query->whereNot("type", "virtual");
+
+        // 机器过滤
+        if ($machineId !== "" && $machineId !== null && is_numeric($machineId)) {
+            $query->where("machine_id", (int) $machineId);
+        }
 
         // 搜索过滤：name 支持拼音（含 pinyin_index 匹配），host/id 仅原文匹配
         if ($search) {

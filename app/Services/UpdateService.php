@@ -18,17 +18,41 @@ class UpdateService
     const CACHE_UPDATE_LOCK = 'UPDATE_LOCK';
     const CACHE_VERSION = 'CURRENT_VERSION';
     const CACHE_VERSION_DATE = 'CURRENT_VERSION_DATE';
-    
+    const DEFAULT_CONFIG_VERSION = '1.0.0';
+
     /**
      * Get current version from cache or generate new one
      */
     public function getCurrentVersion(): string
     {
+        // 优先使用构建时注入的版本：CI 在 Docker 构建前会把 config/app.php 的
+        // 'version' 改写为如 20260814-xxxxxxx（镜像内无 .git，运行时 git 不可用）。
+        // 默认占位 '1.0.0' 不采用，此时回退到缓存/git 生成。
+        $configVersion = config('app.version');
+        if ($configVersion && $configVersion !== self::DEFAULT_CONFIG_VERSION) {
+            return $configVersion;
+        }
+
         $date = Cache::get(self::CACHE_VERSION_DATE) ?? date('Ymd');
-        $hash = Cache::rememberForever(self::CACHE_VERSION, function () {
-            return $this->getCurrentCommit();
-        });
+        $hash = Cache::get(self::CACHE_VERSION);
+        if (!$hash || $hash === 'unknown') {
+            $hash = $this->getCurrentCommit();
+            $this->cacheVersion(self::CACHE_VERSION, $hash);
+        }
         return $date . '-' . $hash;
+    }
+
+    /**
+     * Cache version hash. 'unknown'（获取失败）只短暂缓存，
+     * 避免环境修复后仍一直显示 unknown。
+     */
+    protected function cacheVersion(string $key, string $value): void
+    {
+        if ($value === 'unknown') {
+            Cache::put($key, $value, now()->addMinutes(5));
+        } else {
+            Cache::forever($key, $value);
+        }
     }
 
     /**
@@ -41,7 +65,7 @@ class UpdateService
             if ($result->successful()) {
                 list($date, $hash) = explode(':', trim($result->output()));
                 Cache::forever(self::CACHE_VERSION_DATE, $date);
-                Cache::forever(self::CACHE_VERSION, substr($hash, 0, 7));
+                $this->cacheVersion(self::CACHE_VERSION, substr($hash, 0, 7));
                 // Log::info('Version cache updated: ' . $date . '-' . substr($hash, 0, 7));
                 return;
             }
@@ -52,7 +76,7 @@ class UpdateService
         // Fallback
         Cache::forever(self::CACHE_VERSION_DATE, date('Ymd'));
         $fallbackHash = $this->getCurrentCommit();
-        Cache::forever(self::CACHE_VERSION, $fallbackHash);
+        $this->cacheVersion(self::CACHE_VERSION, $fallbackHash);
         Log::info('Version cache updated (fallback): ' . date('Ymd') . '-' . $fallbackHash);
     }
 
@@ -256,6 +280,12 @@ class UpdateService
 
     protected function getCurrentCommit(): string
     {
+        // 容器内无 .git 时，使用构建时注入的 config/app.php version
+        $configVersion = $this->getConfigVersion();
+        if ($configVersion !== null) {
+            return $configVersion;
+        }
+
         try {
             // Ensure git configuration is correct
             Process::run(sprintf('git config --global --add safe.directory %s', base_path()));
@@ -266,6 +296,20 @@ class UpdateService
             Log::error('Failed to get current commit: ' . $e->getMessage());
             return 'unknown';
         }
+    }
+
+    /**
+     * 构建时注入的版本（config/app.php，CI 改写为 20260814-xxxxxxx）。
+     * 默认占位 '1.0.0' 视为未注入；GitHub Actions 的 tag 输出不在 config，仅用于镜像 tag。
+     */
+    protected function getConfigVersion(): ?string
+    {
+        $version = (string) config('app.version', '');
+        $version = trim($version);
+        if ($version === '' || $version === self::DEFAULT_CONFIG_VERSION) {
+            return null;
+        }
+        return $version;
     }
 
     protected function getFirstCommit(): string

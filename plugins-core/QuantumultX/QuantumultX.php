@@ -135,6 +135,13 @@ class QuantumultX extends AbstractProtocol
                 }
                 $host = data_get($settings, 'network_settings.headers.Host');
                 break;
+            case 'httpupgrade':
+                $config[] = $tlsMode ? 'obfs=wss' : 'obfs=ws';
+                if ($path = data_get($settings, 'network_settings.path')) {
+                    $config[] = "obfs-uri={$path}";
+                }
+                $host = data_get($settings, 'network_settings.headers.Host', data_get($settings, 'network_settings.host'));
+                break;
             case 'tcp':
                 $headerType = data_get($settings, 'network_settings.header.type', 'tcp');
                 if ($headerType === 'http') {

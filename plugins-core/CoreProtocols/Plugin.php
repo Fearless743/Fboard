@@ -82,7 +82,7 @@ class Plugin extends AbstractPlugin
         // v2ray 为历史别名，normalizeType 时映射到 vmess
         $this->registerProtocolDefinition(ProtocolTypes::VMESS, 'VMess', [
             'tls' => ['type' => 'integer', 'default' => 0, 'label' => 'TLS', 'options' => ['0' => '关闭', '1' => '开启']],
-            'network' => ['type' => 'string', 'default' => null, 'label' => '传输协议', 'options' => ['tcp' => 'TCP', 'kcp' => 'KCP', 'ws' => 'WebSocket', 'http' => 'HTTP/2', 'quic' => 'QUIC', 'grpc' => 'gRPC']],
+            'network' => ['type' => 'string', 'default' => null, 'label' => '传输协议', 'options' => ['tcp' => 'TCP', 'kcp' => 'KCP', 'ws' => 'WebSocket', 'http' => 'HTTP/2', 'quic' => 'QUIC', 'grpc' => 'gRPC', 'httpupgrade' => 'HTTPUpgrade']],
             'rules' => ['type' => 'array', 'default' => null, 'label' => '规则'],
             'network_settings' => ['type' => 'array', 'default' => null, 'label' => '网络设置'],
             'tls_settings' => ['type' => 'object', 'show_when' => ['tls' => '1'], 'fields' => [
@@ -134,7 +134,7 @@ class Plugin extends AbstractPlugin
                 'encryption' => ['type' => 'string', 'default' => null, 'label' => '客户端公钥', 'show_when' => ['enabled' => 'true']],
                 'decryption' => ['type' => 'string', 'default' => null, 'label' => '服务端私钥', 'show_when' => ['enabled' => 'true']],
             ], 'label' => '加密设置'],
-            'network' => ['type' => 'string', 'default' => null, 'label' => '传输协议', 'options' => ['tcp' => 'TCP', 'kcp' => 'KCP', 'ws' => 'WebSocket', 'http' => 'HTTP/2', 'quic' => 'QUIC', 'grpc' => 'gRPC', 'xhttp' => 'XHTTP']],
+            'network' => ['type' => 'string', 'default' => null, 'label' => '传输协议', 'options' => ['tcp' => 'TCP', 'kcp' => 'KCP', 'ws' => 'WebSocket', 'http' => 'HTTP/2', 'quic' => 'QUIC', 'grpc' => 'gRPC', 'xhttp' => 'XHTTP', 'httpupgrade' => 'HTTPUpgrade']],
             'network_settings' => ['type' => 'array', 'default' => null, 'label' => '网络设置'],
             ...self::getRealityFields(),
             ...self::getMultiplexFields(),
@@ -154,7 +154,7 @@ class Plugin extends AbstractPlugin
     {
         $this->registerProtocolDefinition(ProtocolTypes::TROJAN, 'Trojan', [
             'tls' => ['type' => 'integer', 'default' => 1, 'label' => 'TLS', 'options' => ['0' => '关闭', '1' => 'TLS', '2' => 'Reality']],
-            'network' => ['type' => 'string', 'default' => null, 'label' => '传输协议', 'options' => ['tcp' => 'TCP', 'kcp' => 'KCP', 'ws' => 'WebSocket', 'quic' => 'QUIC', 'grpc' => 'gRPC', 'xhttp' => 'XHTTP']],
+            'network' => ['type' => 'string', 'default' => null, 'label' => '传输协议', 'options' => ['tcp' => 'TCP', 'kcp' => 'KCP', 'ws' => 'WebSocket', 'quic' => 'QUIC', 'grpc' => 'gRPC', 'xhttp' => 'XHTTP', 'httpupgrade' => 'HTTPUpgrade']],
             'network_settings' => ['type' => 'array', 'default' => null, 'label' => '网络设置'],
             'server_name' => ['type' => 'string', 'default' => null, 'label' => '服务器名称', 'show_when' => ['tls' => '1']],
             'allow_insecure' => ['type' => 'boolean', 'default' => false, 'label' => '允许不安全连接', 'show_when' => ['tls' => '1']],

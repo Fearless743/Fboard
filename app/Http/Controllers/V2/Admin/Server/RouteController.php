@@ -31,7 +31,7 @@ class RouteController extends Controller
             'action.required' => '动作类型不能为空',
             'action.in' => '动作类型参数有误'
         ]);
-        $params['match'] = array_filter($params['match']);
+        $params['match'] = array_values(array_filter($params['match']));
         try {
             if ($request->input('id')) {
                 $route = ServerRoute::find($request->input('id'));

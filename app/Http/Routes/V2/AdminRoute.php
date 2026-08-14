@@ -246,6 +246,8 @@ class AdminRoute
                 $router->post('/drop', [CouponController::class, 'drop']);
                 $router->post('/show', [CouponController::class, 'show']);
                 $router->post('/update', [CouponController::class, 'update']);
+                $router->post('/batchDrop', [CouponController::class, 'batchDrop']);
+                $router->post('/dropExpired', [CouponController::class, 'dropExpired']);
             });
 
             // Gift Card

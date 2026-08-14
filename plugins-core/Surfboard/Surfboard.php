@@ -171,6 +171,15 @@ class Surfboard extends AbstractProtocol
                 if (isset($wsSettings['headers']['Host']) && !empty($wsSettings['headers']['Host']))
                     array_push($config, "ws-headers=Host:{$wsSettings['headers']['Host']}");
             }
+        } elseif (data_get($protocol_settings, 'network') === 'httpupgrade') {
+            array_push($config, 'ws=true');
+            if (data_get($protocol_settings, 'network_settings')) {
+                $huSettings = data_get($protocol_settings, 'network_settings');
+                if (isset($huSettings['path']) && !empty($huSettings['path']))
+                    array_push($config, "ws-path={$huSettings['path']}");
+                if (isset($huSettings['headers']['Host']) && !empty($huSettings['headers']['Host']))
+                    array_push($config, "ws-headers=Host:{$huSettings['headers']['Host']}");
+            }
         }
 
         $uri = implode(',', $config);

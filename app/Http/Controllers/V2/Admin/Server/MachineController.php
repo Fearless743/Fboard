@@ -11,6 +11,8 @@ use App\Models\ServerMachine;
 use App\Models\ServerMachineLoadHistory;
 use App\Services\NodeSyncService;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
@@ -274,10 +276,154 @@ class MachineController extends Controller
         ]);
 
         $nodes = Server::where('machine_id', $params['machine_id'])
+            ->whereNot('type', Server::TYPE_VIRTUAL)
             ->orderBy('sort')
             ->get(['id', 'name', 'type', 'host', 'port', 'show', 'enabled', 'sort']);
 
         return $this->success($nodes);
+    }
+
+    /**
+     * 获取未绑定任何机器的节点列表（供「绑定已有节点」对话框搜索/多选）。
+     *
+     * 可选参数：
+     *   - current / pageSize: 分页（默认 1 / 20）
+     *   - search: 按名称（含拼音）/ 地址 / ID 模糊匹配
+     *   - type: 按协议类型精确过滤（与 getNodes 的 type 一致）
+     *
+     * 响应为分页结构（total / data / current_page / last_page）。
+     */
+    public function availableNodes(Request $request)
+    {
+        $current = max(1, (int) $request->input('current', 1));
+        $pageSize = max(1, min(200, (int) $request->input('pageSize', 20)));
+        $search = trim((string) $request->input('search', ''));
+        $typeFilter = $request->input('type', '');
+
+        $query = Server::orderBy('sort')
+            ->whereNull('machine_id')
+            ->whereNot('type', Server::TYPE_VIRTUAL);
+
+        if ($typeFilter !== '' && $typeFilter !== null) {
+            $query->where('type', (string) $typeFilter);
+        }
+
+        if ($search !== '') {
+            $escaped = str_replace(['%', '_'], ['\\%', '\\_'], $search);
+            $like = "%{$escaped}%";
+            $query->where(function ($q) use ($like, $search) {
+                $q->pinyinSearch($search, ['name'])
+                  ->orWhere('host', 'like', $like)
+                  ->orWhere('id', 'like', $like);
+            });
+        }
+
+        $paginator = $query->paginate($pageSize, ['id', 'name', 'type', 'host', 'port', 'show', 'enabled', 'sort'], 'page', $current);
+
+        $this->appendAvailableStatus($paginator);
+
+        return $this->paginate($paginator);
+    }
+
+    /**
+     * 批量绑定已有节点到机器。
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function bindNodes(Request $request): JsonResponse
+    {
+        $params = $request->validate([
+            'machine_id' => 'required|integer|exists:v2_server_machine,id',
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'integer|exists:v2_server,id',
+        ]);
+
+        $machineId = (int) $params['machine_id'];
+        $ids = array_values(array_unique(array_map('intval', $params['ids'])));
+
+        $bound = Server::whereIn('id', $ids)
+            ->whereNot('type', Server::TYPE_VIRTUAL)
+            ->get();
+
+        if ($bound->isEmpty()) {
+            return $this->fail([400, '没有可绑定的节点']);
+        }
+
+        // 只绑定未被其他机器占用的节点；跳过已绑定到其他机器的
+        $skipped = [];
+        foreach ($bound as $server) {
+            if ((int) $server->machine_id !== 0 && (int) $server->machine_id !== $machineId) {
+                $skipped[] = $server->id;
+                continue;
+            }
+            $server->machine_id = $machineId;
+            $server->save();
+        }
+
+        if ($skipped) {
+            Log::info('部分节点已绑定其他机器，已跳过', [
+                'machine_id' => $machineId,
+                'skipped_ids' => $skipped,
+            ]);
+        }
+
+        // 通知节点集合已变更（WS 进程更新内存注册表）
+        NodeSyncService::notifyMachineNodesChanged($machineId);
+
+        $boundCount = $bound->count() - count($skipped);
+        return $this->success([
+            'bound' => $boundCount,
+            'skipped' => $skipped,
+        ]);
+    }
+
+    /**
+     * 将单个节点从机器上解绑（machine_id 置空）。
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function unbindNode(Request $request): JsonResponse
+    {
+        $params = $request->validate([
+            'machine_id' => 'required|integer|exists:v2_server_machine,id',
+            'id' => 'required|integer|exists:v2_server,id',
+        ]);
+
+        $machineId = (int) $params['machine_id'];
+        $server = Server::find((int) $params['id']);
+
+        if (!$server || $server->type === Server::TYPE_VIRTUAL) {
+            return $this->fail([400, '节点不存在或不可解绑']);
+        }
+        if ((int) $server->machine_id !== $machineId) {
+            return $this->fail([400, '该节点不属于此机器']);
+        }
+
+        $server->machine_id = null;
+        $server->save();
+
+        NodeSyncService::notifyMachineNodesChanged($machineId);
+
+        return $this->success(true);
+    }
+
+    /**
+     * 为分页集合附加 available_status 等运行状态字段。
+     */
+    private function appendAvailableStatus(LengthAwarePaginator $paginator): void
+    {
+        $paginator->getCollection()->transform(function (Server $item) {
+            return $item->append([
+                'version',
+                'online',
+                'is_online',
+                'last_check_at',
+                'last_push_at',
+                'available_status',
+            ])->setAttribute('status', $item->available_status);
+        });
     }
 
     /**

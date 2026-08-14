@@ -146,6 +146,9 @@ class AdminRoute
                 $router->get('/getToken', [MachineController::class, 'getToken']);
                 $router->get('/installCommand', [MachineController::class, 'installCommand']);
                 $router->get('/nodes', [MachineController::class, 'nodes']);
+                $router->get('/available-nodes', [MachineController::class, 'availableNodes']);
+                $router->post('/bind-nodes', [MachineController::class, 'bindNodes']);
+                $router->post('/unbind-node', [MachineController::class, 'unbindNode']);
                 $router->get('/history', [MachineController::class, 'history']);
                 $router->post('/upgrade', [MachineController::class, 'upgrade']);
                 $router->post('/restart', [MachineController::class, 'restart']);

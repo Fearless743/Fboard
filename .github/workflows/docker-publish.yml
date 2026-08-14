@@ -53,16 +53,9 @@ jobs:
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
-        with:
-          platforms: 'arm64,amd64'
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-        with:
-          platforms: linux/amd64,linux/arm64
-          driver-opts: |
-            image=moby/buildkit:v0.20.0
-            network=host
 
       - name: Free Disk Space
         run: |
@@ -107,19 +100,8 @@ jobs:
           echo "Updated version to: $VERSION"
 
       # ---------------------------------------------------------------------------
-      # Composer 依赖共享：多架构（amd64/arm64）构建共用一次 composer install。
-      # 1. 此处以单平台 amd64 构建 Dockerfile 的 vendor stage 并推送为共享镜像
-      #    <image>:vendor-cache。vendor stage 的 cache-from 复用 build-push-action
-      #    写入 gha 的层缓存，composer.lock 不变时直接命中（拉一个已存在镜像，
-      #    秒级完成，不再执行 composer install）。
-      # 2. 下方主构建通过命名 build context 传入 `vendor=docker-image://<共享镜像>`，
-      #    BuildKit 用该镜像覆盖同名 vendor stage（只取 /www/vendor），
-      #    两个平台都不再执行 composer install。
-      # 3. composer.json/lock 变更时，vendor stage 指令变化导致 gha 缓存 miss，
-      #    此步重新 composer install 并更新共享镜像，主构建自动拿到新 vendor。
-      # 注：vendor 必须与运行环境同基础镜像（phpswoole/swoole:php8.5-alpine），
-      # 否则 FROM 匹配不上。依赖为纯 PHP，跨架构通用；若将来引入平台相关包
-      # （C 扩展、预编译二进制），需重新评估此共享。
+      # Composer 依赖共享：vendor stage 预构建并推送为共享镜像，主构建通过
+      # build context 复用，避免重复 composer install。
       # ---------------------------------------------------------------------------
       - name: Build and push shared vendor image
         uses: docker/build-push-action@v5
@@ -128,12 +110,8 @@ jobs:
           push: true
           platforms: linux/amd64
           target: vendor
-          # vendor 镜像本体已是跨构建的“层缓存”；这里再配 registry 缓存
-          # 可让 gha 之外的层（基础镜像）也命中，兼容两种缓存来源。
-          cache-from: |
-            type=registry,ref=${{ env.REGISTRY }}/${{ steps.lower.outputs.image }}:buildcache
-            type=gha
-          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ steps.lower.outputs.image }}:buildcache,mode=max
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           tags: ${{ env.REGISTRY }}/${{ steps.lower.outputs.image }}:vendor-cache
           provenance: false
           outputs: type=registry,push=true
@@ -144,16 +122,10 @@ jobs:
         with:
           context: .
           push: true
-          platforms: linux/amd64,linux/arm64
-          # registry 缓存（存 ghcr.io）比 gha 缓存更适合多架构：
-          # arm64 扩展编译层可跨 run 命中，避免每次现场编译 5 分钟。
-          cache-from: |
-            type=registry,ref=${{ env.REGISTRY }}/${{ steps.lower.outputs.image }}:buildcache
-            type=gha
-          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ steps.lower.outputs.image }}:buildcache,mode=max
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           # 命名 build context：共享 vendor 镜像覆盖 Dockerfile 同名 vendor stage。
-          # BuildKit 直接取该镜像 /www/vendor，两个架构共享同一份 composer 依赖，
-          # vendor stage（含 composer install）不再执行。
           build-contexts: vendor=docker-image://${{ env.REGISTRY }}/${{ steps.lower.outputs.image }}:vendor-cache
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

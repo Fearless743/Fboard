@@ -264,4 +264,80 @@ class CouponController extends Controller
 
         return $this->success(true);
     }
+
+    public function batchDrop(Request $request)
+    {
+        $request->validate([
+            'ids' => 'required|array',
+            'ids.*' => 'integer',
+        ], [
+            'ids.required' => '请选择要删除的优惠券',
+        ]);
+
+        $ids = $request->input('ids');
+        if (empty($ids)) {
+            return $this->fail([400, '请选择要删除的优惠券']);
+        }
+
+        HookManager::call('admin.coupon.batch_drop.before', [
+            'ids' => $ids,
+            'request' => $request,
+        ]);
+
+        try {
+            DB::beginTransaction();
+            $coupons = Coupon::whereIn('id', $ids)->get();
+            foreach ($coupons as $coupon) {
+                if (!$coupon->delete()) {
+                    DB::rollBack();
+                    return $this->fail([500, '批量删除失败']);
+                }
+            }
+            DB::commit();
+
+            HookManager::call('admin.coupon.batch_drop.after', [
+                'ids' => $ids,
+                'request' => $request,
+            ]);
+
+            return $this->success(true);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error($e);
+            return $this->fail([500, '批量删除失败']);
+        }
+    }
+
+    public function dropExpired(Request $request)
+    {
+        HookManager::call('admin.coupon.drop_expired.before', [
+            'request' => $request,
+        ]);
+
+        try {
+            DB::beginTransaction();
+            $coupons = Coupon::where('ended_at', '<', time())->get();
+            $count = $coupons->count();
+            foreach ($coupons as $coupon) {
+                if (!$coupon->delete()) {
+                    DB::rollBack();
+                    return $this->fail([500, '删除过期优惠券失败']);
+                }
+            }
+            DB::commit();
+
+            HookManager::call('admin.coupon.drop_expired.after', [
+                'count' => $count,
+                'request' => $request,
+            ]);
+
+            return $this->success([
+                'count' => $count,
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error($e);
+            return $this->fail([500, '删除过期优惠券失败']);
+        }
+    }
 }

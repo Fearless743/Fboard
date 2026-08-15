@@ -180,6 +180,15 @@ class Surge extends AbstractProtocol
                 if (data_get($wsSettings, 'headers.Host'))
                     array_push($config, "ws-headers=Host:{$wsSettings['headers']['Host']}");
             }
+        } elseif (data_get($protocol_settings, 'network') === 'httpupgrade') {
+            array_push($config, 'ws=true');
+            if (data_get($protocol_settings, 'network_settings')) {
+                $huSettings = data_get($protocol_settings, 'network_settings');
+                if (data_get($huSettings, 'path'))
+                    array_push($config, "ws-path={$huSettings['path']}");
+                if (data_get($huSettings, 'headers.Host'))
+                    array_push($config, "ws-headers=Host:{$huSettings['headers']['Host']}");
+            }
         }
 
         $uri = implode(',', $config);

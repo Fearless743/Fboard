@@ -217,6 +217,13 @@ class Clash extends AbstractProtocol
                 if ($host = data_get($protocol_settings, 'network_settings.headers.Host'))
                     $array['ws-opts']['headers'] = ['Host' => $host];
                 break;
+            case 'httpupgrade':
+                $array['network'] = 'ws';
+                if ($path = data_get($protocol_settings, 'network_settings.path'))
+                    $array['ws-opts']['path'] = $path;
+                if ($host = data_get($protocol_settings, 'network_settings.headers.Host'))
+                    $array['ws-opts']['headers'] = ['Host' => $host];
+                break;
             case 'grpc':
                 $array['network'] = 'grpc';
                 if ($serviceName = data_get($protocol_settings, 'network_settings.serviceName'))
@@ -248,6 +255,13 @@ class Clash extends AbstractProtocol
                 $array['network'] = 'tcp';
                 break;
             case 'ws':
+                $array['network'] = 'ws';
+                if ($path = data_get($protocol_settings, 'network_settings.path'))
+                    $array['ws-opts']['path'] = $path;
+                if ($host = data_get($protocol_settings, 'network_settings.headers.Host'))
+                    $array['ws-opts']['headers'] = ['Host' => $host];
+                break;
+            case 'httpupgrade':
                 $array['network'] = 'ws';
                 if ($path = data_get($protocol_settings, 'network_settings.path'))
                     $array['ws-opts']['path'] = $path;

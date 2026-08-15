@@ -12,6 +12,7 @@ use App\Utils\CacheKey;
 use App\Utils\Helper;
 use App\Models\User;
 use App\Services\ProtocolDefinitionRegistry;
+use App\Utils\CacheKeyResolver;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 
 /**
@@ -529,13 +530,10 @@ class Server extends Model
     protected function lastCheckAt(): Attribute
     {
         return Attribute::make(
-            get: function () {
-                $type = strtoupper($this->type);
-                $serverId = $this->parent_id ?: $this->id;
-                return Cache::get(
-                    CacheKey::get("SERVER_{$type}_LAST_CHECK_AT", $serverId),
-                );
-            },
+            get: fn () => CacheKeyResolver::serverCache(
+                $this,
+                fn (string $type, int $serverId) => CacheKey::get("SERVER_{$type}_LAST_CHECK_AT", $serverId),
+            ),
         );
     }
 
@@ -545,13 +543,10 @@ class Server extends Model
     protected function lastPushAt(): Attribute
     {
         return Attribute::make(
-            get: function () {
-                $type = strtoupper($this->type);
-                $serverId = $this->parent_id ?: $this->id;
-                return Cache::get(
-                    CacheKey::get("SERVER_{$type}_LAST_PUSH_AT", $serverId),
-                );
-            },
+            get: fn () => CacheKeyResolver::serverCache(
+                $this,
+                fn (string $type, int $serverId) => CacheKey::get("SERVER_{$type}_LAST_PUSH_AT", $serverId),
+            ),
         );
     }
 
@@ -561,13 +556,10 @@ class Server extends Model
     protected function online(): Attribute
     {
         return Attribute::make(
-            get: function () {
-                $type = strtoupper($this->type);
-                $serverId = $this->parent_id ?: $this->id;
-                return Cache::get(
-                    CacheKey::get("SERVER_{$type}_ONLINE_USER", $serverId),
-                ) ?? 0;
-            },
+            get: fn () => CacheKeyResolver::serverCache(
+                $this,
+                fn (string $type, int $serverId) => CacheKey::get("SERVER_{$type}_ONLINE_USER", $serverId),
+            ) ?? 0,
         );
     }
 
@@ -619,13 +611,10 @@ class Server extends Model
     protected function metrics(): Attribute
     {
         return Attribute::make(
-            get: function () {
-                $type = strtoupper($this->type);
-                $serverId = $this->parent_id ?: $this->id;
-                return Cache::get(
-                    CacheKey::get("SERVER_{$type}_METRICS", $serverId),
-                );
-            },
+            get: fn () => CacheKeyResolver::serverCache(
+                $this,
+                fn (string $type, int $serverId) => CacheKey::get("SERVER_{$type}_METRICS", $serverId),
+            ),
         );
     }
 
@@ -660,13 +649,10 @@ class Server extends Model
     protected function loadStatus(): Attribute
     {
         return Attribute::make(
-            get: function () {
-                $type = strtoupper($this->type);
-                $serverId = $this->parent_id ?: $this->id;
-                return Cache::get(
-                    CacheKey::get("SERVER_{$type}_LOAD_STATUS", $serverId),
-                );
-            },
+            get: fn () => CacheKeyResolver::serverCache(
+                $this,
+                fn (string $type, int $serverId) => CacheKey::get("SERVER_{$type}_LOAD_STATUS", $serverId),
+            ),
         );
     }
 

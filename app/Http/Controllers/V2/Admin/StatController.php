@@ -12,6 +12,7 @@ use App\Models\StatUser;
 use App\Models\Ticket;
 use App\Models\User;
 use App\Services\StatisticalService;
+use App\Utils\CacheKeyResolver;
 use Illuminate\Http\Request;
 
 class StatController extends Controller
@@ -23,8 +24,12 @@ class StatController extends Controller
     }
     public function getOverride(Request $request)
     {
-        // 获取在线节点数
-        $onlineNodes = Server::all()->filter(function ($server) {
+        CacheKeyResolver::flush();
+
+        // 获取在线节点数（只取缓存键所需字段，避免全表加载 + PHP 内存过滤）
+        $servers = Server::select(['id', 'type', 'parent_id', 'updated_at'])
+            ->get();
+        $onlineNodes = $servers->filter(function ($server) {
             return !!$server->is_online;
         })->count();
         // 获取在线设备数和在线用户数
@@ -265,8 +270,11 @@ class StatController extends Controller
         $todayStart = strtotime('today');
         $yesterdayStart = strtotime('-1 day', $todayStart);
 
-        // 获取在线节点数
-        $onlineNodes = Server::all()->filter(function ($server) {
+        // 获取在线节点数（只取缓存键所需字段，避免全表加载 + PHP 内存过滤）
+        $servers = Server::select(['id', 'type', 'parent_id', 'updated_at'])
+            ->get();
+        CacheKeyResolver::flush();
+        $onlineNodes = $servers->filter(function ($server) {
             return !!$server->is_online;
         })->count();
 

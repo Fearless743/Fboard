@@ -8,6 +8,7 @@ use App\Models\ServerRoute;
 use App\Models\User;
 use App\Services\Plugin\HookManager;
 use App\Utils\CacheKey;
+use App\Utils\CacheKeyResolver;
 use App\Utils\Helper;
 use App\WebSocket\NodeEventHandlers;
 use Illuminate\Support\Facades\Cache;
@@ -23,9 +24,12 @@ class ServerService
      */
     public static function getAllServers(): Collection
     {
-        $query = Server::orderBy('sort', 'ASC');
+        CacheKeyResolver::flush();
 
-        return $query->get()->append([
+        $servers = Server::orderBy('sort', 'ASC')->get();
+        self::hydrateServerCache($servers);
+
+        return $servers->append([
             'last_check_at',
             'last_push_at',
             'online',
@@ -56,6 +60,8 @@ class ServerService
      */
     public static function getAvailableServers(User $user): array
     {
+        CacheKeyResolver::flush();
+
         $servers = Server::where(function ($query) use ($user) {
                 $groupId = (string) $user->group_id;
                 // 同时匹配字符串和整型两种存储形式，避免 JSON_CONTAINS 类型不匹配
@@ -75,6 +81,16 @@ class ServerService
         $servers = collect($servers)->map(function ($server) use ($user) {
             // 虚拟节点继承父节点配置（合并后会同步 appends，避免 is_online 等字段丢失）
             if ($server->type === 'virtual') {
+                // 虚拟节点合并后追加缓存访问器，使这些字段进入 $appends
+                $server->append([
+                    'last_check_at',
+                    'last_push_at',
+                    'online',
+                    'is_online',
+                    'available_status',
+                    'cache_key',
+                    'server_key',
+                ]);
                 $server = $server->getEffectiveAttribute();
             }
             // 判断动态端口
@@ -86,7 +102,9 @@ class ServerService
                 $server->port = (int) $server->port;
             }
             $server->password = $server->generateServerPassword($user);
-            $server->rate = $server->getCurrentRate();
+            if ($server->rate_time_enable) {
+                $server->rate = $server->getCurrentRate();
+            }
 
             // 订阅下发前将 REALITY 密钥规范为 RawURL Base64，避免客户端报 invalid REALITY public key
             $protocolSettings = $server->protocol_settings;
@@ -161,6 +179,30 @@ class ServerService
     {
         $routes = ServerRoute::select(['id', 'match', 'action', 'action_value'])->whereIn('id', $routeIds)->get();
         return $routes;
+    }
+
+    /**
+     * 预读取一批评分缓存访问器，避免每个访问器独立打 Redis（1+N）。
+     *
+     * 与 Server 的缓存访问器配合：先批量 Cache::get 所有键，再 append 时
+     * 访问器直接从 CacheKeyResolver 的内存缓存取，全程只发少量批量请求。
+     */
+    private static function hydrateServerCache(\Illuminate\Support\Collection $servers): void
+    {
+        $keys = [];
+        foreach ($servers as $server) {
+            $type = strtoupper((string) $server->type);
+            $serverId = (int) ($server->parent_id ?: $server->id);
+            foreach (['LAST_CHECK_AT', 'LAST_PUSH_AT', 'ONLINE_USER', 'METRICS', 'LOAD_STATUS'] as $suffix) {
+                $keys[] = CacheKey::get("SERVER_{$type}_{$suffix}", $serverId);
+            }
+        }
+
+        if ($keys === []) {
+            return;
+        }
+
+        Cache::many($keys);
     }
 
     /**

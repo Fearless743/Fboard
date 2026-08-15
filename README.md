@@ -48,9 +48,17 @@ docker compose up -d
 
 > 🚨 **Important:** This version involves significant changes. Please strictly follow the upgrade documentation and backup your database before upgrading. Note that upgrading and migration are different processes, do not confuse them.
 
+- [Upgrade to 0.5.0](./docs/en/upgrade/v0.5.0.md) — pinyin search backfill, multiplex migration, batch-replace change
+
 ### Development Guides
 
 - [Plugin Development Guide](./docs/en/development/plugin-development-guide.md) - Complete guide for developing Fboard plugins
+
+### Management Guides
+
+- [Certificate Templates](./docs/en/management/cert-templates.md) - Save and apply reusable TLS cert/key presets
+- [Server Batch Operations](./docs/en/management/server-batch-operations.md) - Full-table field batch replace
+- [Machine-Level Node Binding](./docs/en/management/machine-node-binding.md) - Bind / unbind nodes to machines
 
 ### Deployment Guides
 

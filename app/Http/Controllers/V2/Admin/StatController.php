@@ -271,9 +271,9 @@ class StatController extends Controller
         $yesterdayStart = strtotime('-1 day', $todayStart);
 
         // 获取在线节点数（只取缓存键所需字段，避免全表加载 + PHP 内存过滤）
+        CacheKeyResolver::flush();
         $servers = Server::select(['id', 'type', 'parent_id', 'updated_at'])
             ->get();
-        CacheKeyResolver::flush();
         $onlineNodes = $servers->filter(function ($server) {
             return !!$server->is_online;
         })->count();

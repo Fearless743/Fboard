@@ -156,6 +156,28 @@ class GetAvailableServersOptimizationTest extends TestCase
         $this->assertSame(0, $server['available_status']);
     }
 
+    public function test_rate_time_enabled_returns_current_rate(): void
+    {
+        $user = $this->makeUser(1);
+        $now = now()->format('H:i');
+        $ranges = [
+            ['start' => '00:00', 'end' => '23:59', 'rate' => '2.5'],
+        ];
+        $node = $this->makeServer(
+            groupIds: [1],
+            show: true,
+            type: ProtocolTypes::VMESS,
+            rate: 1.0,
+            rateTimeEnable: true,
+            rateTimeRanges: $ranges,
+        );
+
+        $servers = ServerService::getAvailableServers($user);
+        $server = collect($servers)->firstWhere('id', $node->id);
+
+        $this->assertSame(2.5, $server['rate']);
+    }
+
     public function test_reality_settings_normalized(): void
     {
         $user = $this->makeUser(1);
@@ -186,8 +208,7 @@ class GetAvailableServersOptimizationTest extends TestCase
         $server = collect($servers)->firstWhere('id', $node->id);
 
         $this->assertArrayHasKey('password', $server);
-        $this->assertEquals(1.0, $server['rate']);
-        $this->assertSame('1', (string) $server['rate']);
+        $this->assertSame(1.0, $server['rate']);
     }
 
     protected function setUp(): void
@@ -246,6 +267,8 @@ class GetAvailableServersOptimizationTest extends TestCase
         ?int $d = 0,
         ?int $transferEnable = null,
         ?array $protocolSettings = null,
+        ?bool $rateTimeEnable = null,
+        ?array $rateTimeRanges = null,
     ): Server {
         return Server::create(array_filter([
             'name' => 'node-' . Helper::guid(),
@@ -261,6 +284,8 @@ class GetAvailableServersOptimizationTest extends TestCase
             'd' => $d,
             'transfer_enable' => $transferEnable,
             'protocol_settings' => $protocolSettings,
+            'rate_time_enable' => $rateTimeEnable,
+            'rate_time_ranges' => $rateTimeRanges,
         ], fn ($v) => $v !== null));
     }
 }

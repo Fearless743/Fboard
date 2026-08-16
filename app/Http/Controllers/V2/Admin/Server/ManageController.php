@@ -10,6 +10,7 @@ use App\Models\Server;
 use App\Models\ServerGroup;
 use App\Services\Plugin\HookManager;
 use App\Services\ServerService;
+use App\Utils\CacheKeyResolver;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -18,6 +19,7 @@ class ManageController extends Controller
 {
     public function getNodes(Request $request)
     {
+        CacheKeyResolver::flush();
         $current = max(1, (int) $request->input("current", 1));
         $pageSize = max(1, min(200, (int) $request->input("pageSize", 20)));
         $search = $request->input("search", "");

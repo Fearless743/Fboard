@@ -102,9 +102,7 @@ class ServerService
                 $server->port = (int) $server->port;
             }
             $server->password = $server->generateServerPassword($user);
-            if ($server->rate_time_enable) {
-                $server->rate = $server->getCurrentRate();
-            }
+            $server->rate = $server->getCurrentRate();
 
             // 订阅下发前将 REALITY 密钥规范为 RawURL Base64，避免客户端报 invalid REALITY public key
             $protocolSettings = $server->protocol_settings;

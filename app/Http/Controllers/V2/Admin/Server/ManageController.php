@@ -25,6 +25,10 @@ class ManageController extends Controller
         $machineId = $request->input("machine_id", "");
         // 运行状态：0 未运行 / 1 无人使用或异常 / 2 运行正常（来自 available_status，非 DB 字段）
         $statusFilter = $request->input("status", "");
+        // 排序：sort_by 仅支持 online（在线人数）；order 支持 asc/desc
+        $sortBy = $request->input("sort_by", "");
+        $sortOrder = strtolower($request->input("order", "desc")) === "asc" ? "asc" : "desc";
+        $onlineSort = $sortBy === "online";
 
         $query = Server::orderBy("sort", "ASC");
 
@@ -73,34 +77,46 @@ class ManageController extends Controller
             return $item;
         };
 
-        // status 依赖缓存心跳，无法直接 SQL 过滤：先取匹配集合再按 available_status 分页
-        if ($statusFilter !== "" && $statusFilter !== null && is_numeric($statusFilter)) {
+        // 以下两类值依赖缓存访问器（status 见 available_status / online），无法用 SQL 排序，
+        // 需先取匹配集合再在内存中过滤/排序后分页。
+        $needInMemory = $onlineSort || ($statusFilter !== "" && $statusFilter !== null && is_numeric($statusFilter));
+        if ($needInMemory) {
+            $collection = $query->get();
+
+            // 按运行状态过滤
             $status = (int) $statusFilter;
-            if (in_array($status, [
-                Server::STATUS_OFFLINE,
-                Server::STATUS_ONLINE_NO_PUSH,
-                Server::STATUS_ONLINE,
-            ], true)) {
-                $filtered = $query->get()
-                    ->filter(fn ($item) => (int) $item->available_status === $status)
-                    ->values();
-
-                $total = $filtered->count();
-                $slice = $filtered
-                    ->slice(($current - 1) * $pageSize, $pageSize)
-                    ->values()
-                    ->map($enrich);
-
-                $paginator = new \Illuminate\Pagination\LengthAwarePaginator(
-                    $slice,
-                    $total,
-                    $pageSize,
-                    $current,
-                    ['path' => $request->url(), 'query' => $request->query()],
+            if ($statusFilter !== "" && $statusFilter !== null && is_numeric($statusFilter)
+                && in_array($status, [
+                    Server::STATUS_OFFLINE,
+                    Server::STATUS_ONLINE_NO_PUSH,
+                    Server::STATUS_ONLINE,
+                ], true)) {
+                $collection = $collection->filter(
+                    fn ($item) => (int) $item->available_status === $status,
                 );
-
-                return $this->paginate($paginator);
             }
+
+            // 按在线人数排序（在线人数依赖缓存访问器，非 DB 列，只能内存排序）
+            if ($onlineSort) {
+                $collection = $collection->sortBy("online", SORT_NUMERIC, $sortOrder === "asc" ? false : true);
+            }
+
+            $collection = $collection->values();
+            $total = $collection->count();
+            $slice = $collection
+                ->slice(($current - 1) * $pageSize, $pageSize)
+                ->values()
+                ->map($enrich);
+
+            $paginator = new \Illuminate\Pagination\LengthAwarePaginator(
+                $slice,
+                $total,
+                $pageSize,
+                $current,
+                ['path' => $request->url(), 'query' => $request->query()],
+            );
+
+            return $this->paginate($paginator);
         }
 
         $servers = $query->paginate($pageSize, ["*"], "page", $current);

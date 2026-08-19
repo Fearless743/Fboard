@@ -6,6 +6,7 @@ use App\Jobs\TrafficFetchJob;
 use App\Models\User;
 use App\Utils\Helper;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Redis;
 use Tests\TestCase;
 
 /**
@@ -17,6 +18,7 @@ class TrafficFetchJobNegativeTest extends TestCase
 
     public function test_negative_increments_do_not_reduce_user_traffic(): void
     {
+        Redis::shouldReceive('sadd')->once()->andReturn(true);
         $user = new User();
         $user->forceFill([
             'email' => 'traf-' . Helper::guid() . '@example.com',

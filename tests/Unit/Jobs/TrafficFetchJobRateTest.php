@@ -6,6 +6,7 @@ use App\Jobs\TrafficFetchJob;
 use App\Models\User;
 use App\Utils\Helper;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Redis;
 use Tests\TestCase;
 
 /**
@@ -17,6 +18,7 @@ class TrafficFetchJobRateTest extends TestCase
 
     public function test_fractional_rate_writes_integer_bytes(): void
     {
+        Redis::shouldReceive('sadd')->once()->andReturn(true);
         $user = new User();
         $user->forceFill([
             'email' => 'tf-' . Helper::guid() . '@example.com',

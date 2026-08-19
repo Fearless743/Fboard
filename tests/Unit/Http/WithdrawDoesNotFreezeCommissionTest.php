@@ -4,8 +4,8 @@ namespace Tests\Unit\Http;
 
 use App\Http\Controllers\V1\User\TicketController;
 use App\Http\Requests\User\TicketWithdraw;
-use App\Models\Ticket;
 use App\Models\User;
+use App\Models\Withdrawal;
 use App\Utils\Dict;
 use App\Utils\Helper;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -48,6 +48,7 @@ class WithdrawDoesNotFreezeCommissionTest extends TestCase
         $req1 = TicketWithdraw::create('/api/v1/user/ticket/withdraw', 'POST', [
             'withdraw_method' => $method,
             'withdraw_account' => 'a@example.com',
+            'withdraw_amount' => 10000, // 100 元（全额提现，验证余额清零）
         ]);
         $req1->setUserResolver(fn () => $user);
         $req1->setContainer(app())->setRedirector(app('redirect'));
@@ -57,19 +58,15 @@ class WithdrawDoesNotFreezeCommissionTest extends TestCase
         $this->assertNotNull($res1);
 
         $user->refresh();
-        // 申请成功后必须冻结/扣减佣金，工单内记录金额
-        $this->assertSame(0, (int) $user->commission_balance, '提现申请必须扣减/冻结 commission_balance');
-        $this->assertSame(1, Ticket::where('user_id', $user->id)->count());
+        // 申请成功后必须扣减佣金，且生成一条提现单
+        $this->assertSame(0, (int) $user->commission_balance, '提现申请必须扣减 commission_balance');
+        $this->assertSame(1, Withdrawal::where('user_id', $user->id)->count());
 
-        // 关闭工单后再次提现：余额已为 0，应被拒绝
-        $ticket = Ticket::where('user_id', $user->id)->orderByDesc('id')->first();
-        $this->assertNotNull($ticket);
-        $ticket->status = Ticket::STATUS_CLOSED;
-        $ticket->save();
-
+        // 余额已为 0，再次提现应被拒绝
         $req2 = TicketWithdraw::create('/api/v1/user/ticket/withdraw', 'POST', [
             'withdraw_method' => $method,
             'withdraw_account' => 'b@example.com',
+            'withdraw_amount' => 100, // 1 元
         ]);
         $req2->setUserResolver(fn () => $user);
         $req2->setContainer(app())->setRedirector(app('redirect'));
@@ -84,6 +81,6 @@ class WithdrawDoesNotFreezeCommissionTest extends TestCase
 
         $user->refresh();
         $this->assertSame(0, (int) $user->commission_balance);
-        $this->assertSame(1, Ticket::where('user_id', $user->id)->count());
+        $this->assertSame(1, Withdrawal::where('user_id', $user->id)->count(), '余额清零后不得再生成提现单');
     }
 }

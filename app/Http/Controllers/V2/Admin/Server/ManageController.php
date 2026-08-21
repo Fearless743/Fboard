@@ -8,7 +8,6 @@ use App\Jobs\NodeRestartJob;
 use App\Jobs\NodeUpgradeJob;
 use App\Models\Server;
 use App\Models\ServerGroup;
-use App\Models\StatServer;
 use App\Services\Plugin\HookManager;
 use App\Services\ServerService;
 use Illuminate\Http\Request;
@@ -58,42 +57,12 @@ class ManageController extends Controller
             });
         }
 
-        // 当月流量汇总（server_id => [upload, download, total]）
-        // 虚拟节点流量归入父节点，此处仅查询非虚拟节点
-        $trafficMap = [];
-        $baseIds = $query->pluck('id');
-        if ($baseIds->isNotEmpty()) {
-            $monthStart = strtotime(date('Y-m-01'));
-            $monthEnd   = strtotime('+1 month', $monthStart);
-            $rawStats   = StatServer::selectRaw('server_id, SUM(u) as upload, SUM(d) as download')
-                ->where('record_at', '>=', $monthStart)
-                ->where('record_at', '<', $monthEnd)
-                ->whereIn('server_id', $baseIds)
-                ->groupBy('server_id')
-                ->get();
-            foreach ($rawStats as $s) {
-                $trafficMap[(int) $s->server_id] = [
-                    'upload'   => (int) $s->upload,
-                    'download' => (int) $s->download,
-                    'total'    => (int) $s->upload + (int) $s->download,
-                ];
-            }
-        }
-
-        $enrich = function ($item) use ($trafficMap) {
+        $enrich = function ($item) {
             $item["groups"] = ServerGroup::whereIn(
                 "id",
                 $item["group_ids"] ?? [],
             )->get(["name", "id"]);
             $item["parent"] = $item->parent;
-            // 当月流量（虚拟节点聚合到父节点已在 getMonthTraffic 中处理，
-            // 此处直接取本节点的当月统计）
-            $serverId = $item->parent_id ?: $item->id;
-            $item["month_traffic"] = $trafficMap[$serverId] ?? [
-                'upload'   => 0,
-                'download' => 0,
-                'total'    => 0,
-            ];
             // online / available_status 等为 Attribute，需 append 才会进入 JSON
             $item->append([
                 'version',
@@ -872,86 +841,5 @@ class ManageController extends Controller
 
         Log::info("Batch machine upgrade dispatched (legacy node route)");
         return $this->success(true);
-    }
-
-    /**
-     * 获取各服务器当月的流量汇总（供前端列表字段回显）。
-     *
-     * 聚合逻辑：
-     * - 非虚拟节点：各自当月 u+d 总和
-     * - 虚拟节点：流量归入其父节点（连接由父节点承载，统计亦归属父节点）
-     *
-     * 返回结构：
-     * [
-     *   'list' => [
-     *     ['server_id' => int, 'upload' => int, 'download' => int, 'total' => int],
-     *     ...
-     *   ],
-     *   'month' => string 格式 "Y-m"
-     * ]
-     *
-     * @param \Illuminate\Http\Request $request
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function getMonthTraffic(Request $request)
-    {
-        $month = $request->input('month', date('Y-m'));
-
-        // 校验月份格式
-        if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
-            return $this->fail([400, "月份格式不正确，应为 Y-m"]);
-        }
-
-        $monthStart = strtotime("$month-01");
-        $monthEnd = strtotime('+1 month', $monthStart);
-
-        // 统计当月各服务器的流量（按 server_id 聚合）
-        // 虚拟节点的流量归入父节点：LEFT JOIN 父节点后按父节点 ID 分组
-        $stats = StatServer::selectRaw('server_id, SUM(u) as upload, SUM(d) as download')
-            ->where('record_at', '>=', $monthStart)
-            ->where('record_at', '<', $monthEnd)
-            ->groupBy('server_id')
-            ->get();
-
-        // 构建 server_id → 流量映射
-        $trafficMap = [];
-        foreach ($stats as $s) {
-            $trafficMap[(int) $s->server_id] = [
-                'upload'   => (int) $s->upload,
-                'download' => (int) $s->download,
-                'total'    => (int) $s->upload + (int) $s->download,
-            ];
-        }
-
-        // 非虚拟节点直接展示；虚拟节点流量合并到父节点
-        $servers = Server::whereNot('type', 'virtual')->get(['id', 'parent_id']);
-
-        // 以父节点 ID 为 key 的流量累计（虚拟节点流量归父）
-        $aggregated = [];
-        foreach ($servers as $server) {
-            $aggregateId = $server->parent_id ?: $server->id;
-            if (!isset($aggregated[$aggregateId])) {
-                $aggregated[$aggregateId] = [
-                    'server_id' => $aggregateId,
-                    'upload'    => 0,
-                    'download'  => 0,
-                ];
-            }
-            if (isset($trafficMap[$server->id])) {
-                $aggregated[$aggregateId]['upload']    += $trafficMap[$server->id]['upload'];
-                $aggregated[$aggregateId]['download']  += $trafficMap[$server->id]['download'];
-            }
-        }
-
-        // 转换为列表格式
-        $list = array_values(array_map(function ($item) {
-            $item['total'] = $item['upload'] + $item['download'];
-            return $item;
-        }, $aggregated));
-
-        return $this->success([
-            'list'  => $list,
-            'month' => $month,
-        ]);
     }
 }

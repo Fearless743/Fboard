@@ -122,6 +122,7 @@ class AdminRoute
                 $router->post('/restart', [ManageController::class, 'restart']);
                 $router->post('/upgrade', [ManageController::class, 'upgrade']);
                 $router->post('/batchUpgrade', [ManageController::class, 'batchUpgrade']);
+                $router->get('/get-month-traffic', [ManageController::class, 'getMonthTraffic']);
             });
 
             // 协议定义接口（插件协议动态注册）

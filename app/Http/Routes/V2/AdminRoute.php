@@ -187,6 +187,7 @@ class AdminRoute
                 $router->get('/inviteList', [UserController::class, 'inviteList']);
                 $router->get('/loginLogs', [UserController::class, 'loginLogs']);
                 $router->post('/destroy', [UserController::class, 'destroy']);
+                $router->post('/updateUserPlans', [UserController::class, 'updateUserPlans']);
             });
 
             // Stat

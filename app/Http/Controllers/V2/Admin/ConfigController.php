@@ -181,6 +181,7 @@ class ConfigController extends Controller
                 'default_remind_expire' => (bool) admin_setting('default_remind_expire', 1),
                 'default_remind_traffic' => (bool) admin_setting('default_remind_traffic', 1),
                 'subscribe_path' => admin_setting('subscribe_path', 's'),
+                'multi_plan_enable' => (bool) admin_setting('multi_plan_enable', 0),
                 'deposit_enable' => (bool) admin_setting('deposit_enable', 1),
                 'deposit_min_amount' => (int) admin_setting('deposit_min_amount', 100),
                 'deposit_max_amount' => (int) admin_setting('deposit_max_amount', 999999900),

@@ -367,6 +367,81 @@ class UserController extends Controller
         return $this->success(true);
     }
 
+    /**
+     * 多套餐模式：更新用户的套餐列表
+     * 接收 plan_list: [{plan_id, expired_at, speed_limit}, ...]
+     * plan_id=null 表示保留主订阅；expired_at=null 表示永久
+     */
+    public function updateUserPlans(Request $request)
+    {
+        $request->validate([
+            'id' => 'required|integer',
+            'plan_list' => 'nullable|array',
+            'plan_list.*.plan_id' => 'nullable|integer',
+            'plan_list.*.expired_at' => 'nullable|integer',
+            'plan_list.*.speed_limit' => 'nullable|integer',
+        ]);
+
+        $user = User::find($request->input('id'));
+        if (!$user) {
+            return $this->fail([400202, '用户不存在']);
+        }
+
+        // 检查是否开启多套餐模式
+        $enableMulti = (int) admin_setting('multi_plan_enable', 0);
+
+        $planList = $request->input('plan_list');
+
+        if ($enableMulti && is_array($planList) && count($planList) > 0) {
+            // 多套餐模式：清理旧的多套餐记录，只保留主订阅字段
+            UserPlan::where('user_id', $user->id)->delete();
+
+            foreach ($planList as $item) {
+                if (!isset($item['plan_id']) || !$item['plan_id']) {
+                    continue;
+                }
+                $plan = Plan::find($item['plan_id']);
+                if (!$plan) {
+                    continue;
+                }
+                UserPlan::create([
+                    'user_id' => $user->id,
+                    'plan_id' => $item['plan_id'],
+                    'expired_at' => $item['expired_at'] ?? null,
+                    'speed_limit' => $item['speed_limit'] ?? null,
+                ]);
+            }
+
+            // 重置主订阅字段为多套餐聚合逻辑的基准值
+            // 主字段保留最后一个或默认值，实际聚合由 User 模型方法完成
+            if (isset($planList[0]['plan_id'])) {
+                $firstPlan = Plan::find($planList[0]['plan_id']);
+                if ($firstPlan) {
+                    $user->plan_id = $firstPlan->id;
+                    $user->group_id = $firstPlan->group_id;
+                    $user->save();
+                }
+            }
+        } else if (!$enableMulti && is_array($planList) && count($planList) > 0) {
+            // 单套餐模式：取第一个 plan_id 作为主订阅（兼容旧逻辑）
+            $firstItem = $planList[0];
+            if (isset($firstItem['plan_id']) && $firstItem['plan_id']) {
+                $plan = Plan::find($firstItem['plan_id']);
+                if ($plan) {
+                    $user->plan_id = $plan->id;
+                    $user->group_id = $plan->group_id;
+                    $user->expired_at = $firstItem['expired_at'] ?? $user->expired_at;
+                    $user->speed_limit = $firstItem['speed_limit'] ?? $user->speed_limit;
+                    $user->save();
+                }
+            }
+            // 清理旧的多套餐记录
+            UserPlan::where('user_id', $user->id)->delete();
+        }
+
+        return $this->success(true);
+    }
+
     // Export users to CSV.
     public function dumpCSV(Request $request)
     {

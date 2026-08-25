@@ -10,6 +10,7 @@ use App\Jobs\SendEmailJob;
 use App\Models\Plan;
 use App\Models\User;
 use App\Models\UserLoginLog;
+use App\Models\UserPlan;
 use App\Services\AuthService;
 use App\Services\NodeSyncService;
 use App\Services\Plugin\HookManager;
@@ -227,6 +228,18 @@ class UserController extends Controller
         $user['balance'] = $user['balance'] / 100;
         $user['commission_balance'] = $user['commission_balance'] / 100;
         $user['subscribe_url'] = Helper::getSubscribeUrl($user['token']);
+        // 多套餐支持：累计流量、最早到期时间、套餐列表
+        $user['transfer_enable'] = $user->getTotalTransferEnable();
+        $user['expired_at'] = $user->getEffectiveExpiredAt();
+        $activePlans = $user->activeUserPlans()->with('plan:id,name')->get();
+        $user['plan_list'] = $activePlans->map(function (UserPlan $up) {
+            return [
+                'id' => $up->plan_id,
+                'name' => $up->plan?->name ?? '',
+                'expired_at' => $up->expired_at,
+                'speed_limit' => $up->speed_limit ?? $up->plan?->speed_limit ?? null,
+            ];
+        })->values()->all();
         return HookManager::filter('admin.user.transform', $user, $model);
     }
 
@@ -237,7 +250,21 @@ class UserController extends Controller
         ], [
             'id.required' => '用户ID不能为空'
         ]);
-        $user = User::find($request->input('id'))->load('invite_user');
+        $user = User::with(['invite_user', 'userPlans.plan:id,name'])->find($request->input('id'));
+        if (!$user) {
+            return $this->fail([400202, '用户不存在']);
+        }
+        // 同步聚合字段，方便前端直接使用
+        $user['transfer_enable'] = $user->getTotalTransferEnable();
+        $user['expired_at'] = $user->getEffectiveExpiredAt();
+        $user['plan_list'] = $user->activeUserPlans()->with('plan:id,name')->get()->map(function (UserPlan $up) {
+            return [
+                'id' => $up->plan_id,
+                'name' => $up->plan?->name ?? '',
+                'expired_at' => $up->expired_at,
+                'speed_limit' => $up->speed_limit ?? $up->plan?->speed_limit ?? null,
+            ];
+        })->values()->all();
         $user = HookManager::filter('admin.user.detail', $user, $request);
         return $this->success($user);
     }
@@ -396,22 +423,31 @@ class UserController extends Controller
                 '剩余流量',
                 '套餐到期时间',
                 '订阅计划',
-                '订阅地址'
+                '订阅地址',
+                '多套餐列表'
             ]);
 
             // 分批处理数据以减少内存使用
             $query->chunk(500, function ($users) use ($output) {
                 foreach ($users as $user) {
                     try {
+                        // 多套餐：累计流量 + 各套餐到期时间列表
+                        $planNames = $user->plan ? [$user->plan->name] : [];
+                        if (isset($user['plan_list'])) {
+                            foreach ($user['plan_list'] as $p) {
+                                $planNames[] = $p['name'] . ($p['expired_at'] ? ' (' . date('Y-m-d', $p['expired_at']) . ')' : ' (永久)');
+                            }
+                        }
                         $row = [
                             $user->email,
-                            number_format($user->balance / 100, 2),
-                            number_format($user->commission_balance / 100, 2),
-                            Helper::trafficConvert($user->transfer_enable),
-                            Helper::trafficConvert($user->transfer_enable - ($user->u + $user->d)),
-                            $user->expired_at ? date('Y-m-d H:i:s', $user->expired_at) : '长期有效',
-                            $user->plan ? $user->plan->name : '无订阅',
-                            Helper::getSubscribeUrl($user->token)
+                            number_format($user['balance'] / 100, 2),
+                            number_format($user['commission_balance'] / 100, 2),
+                            Helper::trafficConvert($user['transfer_enable']),
+                            Helper::trafficConvert($user['transfer_enable'] - ($user['u'] + $user['d'])),
+                            $user['expired_at'] ? date('Y-m-d H:i:s', $user['expired_at']) : '长期有效',
+                            implode(', ', $planNames) ?: '无订阅',
+                            Helper::getSubscribeUrl($user['token']),
+                            implode(' | ', array_unique($planNames)) ?: '无套餐'
                         ];
                         fputcsv($output, $row);
                     } catch (\Exception $e) {

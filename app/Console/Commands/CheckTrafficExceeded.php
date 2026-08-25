@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Server;
 use App\Models\User;
+use App\Models\UserPlan;
 use App\Services\NodeSyncService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Redis;
@@ -22,10 +23,31 @@ class CheckTrafficExceeded extends Command
 
         $pendingUserIds = array_map('intval', Redis::spop('traffic:pending_check', $count));
 
+        // 支持多套餐：累计流量超标也视为超限
         $exceededUsers = User::toBase()
             ->whereIn('id', $pendingUserIds)
-            ->whereRaw('u + d >= transfer_enable')
-            ->where('transfer_enable', '>', 0)
+            ->where(function ($query) {
+                $query->whereRaw('u + d >= transfer_enable')
+                      ->orWhereRaw('(SELECT COALESCE(SUM(p.transfer_enable * 1073741824), 0)
+                                     FROM v2_user_plan up
+                                     JOIN v2_plan p ON p.id = up.plan_id
+                                     WHERE up.user_id = v2_user.id
+                                       AND (up.expired_at IS NULL OR up.expired_at > UNIX_TIMESTAMP())) >= u + d');
+            })
+            ->where(function ($query) {
+                $query->where('transfer_enable', '>', 0)
+                      ->orWhereExists(function ($q) {
+                          $q->from('v2_user_plan')
+                            ->join('v2_plan', 'v2_plan.id', '=', 'v2_user_plan.plan_id')
+                            ->whereColumn('v2_user_plan.user_id', 'v2_user.id')
+                            ->where(function ($sub) {
+                                $sub->whereNull('v2_user_plan.expired_at')
+                                    ->orWhere('v2_user_plan.expired_at', '>', time());
+                            })
+                            ->selectRaw(1)
+                            ->limit(1);
+                      });
+            })
             ->where('banned', 0)
             ->select(['id', 'group_id'])
             ->get();

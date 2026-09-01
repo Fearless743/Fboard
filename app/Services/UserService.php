@@ -47,6 +47,11 @@ class UserService
 
     public function isAvailable(User $user)
     {
+        // 优先使用 User 模型的多套餐聚合方法
+        if ($user->isActive() && $user->getRemainingTraffic() > 0) {
+            return true;
+        }
+        // 回退：旧字段检查（兼容未启用多套餐的场景）
         if (!$user->banned && $user->transfer_enable && ($user->expired_at > time() || $user->expired_at === NULL)) {
             return true;
         }
@@ -146,7 +151,7 @@ class UserService
             'upload' => $user->u ?? 0,
             'download' => $user->d ?? 0,
             'total_used' => $user->getTotalUsedTraffic(),
-            'total_available' => $user->transfer_enable ?? 0,
+            'total_available' => $user->getTotalTransferEnable(),
             'remaining' => $user->getRemainingTraffic(),
             'usage_percentage' => $user->getTrafficUsagePercentage(),
             'next_reset_at' => $user->next_reset_at,

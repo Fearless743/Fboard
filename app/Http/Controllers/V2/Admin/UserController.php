@@ -193,7 +193,7 @@ class UserController extends Controller
         $pageSize = $request->input('pageSize', 10);
 
         $userModel = User::query()
-            ->with(['plan:id,name', 'invite_user:id,email', 'group:id,name'])
+            ->with(['plan:id,name', 'invite_user:id,email', 'group:id,name', 'userPlans.plan:id,name'])
             ->select((new User())->getTable() . '.*')
             ->selectRaw('(u + d) as total_used');
 
@@ -227,6 +227,18 @@ class UserController extends Controller
         $user['balance'] = $user['balance'] / 100;
         $user['commission_balance'] = $user['commission_balance'] / 100;
         $user['subscribe_url'] = Helper::getSubscribeUrl($user['token']);
+        // 多套餐：附加套餐实例明细（前端列表 Badge 与编辑对话框使用）
+        $user['user_plans'] = $model->userPlans->map(function ($inst) {
+            return [
+                'id' => $inst->id,
+                'plan_id' => $inst->plan_id,
+                'expired_at' => $inst->expired_at,
+                'transfer_enable' => (int) $inst->transfer_enable,
+                'u' => (int) $inst->u,
+                'd' => (int) $inst->d,
+                'plan' => $inst->plan ? ['id' => $inst->plan->id, 'name' => $inst->plan->name] : null,
+            ];
+        })->values()->all();
         return HookManager::filter('admin.user.transform', $user, $model);
     }
 
@@ -269,6 +281,16 @@ class UserController extends Controller
                 return $this->fail([400202, '订阅计划不存在']);
             }
             $params['group_id'] = $plan->group_id;
+        }
+        // 多套餐编辑：提交 plans[] 时以它为目标状态做 diff 同步（优先于单 plan_id）
+        $submittedPlans = null;
+        if (\App\Services\UserPlanService::multiPlanEnabled() && $request->exists('plans') && is_array($request->input('plans'))) {
+            $submittedPlans = $request->input('plans');
+            unset($params['plans']);
+            // plans[] 由 UserPlanService 统一管理，单 plan_id/group_id 由聚合派生，避免双写冲突
+            unset($params['plan_id'], $params['group_id']);
+        } else {
+            unset($params['plans']);
         }
         // 处理邀请用户：优先 invite_user_id；兼容旧字段 invite_user_email
         // 仅在明确传入时更新；空值清空邀请关系
@@ -326,6 +348,9 @@ class UserController extends Controller
 
         try {
             $user->update($params);
+            if ($submittedPlans !== null) {
+                \App\Services\UserPlanService::syncFromAdmin($user, $submittedPlans);
+            }
         } catch (\Exception $e) {
             Log::error($e);
             return $this->fail([500, '保存失败']);

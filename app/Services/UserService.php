@@ -9,6 +9,7 @@ use App\Models\Order;
 use App\Models\Plan;
 use App\Models\Server;
 use App\Models\User;
+use App\Models\UserPlan;
 use App\Services\Plugin\HookManager;
 use App\Services\TrafficResetService;
 use App\Models\TrafficResetLog;
@@ -226,6 +227,18 @@ class UserService
         if ($expiredAt) {
             $user->expired_at = $expiredAt;
         }
+
+        if (UserPlanService::multiPlanEnabled()) {
+            $instance = UserPlanService::findInstance($user->id, $plan->id)
+                ?? new \App\Models\UserPlan(['user_id' => $user->id, 'plan_id' => $plan->id, 'u' => 0, 'd' => 0, 'source' => \App\Models\UserPlan::SOURCE_ORDER]);
+            $instance->group_id = $plan->group_id;
+            $instance->transfer_enable = $plan->transfer_enable * 1073741824;
+            if ($expiredAt) {
+                $instance->expired_at = $expiredAt;
+            }
+            $instance->save();
+            // 不立即 syncUserAggregate：调用方还会继续改 user 字段并 save，由其在适当时机 sync
+        }
     }
 
     /**
@@ -249,6 +262,21 @@ class UserService
         }
 
         $user->save();
+
+        if (UserPlanService::multiPlanEnabled()) {
+            $instance = UserPlanService::findInstance($user->id, $plan->id)
+                ?? new \App\Models\UserPlan(['user_id' => $user->id, 'plan_id' => $plan->id, 'u' => 0, 'd' => 0, 'source' => \App\Models\UserPlan::SOURCE_ADMIN]);
+            $instance->group_id = $plan->group_id;
+            $instance->transfer_enable = $plan->transfer_enable * 1073741824;
+            if ($validityDays > 0) {
+                $currentExpired = $instance->expired_at ?? time();
+                $instance->expired_at = max($currentExpired, time()) + ($validityDays * 86400);
+            }
+            $instance->save();
+            UserPlanService::syncUserAggregate($user->id);
+            $user->refresh();
+        }
+
         return $user;
     }
 
@@ -284,5 +312,19 @@ class UserService
         $user->group_id = $plan->group_id;
         $user->expired_at = time() + (admin_setting('try_out_hour', 1) * 3600);
         $user->speed_limit = $plan->speed_limit;
+
+        if (UserPlanService::multiPlanEnabled()) {
+            UserPlan::create([
+                'user_id' => $user->id,
+                'plan_id' => $plan->id,
+                'group_id' => $plan->group_id,
+                'transfer_enable' => $plan->transfer_enable * 1073741824,
+                'u' => 0,
+                'd' => 0,
+                'expired_at' => $user->expired_at,
+                'source' => UserPlan::SOURCE_TRYOUT,
+            ]);
+            UserPlanService::syncUserAggregate($user->id);
+        }
     }
 }

@@ -34,8 +34,40 @@ class CheckTrafficExceeded extends Command
             return;
         }
 
-        $groupedUsers = $exceededUsers->groupBy('group_id');
         $notifiedCount = 0;
+
+        if (\App\Services\UserPlanService::multiPlanEnabled()) {
+            // 多套餐：用户可能属于多个权限组，需按其所有活跃实例的组集合逐组踢出
+            $groupToUsers = [];
+            foreach ($exceededUsers as $exceeded) {
+                $groupIds = \App\Services\UserPlanService::getActiveGroupIds($exceeded->id);
+                if (empty($groupIds) && $exceeded->group_id) {
+                    $groupIds = [$exceeded->group_id];
+                }
+                foreach ($groupIds as $gid) {
+                    $groupToUsers[$gid][] = $exceeded->id;
+                }
+            }
+
+            foreach ($groupToUsers as $groupId => $userIds) {
+                $servers = Server::whereJsonContains('group_ids', (string) $groupId)->get();
+                foreach ($servers as $server) {
+                    if (!NodeSyncService::isNodeOnline($server->id)) {
+                        continue;
+                    }
+                    NodeSyncService::push($server->id, 'sync.user.delta', [
+                        'action' => 'remove',
+                        'users' => array_map(fn($id) => ['id' => $id], array_unique($userIds)),
+                    ]);
+                    $notifiedCount++;
+                }
+            }
+
+            $this->info("Checked " . count($pendingUserIds) . " users, notified {$notifiedCount} nodes for " . $exceededUsers->count() . " exceeded users.");
+            return;
+        }
+
+        $groupedUsers = $exceededUsers->groupBy('group_id');
 
         foreach ($groupedUsers as $groupId => $users) {
             if (!$groupId) {

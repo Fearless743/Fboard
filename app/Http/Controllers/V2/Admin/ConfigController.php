@@ -171,6 +171,7 @@ class ConfigController extends Controller
             ],
             'subscribe' => [
                 'plan_change_enable' => (bool) admin_setting('plan_change_enable', 1),
+                'multi_plan_enable' => (bool) admin_setting('multi_plan_enable', 0),
                 'reset_traffic_method' => (int) admin_setting('reset_traffic_method', 0),
                 'surplus_enable' => (bool) admin_setting('surplus_enable', 1),
                 'new_order_event_id' => (int) admin_setting('new_order_event_id', 0),

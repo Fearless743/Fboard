@@ -132,6 +132,27 @@ class User extends Authenticatable
         return $this->hasMany(Order::class, 'user_id', 'id');
     }
 
+    /**
+     * 用户的所有套餐实例（多套餐支持）
+     */
+    public function userPlans(): HasMany
+    {
+        return $this->hasMany(UserPlan::class, 'user_id', 'id');
+    }
+
+    /**
+     * 用户当前活跃的套餐实例（未过期且流量未耗尽）
+     */
+    public function activeUserPlans(): HasMany
+    {
+        return $this->userPlans()
+            ->whereRaw('u + d < transfer_enable')
+            ->where(function ($query) {
+                $query->where('expired_at', '>=', time())
+                    ->orWhereNull('expired_at');
+            });
+    }
+
     public function stat(): HasMany
     {
         return $this->hasMany(StatUser::class, 'user_id', 'id');

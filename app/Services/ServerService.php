@@ -56,11 +56,23 @@ class ServerService
      */
     public static function getAvailableServers(User $user): array
     {
-        $servers = Server::where(function ($query) use ($user) {
-                $groupId = (string) $user->group_id;
-                // 同时匹配字符串和整型两种存储形式，避免 JSON_CONTAINS 类型不匹配
-                $query->whereJsonContains('group_ids', $groupId)
-                      ->orWhereJsonContains('group_ids', (int) $groupId);
+        // 多套餐：节点可见性 = 所有活跃套餐实例的权限组并集
+        if (\App\Services\UserPlanService::multiPlanEnabled()) {
+            $groupIds = \App\Services\UserPlanService::getActiveGroupIds($user->id);
+        } else {
+            $groupIds = $user->group_id ? [$user->group_id] : [];
+        }
+
+        $servers = Server::where(function ($query) use ($groupIds) {
+                foreach ($groupIds as $gid) {
+                    // 同时匹配字符串和整型两种存储形式，避免 JSON_CONTAINS 类型不匹配
+                    $query->orWhereJsonContains('group_ids', (string) $gid)
+                          ->orWhereJsonContains('group_ids', (int) $gid);
+                }
+                // 无任何组时保证查不到节点
+                if (empty($groupIds)) {
+                    $query->whereRaw('1 = 0');
+                }
             })
             ->where('show', true)
             ->where(function ($query) {
@@ -126,13 +138,31 @@ class ServerService
         if (empty($groupIds)) {
             return collect();
         }
-        $users = User::toBase()
-            ->whereIn('group_id', $groupIds)
+
+        $query = User::toBase();
+
+        if (\App\Services\UserPlanService::multiPlanEnabled()) {
+            // 多套餐：用户在该节点任一权限组下有"未过期且流量未耗尽"的套餐实例即下发
+            $query->whereExists(function ($q) use ($groupIds) {
+                $q->from('v2_user_plan')
+                    ->whereColumn('v2_user_plan.user_id', 'v2_user.id')
+                    ->whereIn('v2_user_plan.group_id', $groupIds)
+                    ->whereRaw('v2_user_plan.u + v2_user_plan.d < v2_user_plan.transfer_enable')
+                    ->where(function ($w) {
+                        $w->where('v2_user_plan.expired_at', '>=', time())
+                            ->orWhereNull('v2_user_plan.expired_at');
+                    });
+            });
+        } else {
+            $query->whereIn('group_id', $groupIds)
+                ->where(function ($query) {
+                    $query->where('expired_at', '>=', time())
+                        ->orWhere('expired_at', NULL);
+                });
+        }
+
+        $users = $query
             ->whereRaw('u + d < transfer_enable')
-            ->where(function ($query) {
-                $query->where('expired_at', '>=', time())
-                    ->orWhere('expired_at', NULL);
-            })
             ->where('banned', 0)
             ->select([
                 'id',

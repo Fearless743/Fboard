@@ -268,7 +268,15 @@ class OrderService
         $order = $this->order;
         if ($order->period === Plan::PERIOD_RESET_TRAFFIC) {
             $order->type = Order::TYPE_RESET_TRAFFIC;
-        } else if ($user->plan_id !== NULL && $order->plan_id !== $user->plan_id && ($user->expired_at > time() || $user->expired_at === NULL)) {
+            return;
+        }
+
+        if (UserPlanService::multiPlanEnabled()) {
+            $this->setOrderTypeMultiPlan($user);
+            return;
+        }
+
+        if ($user->plan_id !== NULL && $order->plan_id !== $user->plan_id && ($user->expired_at > time() || $user->expired_at === NULL)) {
             if (!(int) admin_setting('plan_change_enable', 1))
                 throw new ApiException('目前不允许更改订阅，请联系客服或提交工单操作');
             $order->type = Order::TYPE_UPGRADE;
@@ -285,6 +293,44 @@ class OrderService
         } else { // 新购
             $order->type = Order::TYPE_NEW_PURCHASE;
         }
+    }
+
+    /**
+     * 多套餐模式下的订单类型判定：
+     *  - 已有同 plan 活跃实例 → 续费（合并延长该实例）
+     *  - 仅一个活跃实例且购买不同 plan → 升级（保留 surplus 折抵）
+     *  - 其余（无活跃实例，或已有多个活跃实例购买新套餐）→ 新购（新增实例，无折抵）
+     */
+    private function setOrderTypeMultiPlan(User $user): void
+    {
+        $order = $this->order;
+        $active = UserPlanService::getActiveInstances($user->id);
+
+        // 同套餐且未过期 → 续费合并
+        $samePlanActive = $active->firstWhere('plan_id', $order->plan_id);
+        if ($samePlanActive !== null) {
+            $order->type = Order::TYPE_RENEWAL;
+            return;
+        }
+
+        // 仅一个活跃实例且购买不同套餐 → 升级（沿用 surplus 折抵）
+        if ($active->count() === 1) {
+            if (!(int) admin_setting('plan_change_enable', 1))
+                throw new ApiException('目前不允许更改订阅，请联系客服或提交工单操作');
+            $order->type = Order::TYPE_UPGRADE;
+            if ((int) admin_setting('surplus_enable', 1))
+                $this->getSurplusValue($user, $order);
+            if ($order->surplus_amount >= $order->total_amount) {
+                $order->surplus_credit = (int) ($order->surplus_amount - $order->total_amount);
+                $order->total_amount = 0;
+            } else {
+                $order->total_amount = (int) ($order->total_amount - $order->surplus_amount);
+            }
+            return;
+        }
+
+        // 无活跃实例，或已有多个活跃实例购买新套餐 → 新购（不做折抵）
+        $order->type = Order::TYPE_NEW_PURCHASE;
     }
 
     public function setVipDiscount(User $user)
@@ -553,6 +599,11 @@ class OrderService
 
     private function buyByPeriod(Order $order, Plan $plan)
     {
+        if (UserPlanService::multiPlanEnabled()) {
+            $this->buyByPeriodMultiPlan($order, $plan);
+            return;
+        }
+
         // change plan process
         if ((int) $order->type === Order::TYPE_UPGRADE) {
             $this->user->expired_at = time();
@@ -566,13 +617,83 @@ class OrderService
         $this->user->expired_at = $this->getTime($order->period, $this->user->expired_at);
     }
 
+    /**
+     * 多套餐模式：写入/更新该套餐的 user_plan 实例，不覆盖其他套餐。
+     */
+    private function buyByPeriodMultiPlan(Order $order, Plan $plan): void
+    {
+        $instance = UserPlanService::findInstance($this->user->id, $plan->id)
+            ?? new \App\Models\UserPlan([
+                'user_id' => $this->user->id,
+                'plan_id' => $plan->id,
+                'u' => 0,
+                'd' => 0,
+                'source' => \App\Models\UserPlan::SOURCE_ORDER,
+            ]);
+
+        // 升级流程：截断旧到期时间（沿用单套餐语义）
+        if ((int) $order->type === Order::TYPE_UPGRADE) {
+            $instance->expired_at = time();
+        }
+
+        $instance->transfer_enable = $plan->transfer_enable * 1073741824;
+        $instance->group_id = $plan->group_id;
+
+        // 从一次性转换到循环或新购时，重置该实例流量
+        if ($instance->expired_at === null || $order->type === Order::TYPE_NEW_PURCHASE) {
+            $instance->u = 0;
+            $instance->d = 0;
+        }
+
+        $instance->expired_at = $this->getTime($order->period, $instance->expired_at);
+        $instance->order_id = $order->id;
+        $instance->save();
+
+        UserPlanService::syncUserAggregate($this->user->id);
+    }
+
     private function buyByOneTime(Plan $plan)
     {
+        if (UserPlanService::multiPlanEnabled()) {
+            $this->buyByOneTimeMultiPlan($plan);
+            return;
+        }
+
         app(TrafficResetService::class)->performReset($this->user, TrafficResetLog::SOURCE_ORDER);
         $this->user->transfer_enable = $plan->transfer_enable * 1073741824;
         $this->user->plan_id = $plan->id;
         $this->user->group_id = $plan->group_id;
         $this->user->expired_at = NULL;
+    }
+
+    /**
+     * 多套餐模式：一次性流量包叠加到同套餐的 NULL 到期实例，否则新建实例。
+     */
+    private function buyByOneTimeMultiPlan(Plan $plan): void
+    {
+        $order = $this->order;
+        $instance = UserPlanService::findInstance($this->user->id, $plan->id);
+
+        if ($instance && $instance->expired_at === null) {
+            // 同套餐的一次性流量包 → 配额叠加
+            $instance->transfer_enable = ($instance->transfer_enable ?? 0) + $plan->transfer_enable * 1073741824;
+        } else {
+            $instance = new \App\Models\UserPlan([
+                'user_id' => $this->user->id,
+                'plan_id' => $plan->id,
+                'u' => 0,
+                'd' => 0,
+                'transfer_enable' => $plan->transfer_enable * 1073741824,
+                'source' => \App\Models\UserPlan::SOURCE_ORDER,
+            ]);
+        }
+
+        $instance->group_id = $plan->group_id;
+        $instance->expired_at = null;
+        $instance->order_id = $order->id;
+        $instance->save();
+
+        UserPlanService::syncUserAggregate($this->user->id);
     }
 
     /**

@@ -115,6 +115,9 @@ class UserController extends Controller
             return $this->fail([400, __('The user does not exist')]);
         }
         $user['avatar_url'] = 'https://cdn.v2ex.com/gravatar/' . md5($user->email) . '?s=64&d=identicon';
+        if (\App\Services\UserPlanService::multiPlanEnabled()) {
+            $user['plans'] = $this->buildPlansPayload($request->user()->id);
+        }
         $user = HookManager::filter('user.info.response', $user, $request);
         return $this->success($user);
     }
@@ -163,8 +166,35 @@ class UserController extends Controller
         $user['subscribe_url'] = Helper::getSubscribeUrl($user['token']);
         $userService = new UserService();
         $user['reset_day'] = $userService->getResetDay($user);
+        if (\App\Services\UserPlanService::multiPlanEnabled()) {
+            $user['plans'] = $this->buildPlansPayload($request->user()->id);
+        }
         $user = HookManager::filter('user.subscribe.response', $user);
         return $this->success($user);
+    }
+
+    /**
+     * 多套餐模式：构建用户套餐实例明细（供前台展示）。
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildPlansPayload(int $userId): array
+    {
+        return \App\Services\UserPlanService::getActiveInstances($userId)
+            ->map(function ($inst) {
+                return [
+                    'id' => $inst->id,
+                    'plan_id' => $inst->plan_id,
+                    'plan_name' => $inst->plan?->name,
+                    'transfer_enable' => (int) $inst->transfer_enable,
+                    'u' => (int) $inst->u,
+                    'd' => (int) $inst->d,
+                    'expired_at' => $inst->expired_at,
+                    'next_reset_at' => $inst->next_reset_at,
+                ];
+            })
+            ->values()
+            ->all();
     }
 
     public function resetSecurity(Request $request)

@@ -160,6 +160,48 @@ class TicketController extends Controller
         }
     }
 
+    public function bulkClose(Request $request)
+    {
+        $request->validate([
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'integer',
+            'remark' => 'nullable|string|max:500',
+        ], [
+            'ids.required' => '请选择要关闭的工单',
+            'ids.array' => '工单ID格式不正确',
+            'ids.min' => '请选择要关闭的工单',
+            'ids.*.integer' => '工单ID格式不正确',
+            'remark.max' => '备注不能超过500字符',
+        ]);
+
+        $ids = $request->input('ids');
+
+        try {
+            HookManager::call('admin.ticket.bulk_close.before', [
+                'ids' => $ids,
+                'request' => $request,
+            ]);
+
+            // 仅关闭选中且仍在处理中的工单，已关闭的跳过，避免重复刷新 updated_at。
+            $count = Ticket::whereIn('id', $ids)
+                ->where('status', '!=', Ticket::STATUS_CLOSED)
+                ->update([
+                    'status' => Ticket::STATUS_CLOSED,
+                    'updated_at' => now()->timestamp,
+                ]);
+
+            HookManager::call('admin.ticket.bulk_close.after', [
+                'ids' => $ids,
+                'count' => $count,
+                'request' => $request,
+            ]);
+
+            return $this->success(['count' => $count]);
+        } catch (\Exception $e) {
+            return $this->fail([500101, '批量关闭失败']);
+        }
+    }
+
     public function show($ticketId)
     {
         $ticket = Ticket::with([

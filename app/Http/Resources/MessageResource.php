@@ -18,6 +18,7 @@ class MessageResource extends JsonResource
             "id" => $this['id'],
             "ticket_id" => $this['ticket_id'],
             "is_me" => $this['is_from_user'],
+            "is_bot" => (bool) $this['is_bot'],
             "message"  => $this["message"],
             "created_at" => $this['created_at'],
             "updated_at" => $this['updated_at']

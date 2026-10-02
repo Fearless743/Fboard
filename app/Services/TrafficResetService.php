@@ -25,32 +25,63 @@ class TrafficResetService
       return false;
     }
 
-    return $this->performReset($user, $triggerSource);
+    // force=false：事务内拿到行锁后会再确认一次 next_reset_at。
+    // cron（reset:traffic 每分钟）与用户访问面板（getUserTrafficInfo）
+    // 会并发触发同一个重置；没有这次二次确认时，后到者会把先到者
+    // 落地之后新产生的流量再清零一次（数据里表现为同 reset_time 的两条
+    // 记录、一条 old_total=0）。
+    return $this->performReset($user, $triggerSource, false);
   }
 
   /**
    * Perform the traffic reset for a user.
+   *
+   * @param bool $force true = 无条件重置（手动/API/订单/礼品卡）；
+   *                    false = 事务内二次确认 next_reset_at 是否到期。
    */
-  public function performReset(User $user, string $triggerSource = TrafficResetLog::SOURCE_MANUAL): bool
+  public function performReset(User $user, string $triggerSource = TrafficResetLog::SOURCE_MANUAL, bool $force = true): bool
   {
     try {
-      return DB::transaction(function () use ($user, $triggerSource) {
-        $oldUpload = $user->u ?? 0;
-        $oldDownload = $user->d ?? 0;
+      return DB::transaction(function () use ($user, $triggerSource, $force) {
+        // 必须在事务内重读并加行锁：用调用方传进来的模型做读改写会读到
+        // 事务外的陈旧快照。
+        $fresh = User::whereKey($user->getKey())->lockForUpdate()->first();
+        if (!$fresh) {
+          return false;
+        }
+
+        if (!$force && !$fresh->shouldResetTraffic()) {
+          return false;
+        }
+
+        $oldUpload = (int) ($fresh->u ?? 0);
+        $oldDownload = (int) ($fresh->d ?? 0);
         $oldTotal = $oldUpload + $oldDownload;
 
-        $nextResetTime = $this->calculateNextResetTime($user);
+        $nextResetTime = $this->calculateNextResetTime($fresh);
+        $resetAt = time();
 
-        $user->update([
+        // 一次 UPDATE 完成清零 + 计数自增，reset_count 用 SQL 表达式避免读改写。
+        // 直接调用方模型的 update() 会把模型上其它脏字段一并写库，
+        // 那样订单流程里的 transfer_enable 会被隐式落库，语义不清。
+        $fresh->setAttribute('reset_count', DB::raw('COALESCE(reset_count, 0) + 1'));
+        $fresh->forceFill([
           'u' => 0,
           'd' => 0,
-          'last_reset_at' => time(),
-          'reset_count' => $user->reset_count + 1,
+          'last_reset_at' => $resetAt,
           'next_reset_at' => $nextResetTime ? $nextResetTime->timestamp : null,
-        ]);
+        ])->save();
 
-        $this->recordResetLog($user, [
-          'reset_type' => $this->getResetTypeFromPlan($user->plan),
+        // 把重置结果同步回调用方的模型实例，只同步这几个字段，
+        // 保留订单流程尚未落库的 transfer_enable / plan_id 等脏字段。
+        $user->u = 0;
+        $user->d = 0;
+        $user->last_reset_at = $resetAt;
+        $user->next_reset_at = $nextResetTime ? $nextResetTime->timestamp : null;
+        $user->reset_count = ((int) $fresh->getRawOriginal('reset_count')) + 1;
+
+        $this->recordResetLog($fresh, [
+          'reset_type' => $this->getResetTypeFromPlan($fresh->plan),
           'trigger_source' => $triggerSource,
           'old_upload' => $oldUpload,
           'old_download' => $oldDownload,
@@ -60,8 +91,8 @@ class TrafficResetService
           'new_total' => 0,
         ]);
 
-        $this->clearUserCache($user);
-        HookManager::call('traffic.reset.after', $user);
+        $this->clearUserCache($fresh);
+        HookManager::call('traffic.reset.after', $fresh);
         return true;
       });
     } catch (\Exception $e) {

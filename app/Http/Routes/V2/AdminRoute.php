@@ -169,6 +169,7 @@ class AdminRoute
                 $router->post('/paid', [OrderController::class, 'paid']);
                 $router->post('/cancel', [OrderController::class, 'cancel']);
                 $router->post('/detail', [OrderController::class, 'detail']);
+                $router->post('/bulk-confirm-commission', [OrderController::class, 'bulkConfirmCommission']);
             });
 
             // User
@@ -224,6 +225,7 @@ class AdminRoute
                 $router->any('/fetch', [TicketController::class, 'fetch']);
                 $router->post('/reply', [TicketController::class, 'reply']);
                 $router->post('/close', [TicketController::class, 'close']);
+                $router->post('/bulk-close', [TicketController::class, 'bulkClose']);
             });
 
             // Withdrawal

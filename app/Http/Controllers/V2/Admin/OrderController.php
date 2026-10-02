@@ -314,6 +314,42 @@ class OrderController extends Controller
         return $this->success(true);
     }
 
+    public function bulkConfirmCommission(Request $request)
+    {
+        $request->validate([
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'integer',
+            'remark' => 'nullable|string|max:500',
+        ], [
+            'ids.required' => '请选择要确认佣金的订单',
+            'ids.array' => '订单ID格式不正确',
+            'ids.min' => '请选择要确认佣金的订单',
+            'ids.*.integer' => '订单ID格式不正确',
+            'remark.max' => '备注不能超过500字符',
+        ]);
+
+        try {
+            // 与单笔「发放佣金」一致：仅把待确认（0/NULL）且有有效佣金的订单置为发放中(1)，
+            // 交由 check:commission 的 autoPayCommission 实际入账，避免重复发放。
+            $count = Order::whereIn('id', $request->input('ids'))
+                ->whereNotNull('invite_user_id')
+                ->where('commission_balance', '>', 0)
+                ->where(function (Builder $query) {
+                    $query->where('commission_status', 0)
+                        ->orWhereNull('commission_status');
+                })
+                ->update([
+                    'commission_status' => 1,
+                    'updated_at' => now()->timestamp,
+                ]);
+
+            return $this->success(['count' => $count]);
+        } catch (\Exception $e) {
+            Log::error($e);
+            return $this->fail([500, '批量确认佣金失败']);
+        }
+    }
+
     public function assign(OrderAssign $request)
     {
         $plan = Plan::find($request->input('plan_id'));

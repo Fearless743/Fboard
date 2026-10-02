@@ -3,6 +3,9 @@
 namespace App\Providers;
 
 use Illuminate\Foundation\Support\Providers\RouteServiceProvider as ServiceProvider;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 
 class RouteServiceProvider extends ServiceProvider
@@ -25,6 +28,11 @@ class RouteServiceProvider extends ServiceProvider
     {
         // HTTPS scheme is forced per-request via middleware (Octane-safe).
         parent::boot();
+
+        // 认证类接口（登录/注册/找回密码/发信等）按 IP 限流，缓解撞库与邮件轰炸
+        RateLimiter::for('auth', function (Request $request) {
+            return Limit::perMinute(30)->by($request->ip());
+        });
     }
 
     /**

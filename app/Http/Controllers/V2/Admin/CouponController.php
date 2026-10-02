@@ -8,18 +8,24 @@ use App\Http\Requests\Admin\CouponGenerate;
 use App\Http\Requests\Admin\CouponSave;
 use App\Models\Coupon;
 use App\Services\Plugin\HookManager;
+use App\Traits\QueryOperators;
 use App\Utils\Helper;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class CouponController extends Controller
 {
+    use QueryOperators;
+
     private function applyFiltersAndSorts(Request $request, $builder)
     {
         if ($request->has('filter')) {
             collect($request->input('filter'))->each(function ($filter) use ($builder) {
                 $key = $filter['id'];
                 $value = $filter['value'];
+                if (!is_string($key) || !$this->isSafeQueryField($key)) {
+                    return;
+                }
                 $builder->where(function ($query) use ($key, $value) {
                     if (is_array($value)) {
                         $query->whereIn($key, $value);
@@ -33,6 +39,9 @@ class CouponController extends Controller
         if ($request->has('sort')) {
             collect($request->input('sort'))->each(function ($sort) use ($builder) {
                 $key = $sort['id'];
+                if (!is_string($key) || !$this->isSafeQueryField($key)) {
+                    return;
+                }
                 $value = $sort['desc'] ? 'DESC' : 'ASC';
                 $builder->orderBy($key, $value);
             });

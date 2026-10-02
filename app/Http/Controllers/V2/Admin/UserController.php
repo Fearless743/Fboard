@@ -67,6 +67,11 @@ class UserController extends Controller
             $value = $filter['value'];
             $logic = strtolower($filter['logic'] ?? 'and');
 
+            // 列名白名单校验：拒绝表达式/函数等非标识符字段
+            if (!is_string($field) || !$this->isSafeQueryField($field)) {
+                return;
+            }
+
             if ($logic === 'or') {
                 $builder->orWhere(function ($query) use ($field, $value) {
                     $this->buildFilterQuery($query, $field, $value);
@@ -82,6 +87,11 @@ class UserController extends Controller
     // Build one filter query condition.
     private function buildFilterQuery(Builder|QueryBuilder $query, string $field, mixed $value): void
     {
+        // 列名白名单校验（关联字段允许单点）
+        if (!$this->isSafeQueryField($field)) {
+            return;
+        }
+
         // 处理关联查询
         if (str_contains($field, '.')) {
             if (!method_exists($query, 'whereHas')) {
@@ -140,7 +150,7 @@ class UserController extends Controller
 
         collect($request->input('sort'))->each(function ($sort) use ($builder) {
             $field = $sort['id'] ?? null;
-            if (!$field) {
+            if (!$field || !is_string($field) || !$this->isSafeQueryField($field)) {
                 return;
             }
             $direction = !empty($sort['desc']) ? 'DESC' : 'ASC';

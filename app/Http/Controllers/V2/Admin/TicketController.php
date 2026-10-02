@@ -6,17 +6,23 @@ use App\Http\Controllers\Controller;
 use App\Models\Ticket;
 use App\Services\Plugin\HookManager;
 use App\Services\TicketService;
+use App\Traits\QueryOperators;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 
 class TicketController extends Controller
 {
+    use QueryOperators;
+
     private function applyFiltersAndSorts(Request $request, $builder)
     {
         if ($request->has('filter')) {
             collect($request->input('filter'))->each(function ($filter) use ($builder) {
                 $key = $filter['id'];
                 $value = $filter['value'];
+                if (!is_string($key) || !$this->isSafeQueryField($key)) {
+                    return;
+                }
                 $builder->where(function ($query) use ($key, $value) {
                     if (is_array($value)) {
                         $query->whereIn($key, $value);
@@ -35,6 +41,9 @@ class TicketController extends Controller
         if ($request->has('sort')) {
             collect($request->input('sort'))->each(function ($sort) use ($builder) {
                 $key = $sort['id'];
+                if (!is_string($key) || !$this->isSafeQueryField($key)) {
+                    return;
+                }
                 $value = $sort['desc'] ? 'DESC' : 'ASC';
                 $builder->orderBy($key, $value);
             });

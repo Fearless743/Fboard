@@ -3,6 +3,7 @@
 namespace App\Services\Plugin;
 
 use App\Models\Plugin;
+use App\Support\SafeZip;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
@@ -595,7 +596,7 @@ class PluginManager
             throw new \Exception('无法打开插件包文件');
         }
 
-        $zip->extractTo($extractPath);
+        SafeZip::extractTo($zip, $extractPath);
         $zip->close();
 
         $configFile = File::glob($extractPath . '/*/config.json');

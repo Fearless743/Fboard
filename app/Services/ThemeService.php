@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\SafeZip;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\View;
@@ -122,7 +123,7 @@ class ThemeService
                 throw new Exception('Theme config file not found');
             }
 
-            $zip->extractTo($tmpPath);
+            SafeZip::extractTo($zip, $tmpPath);
             $zip->close();
 
             $sourcePath = $tmpPath . '/' . rtrim(dirname($configEntry), '.');
@@ -135,6 +136,10 @@ class ThemeService
             $config = json_decode(File::get($configFile), true);
             if (empty($config['name'])) {
                 throw new Exception('Theme name not configured');
+            }
+
+            if (!$this->isValidThemeName($config['name'])) {
+                throw new Exception('Invalid theme name');
             }
 
             if (in_array($config['name'], self::SYSTEM_THEMES)) {
@@ -230,6 +235,10 @@ class ThemeService
     public function delete(string $theme): bool
     {
         try {
+            if (!$this->isValidThemeName($theme)) {
+                throw new Exception('Invalid theme name');
+            }
+
             if (in_array($theme, self::SYSTEM_THEMES)) {
                 throw new Exception('System theme cannot be deleted');
             }
@@ -282,10 +291,34 @@ class ThemeService
     }
 
     /**
+     * 主题名合法性校验：只允许单层目录名，禁止空字节、目录分隔符与 `..`。
+     * 主题名会被拼进 base_path()/public_path()，必须防止路径遍历。
+     */
+    public function isValidThemeName(string $theme): bool
+    {
+        if ($theme === '' || $theme === '.' || $theme === '..') {
+            return false;
+        }
+        if (str_contains($theme, "\0") || str_contains($theme, '..')) {
+            return false;
+        }
+        // 任何目录分隔符都会导致逃逸到主题目录之外
+        if (str_contains($theme, '/') || str_contains($theme, '\\')) {
+            return false;
+        }
+        // basename 不等则说明仍含路径成分
+        return basename($theme) === $theme;
+    }
+
+    /**
      * Get theme path
      */
     public function getThemePath(string $theme): ?string
     {
+        if (!$this->isValidThemeName($theme)) {
+            return null;
+        }
+
         $systemPath = base_path(self::SYSTEM_THEME_DIR . $theme);
         if (File::exists($systemPath)) {
             return $systemPath;
@@ -371,6 +404,11 @@ class ThemeService
      */
     public function cleanupThemeFiles(string $theme): void
     {
+        if (!$this->isValidThemeName($theme)) {
+            Log::warning('Refused to clean invalid theme name', ['theme' => $theme]);
+            return;
+        }
+
         try {
             $publicThemePath = public_path('theme/' . $theme);
             if (File::exists($publicThemePath)) {

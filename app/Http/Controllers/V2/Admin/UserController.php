@@ -7,6 +7,7 @@ use App\Http\Requests\Admin\UserGenerate;
 use App\Http\Requests\Admin\UserSendMail;
 use App\Http\Requests\Admin\UserUpdate;
 use App\Jobs\SendEmailJob;
+use App\Models\CommissionLog;
 use App\Models\Plan;
 use App\Models\User;
 use App\Models\UserLoginLog;
@@ -740,12 +741,22 @@ class UserController extends Controller
 
         $invitedUsers = User::where('invite_user_id', $userId)
             ->orderBy('created_at', 'DESC')
-            ->paginate($pageSize, ['id', 'email', 'commission_balance', 'created_at'], 'page', $current);
+            ->paginate($pageSize, ['id', 'email', 'created_at'], 'page', $current);
 
-        $invitedUsers->getCollection()->transform(function ($user) {
+        // 展示该用户从每个下线身上赚到的佣金（v2_commission_log.user_id 为产生订单的下线）。
+        $inviteeIds = $invitedUsers->getCollection()->pluck('id')->all();
+        $commissionByInvitee = empty($inviteeIds)
+            ? collect()
+            : CommissionLog::where('invite_user_id', $userId)
+                ->whereIn('user_id', $inviteeIds)
+                ->select('user_id', DB::raw('SUM(get_amount) as total'))
+                ->groupBy('user_id')
+                ->pluck('total', 'user_id');
+
+        $invitedUsers->getCollection()->transform(function ($user) use ($commissionByInvitee) {
             return [
                 'invitee_email' => $user->email,
-                'commission_balance' => $user->commission_balance / 100,
+                'commission_balance' => (int) ($commissionByInvitee[$user->id] ?? 0) / 100,
                 'created_at' => $user->created_at,
             ];
         });

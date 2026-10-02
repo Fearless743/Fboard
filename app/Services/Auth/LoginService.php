@@ -28,16 +28,23 @@ class LoginService
      */
     public function login(string $email, string $password, ?string $ip = null, ?string $userAgent = null): array
     {
-        // 检查密码错误限制
-        if ((int) admin_setting('password_limit_enable', true)) {
+        $limitEnabled = (int) admin_setting('password_limit_enable', true);
+        $limitCount = (int) admin_setting('password_limit_count', 5);
+        $limitExpire = (int) admin_setting('password_limit_expire', 60);
+        // 按 IP 的失败计数键（$ip 为空时不做 IP 维度限制）
+        $ipKey = ($ip !== null && $ip !== '') ? CacheKey::get('PASSWORD_ERROR_LIMIT_IP', $ip) : null;
+
+        // 检查密码错误限制（邮箱 + IP 双维度，防止对大量邮箱做密码喷洒）
+        if ($limitEnabled) {
             $passwordErrorCount = (int) Cache::get(CacheKey::get('PASSWORD_ERROR_LIMIT', $email), 0);
-            if ($passwordErrorCount >= (int) admin_setting('password_limit_count', 5)) {
+            $ipErrorCount = $ipKey ? (int) Cache::get($ipKey, 0) : 0;
+            if ($passwordErrorCount >= $limitCount || ($ipKey && $ipErrorCount >= $limitCount)) {
                 return [
                     false,
                     [
                         429,
                         __('There are too many password errors, please try again after :minute minutes.', [
-                            'minute' => admin_setting('password_limit_expire', 60)
+                            'minute' => $limitExpire
                         ])
                     ]
                 ];
@@ -47,6 +54,10 @@ class LoginService
         // 查找用户
         $user = User::byEmail($email)->first();
         if (!$user) {
+            // 用户不存在同样计入 IP 维度，避免通过枚举差异规避限流
+            if ($limitEnabled) {
+                $this->recordPasswordFailure($email, $ipKey, $limitExpire);
+            }
             return [false, [400, __('Incorrect email or password')]];
         }
 
@@ -59,14 +70,9 @@ class LoginService
                 $user->password
             )
         ) {
-            // 增加密码错误计数
-            if ((int) admin_setting('password_limit_enable', true)) {
-                $passwordErrorCount = (int) Cache::get(CacheKey::get('PASSWORD_ERROR_LIMIT', $email), 0);
-                Cache::put(
-                    CacheKey::get('PASSWORD_ERROR_LIMIT', $email),
-                    (int) $passwordErrorCount + 1,
-                    60 * (int) admin_setting('password_limit_expire', 60)
-                );
+            // 增加密码错误计数（邮箱 + IP）
+            if ($limitEnabled) {
+                $this->recordPasswordFailure($email, $ipKey, $limitExpire);
             }
             return [false, [400, __('Incorrect email or password')]];
         }
@@ -74,6 +80,11 @@ class LoginService
         // 检查账户状态
         if ($user->banned) {
             return [false, [400, __('Your account has been suspended')]];
+        }
+
+        // 登录成功：清除该 IP 的失败计数，避免共享出口 IP 的正常用户被误伤
+        if ($ipKey) {
+            Cache::forget($ipKey);
         }
 
         $this->loginLogService->recordLogin(
@@ -85,6 +96,21 @@ class LoginService
 
         HookManager::call('user.login.after', $user);
         return [true, $user];
+    }
+
+    /**
+     * 记录一次密码错误：同时累加邮箱维度与（可选的）IP 维度计数。
+     */
+    private function recordPasswordFailure(string $email, ?string $ipKey, int $limitExpire): void
+    {
+        $ttl = 60 * max(1, $limitExpire);
+
+        $emailKey = CacheKey::get('PASSWORD_ERROR_LIMIT', $email);
+        Cache::put($emailKey, (int) Cache::get($emailKey, 0) + 1, $ttl);
+
+        if ($ipKey) {
+            Cache::put($ipKey, (int) Cache::get($ipKey, 0) + 1, $ttl);
+        }
     }
 
     /**

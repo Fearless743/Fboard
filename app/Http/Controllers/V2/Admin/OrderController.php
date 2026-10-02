@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Services\OrderService;
 use App\Services\PlanService;
 use App\Services\UserService;
+use App\Traits\QueryOperators;
 use App\Utils\Helper;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -20,6 +21,7 @@ use Illuminate\Support\Facades\Log;
 
 class OrderController extends Controller
 {
+    use QueryOperators;
 
     public function detail(Request $request)
     {
@@ -128,6 +130,11 @@ class OrderController extends Controller
         // 邮箱在 user 表，走关联筛选（OrderFetch 白名单含 email）
         if ($field === 'email') {
             $this->buildUserEmailFilterQuery($query, $value);
+            return;
+        }
+
+        // 列名白名单校验：拒绝表达式/函数等非标识符字段
+        if (!$this->isSafeQueryField($field)) {
             return;
         }
 
@@ -253,6 +260,9 @@ class OrderController extends Controller
 
         collect($request->input('sort'))->each(function ($sort) use ($builder) {
             $field = $sort['id'];
+            if (!is_string($field) || !$this->isSafeQueryField($field)) {
+                return;
+            }
             $direction = $sort['desc'] ? 'DESC' : 'ASC';
             $builder->orderBy($field, $direction);
         });

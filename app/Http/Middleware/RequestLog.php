@@ -7,7 +7,20 @@ use Closure;
 
 class RequestLog
 {
-    private const SENSITIVE_KEYS = ['password', 'token', 'secret', 'key', 'api_key'];
+    /**
+     * 命中任一子串即视为敏感键（大小写不敏感、按子串匹配），
+     * 以覆盖 telegram_bot_token / email_password / xxx_api_key 等复合键名。
+     */
+    private const SENSITIVE_KEYWORDS = [
+        'password',
+        'passwd',
+        'token',
+        'secret',
+        'key',
+        'signature',
+    ];
+
+    private const REDACTED = '[REDACTED]';
 
     public function handle($request, Closure $next)
     {
@@ -24,7 +37,7 @@ class RequestLog
             }
 
             $action = $this->resolveAction($request->path());
-            $data = collect($request->all())->except(self::SENSITIVE_KEYS)->toArray();
+            $data = $this->redact($request->all());
 
             AdminAuditLog::insert([
                 'admin_id' => $admin->id,
@@ -41,6 +54,41 @@ class RequestLog
         }
 
         return $response;
+    }
+
+    /**
+     * 递归脱敏请求数据，仅保留非敏感值。
+     *
+     * @param  array<array-key, mixed>  $data
+     * @return array<array-key, mixed>
+     */
+    private function redact(array $data): array
+    {
+        $result = [];
+
+        foreach ($data as $key => $value) {
+            if (is_string($key) && $this->isSensitiveKey($key)) {
+                $result[$key] = self::REDACTED;
+                continue;
+            }
+
+            $result[$key] = is_array($value) ? $this->redact($value) : $value;
+        }
+
+        return $result;
+    }
+
+    private function isSensitiveKey(string $key): bool
+    {
+        $key = strtolower($key);
+
+        foreach (self::SENSITIVE_KEYWORDS as $keyword) {
+            if (str_contains($key, $keyword)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function resolveAction(string $path): string

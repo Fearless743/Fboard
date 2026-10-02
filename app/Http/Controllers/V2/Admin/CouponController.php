@@ -340,4 +340,40 @@ class CouponController extends Controller
             return $this->fail([500, '删除过期优惠券失败']);
         }
     }
+
+    public function dropDepleted(Request $request)
+    {
+        HookManager::call('admin.coupon.drop_depleted.before', [
+            'request' => $request,
+        ]);
+
+        try {
+            DB::beginTransaction();
+            // limit_use 为 NULL 表示不限次数，不算已用尽；仅删除剩余次数为 0 的券
+            $coupons = Coupon::whereNotNull('limit_use')
+                ->where('limit_use', '<=', 0)
+                ->get();
+            $count = $coupons->count();
+            foreach ($coupons as $coupon) {
+                if (!$coupon->delete()) {
+                    DB::rollBack();
+                    return $this->fail([500, '删除已用尽优惠券失败']);
+                }
+            }
+            DB::commit();
+
+            HookManager::call('admin.coupon.drop_depleted.after', [
+                'count' => $count,
+                'request' => $request,
+            ]);
+
+            return $this->success([
+                'count' => $count,
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error($e);
+            return $this->fail([500, '删除已用尽优惠券失败']);
+        }
+    }
 }

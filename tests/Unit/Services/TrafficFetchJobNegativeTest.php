@@ -18,7 +18,9 @@ class TrafficFetchJobNegativeTest extends TestCase
 
     public function test_negative_increments_do_not_reduce_user_traffic(): void
     {
-        Redis::shouldReceive('sadd')->once()->andReturn(true);
+        // 负增量钳为 0 后该用户没有任何流量增量，不应再进入超额检查队列。
+        // （旧实现无条件 sadd，把大量零流量用户反复塞进 pending_check。）
+        Redis::shouldReceive('sadd')->never();
         $user = new User();
         $user->forceFill([
             'email' => 'traf-' . Helper::guid() . '@example.com',

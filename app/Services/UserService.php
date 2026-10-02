@@ -114,7 +114,15 @@ class UserService
         return true;
     }
 
-    public function trafficFetch(Server $server, string $protocol, array $data)
+    /**
+     * 单个 traffic_fetch Job 内的串行写入上限。
+     *
+     * Job 内部是「每个用户一条 UPDATE」，chunk 越大越容易撞上 job timeout
+     * 被整批丢弃。原值 1000 在高峰期会频繁超时。
+     */
+    public const TRAFFIC_CHUNK_SIZE = 200;
+
+    public function trafficFetch(Server $server, string $protocol, array $data, ?int $reportTs = null)
     {
         $server->rate = $server->getCurrentRate();
         $server = $server->toArray();
@@ -124,8 +132,10 @@ class UserService
         list($server, $protocol, $data) = HookManager::filter('traffic.before_process', [$server, $protocol, $data]);
 
         $timestamp = strtotime(date('Y-m-d'));
-        collect($data)->chunk(1000)->each(function ($chunk) use ($timestamp, $server, $protocol) {
-            TrafficFetchJob::dispatch($server, $chunk->toArray(), $protocol, $timestamp);
+        // 面板收到 report 的时刻：Job 靠它判断这份流量属于重置前还是重置后。
+        $reportTs = $reportTs ?? time();
+        collect($data)->chunk(self::TRAFFIC_CHUNK_SIZE)->each(function ($chunk) use ($timestamp, $reportTs, $server, $protocol) {
+            TrafficFetchJob::dispatch($server, $chunk->toArray(), $protocol, $timestamp, $reportTs);
             StatUserJob::dispatch($server, $chunk->toArray(), $protocol, 'd');
             StatServerJob::dispatch($server, $chunk->toArray(), $protocol, 'd');
         });

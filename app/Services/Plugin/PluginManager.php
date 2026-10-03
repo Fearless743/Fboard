@@ -764,6 +764,460 @@ class PluginManager
     }
 
     /**
+     * 收集所有已启用插件注册的管理后台 UI 扩展块。
+     *
+     * 数据来源：
+     *   1. 各插件 config.json 的 admin_ui 静态声明；
+     *   2. 插件在 boot() 中通过 registerAdminExtension() 动态注册（admin.ui.extensions filter）。
+     * 返回前统一归一化、按 id 去重并按 priority 升序排序。
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function getAdminUiExtensions(): array
+    {
+        $this->initializeEnabledPlugins();
+
+        $declarations = [];
+
+        $enabledCodes = Plugin::query()
+            ->where('is_enabled', true)
+            ->pluck('code')
+            ->all();
+
+        foreach ($enabledCodes as $code) {
+            $configFile = $this->getPluginPath((string) $code) . '/config.json';
+            if (!File::exists($configFile)) {
+                continue;
+            }
+
+            $config = json_decode(File::get($configFile), true);
+            if (!is_array($config)) {
+                continue;
+            }
+
+            $adminUi = $config['admin_ui'] ?? [];
+            if (!is_array($adminUi)) {
+                continue;
+            }
+
+            foreach ($adminUi as $declaration) {
+                if (!is_array($declaration)) {
+                    continue;
+                }
+                $declaration['plugin'] = (string) $code;
+                $declarations[] = $declaration;
+            }
+        }
+
+        $declarations = HookManager::filter('admin.ui.extensions', $declarations);
+
+        $extensions = [];
+        $seen = [];
+        foreach ($declarations as $declaration) {
+            if (!is_array($declaration)) {
+                continue;
+            }
+
+            $pluginCode = (string) ($declaration['plugin'] ?? '');
+            $normalized = self::normalizeAdminUiExtension($pluginCode, $declaration);
+            if ($normalized === null) {
+                continue;
+            }
+
+            $id = (string) $normalized['id'];
+            if (isset($seen[$id])) {
+                continue;
+            }
+            $seen[$id] = true;
+            $extensions[] = $normalized;
+        }
+
+        usort($extensions, static function (array $a, array $b): int {
+            return ($a['priority'] <=> $b['priority']);
+        });
+
+        return $extensions;
+    }
+
+    /**
+     * 收集所有已启用插件注册的后台导航（菜单 + 整页 + 翻译）。
+     *
+     * 数据来源：
+     *   1. 各插件 config.json 的 admin_nav.menus / admin_nav.pages / admin_nav.i18n 静态声明；
+     *   2. 插件在 boot() 中通过 registerAdminMenu()/registerAdminPage()/registerAdminI18n() 动态注册
+     *      （admin.ui.menus / admin.ui.pages / admin.ui.i18n filter）。
+     *
+     * @return array{menus: array<int, array<string, mixed>>, pages: array<int, array<string, mixed>>, i18n: array<string, array<string, mixed>>}
+     */
+    public function getAdminUiNavigation(): array
+    {
+        $this->initializeEnabledPlugins();
+
+        $menus = [];
+        $pages = [];
+        $i18n = [];
+
+        $enabledCodes = Plugin::query()
+            ->where('is_enabled', true)
+            ->pluck('code')
+            ->all();
+
+        foreach ($enabledCodes as $code) {
+            $configFile = $this->getPluginPath((string) $code) . '/config.json';
+            if (!File::exists($configFile)) {
+                continue;
+            }
+
+            $config = json_decode(File::get($configFile), true);
+            if (!is_array($config)) {
+                continue;
+            }
+
+            $nav = $config['admin_nav'] ?? [];
+            if (!is_array($nav)) {
+                continue;
+            }
+
+            foreach ((array) ($nav['menus'] ?? []) as $menu) {
+                if (is_array($menu)) {
+                    $menus[] = array_merge(['plugin' => (string) $code], $menu);
+                }
+            }
+            foreach ((array) ($nav['pages'] ?? []) as $page) {
+                if (is_array($page)) {
+                    $pages[] = array_merge(['plugin' => (string) $code], $page);
+                }
+            }
+            foreach ((array) ($nav['i18n'] ?? []) as $lang => $bundle) {
+                if (is_string($lang) && is_array($bundle)) {
+                    $i18n[$lang] = array_replace_recursive($i18n[$lang] ?? [], $bundle);
+                }
+            }
+        }
+
+        $menus = HookManager::filter('admin.ui.menus', $menus);
+        $pages = HookManager::filter('admin.ui.pages', $pages);
+        $i18n = HookManager::filter('admin.ui.i18n', $i18n);
+
+        $normalizedMenus = [];
+        $seenMenuKeys = [];
+        foreach ($menus as $menu) {
+            if (!is_array($menu)) {
+                continue;
+            }
+            $normalized = self::normalizeAdminUiMenu((string) ($menu['plugin'] ?? ''), $menu);
+            if ($normalized === null) {
+                continue;
+            }
+            // 同一 path 去重，先到先得
+            if (isset($seenMenuKeys[$normalized['path']])) {
+                continue;
+            }
+            $seenMenuKeys[$normalized['path']] = true;
+            $normalizedMenus[] = $normalized;
+        }
+        usort($normalizedMenus, static function (array $a, array $b): int {
+            return ($a['order'] <=> $b['order']);
+        });
+
+        $normalizedPages = [];
+        $seenPageKeys = [];
+        foreach ($pages as $page) {
+            if (!is_array($page)) {
+                continue;
+            }
+            $normalized = self::normalizeAdminUiPage((string) ($page['plugin'] ?? ''), $page);
+            if ($normalized === null) {
+                continue;
+            }
+            if (isset($seenPageKeys[$normalized['path']])) {
+                continue;
+            }
+            $seenPageKeys[$normalized['path']] = true;
+            $normalizedPages[] = $normalized;
+        }
+
+        return [
+            'menus' => $normalizedMenus,
+            'pages' => $normalizedPages,
+            'i18n' => $i18n,
+        ];
+    }
+
+    /**
+     * 归一化后台菜单项，非法返回 null。
+     *
+     * @param string $pluginCode
+     * @param array<string, mixed> $menu
+     * @return array<string, mixed>|null
+     */
+    public static function normalizeAdminUiMenu(string $pluginCode, array $menu): ?array
+    {
+        if (!preg_match('/^[a-z0-9_]+$/', $pluginCode)) {
+            return null;
+        }
+
+        $external = (bool) ($menu['external'] ?? false);
+        $path = trim((string) ($menu['path'] ?? ''));
+        if ($path === '') {
+            return null;
+        }
+
+        $isUrl = preg_match('#^(https?:)?//#i', $path) === 1;
+        if (!$external && !$isUrl) {
+            // 后台路由：去掉前导斜杠
+            $path = ltrim($path, '/');
+            if ($path === '' || !preg_match('#^[A-Za-z0-9._/-]+$#', $path)) {
+                return null;
+            }
+        }
+        if (($external || $isUrl) && !$isUrl && str_starts_with($path, '/')) {
+            // 站内绝对路径视为 external 直接跳转
+        }
+
+        $label = trim((string) ($menu['label'] ?? ''));
+        $i18nKey = trim((string) ($menu['i18nKey'] ?? ''));
+        if ($label === '' && $i18nKey === '') {
+            return null;
+        }
+
+        $target = (string) ($menu['target'] ?? '_blank');
+        if (!in_array($target, ['_blank', '_self'], true)) {
+            $target = '_blank';
+        }
+
+        $group = trim((string) ($menu['group'] ?? ''));
+        $groupLabel = trim((string) ($menu['groupLabel'] ?? ''));
+
+        return [
+            'plugin' => $pluginCode,
+            'path' => $path,
+            'label' => $label,
+            'i18nKey' => $i18nKey !== '' ? $i18nKey : null,
+            'icon' => trim((string) ($menu['icon'] ?? '')) ?: null,
+            'group' => $group !== '' ? $group : null,
+            'groupLabel' => $groupLabel !== '' ? $groupLabel : null,
+            'order' => (int) ($menu['order'] ?? 100),
+            'external' => $external || $isUrl,
+            'target' => $target,
+        ];
+    }
+
+    /**
+     * 归一化后台整页定义，非法返回 null。
+     *
+     * @param string $pluginCode
+     * @param array<string, mixed> $page
+     * @return array<string, mixed>|null
+     */
+    public static function normalizeAdminUiPage(string $pluginCode, array $page): ?array
+    {
+        if (!preg_match('/^[a-z0-9_]+$/', $pluginCode)) {
+            return null;
+        }
+
+        $path = ltrim(trim((string) ($page['path'] ?? '')), '/');
+        if ($path === '' || !preg_match('#^[A-Za-z0-9._/-]+$#', $path)) {
+            return null;
+        }
+
+        $type = (string) ($page['type'] ?? 'iframe');
+        if (!in_array($type, ['component', 'html', 'iframe'], true)) {
+            $type = 'iframe';
+        }
+
+        $item = [
+            'plugin' => $pluginCode,
+            'path' => $path,
+            'title' => isset($page['title']) ? (string) $page['title'] : null,
+            'type' => $type,
+            'component' => trim((string) ($page['component'] ?? '')),
+            'html' => null,
+            'url' => null,
+            'script' => self::resolveAdminUiAssetUrl($pluginCode, $page['script'] ?? null),
+            'style' => self::resolveAdminUiAssetUrl($pluginCode, $page['style'] ?? null),
+            'height' => isset($page['height']) ? (string) $page['height'] : '100%',
+        ];
+
+        if ($type === 'html') {
+            if (!isset($page['html']) || !is_string($page['html']) || $page['html'] === '') {
+                return null;
+            }
+            $item['html'] = $page['html'];
+        } elseif ($type === 'iframe') {
+            $url = self::resolveAdminUiAssetUrl($pluginCode, $page['url'] ?? null);
+            if ($url === null) {
+                return null;
+            }
+            $item['url'] = $url;
+        } elseif ($item['component'] === '') {
+            return null;
+        }
+
+        return $item;
+    }
+
+    /**
+     * 归一化单个 UI 扩展块，非法条目返回 null。
+     *
+     * @param string $pluginCode
+     * @param array<string, mixed> $extension
+     * @return array<string, mixed>|null
+     */
+    public static function normalizeAdminUiExtension(string $pluginCode, array $extension): ?array
+    {
+        if (!preg_match('/^[a-z0-9_]+$/', $pluginCode)) {
+            return null;
+        }
+
+        $rawId = trim((string) ($extension['id'] ?? ''));
+        if ($rawId === '' || !preg_match('/^[A-Za-z0-9_.:-]+$/', $rawId)) {
+            return null;
+        }
+
+        $type = (string) ($extension['type'] ?? 'component');
+        if (!in_array($type, ['component', 'html', 'iframe', 'button', 'link'], true)) {
+            $type = 'component';
+        }
+
+        $item = [
+            'id' => $pluginCode . ':' . $rawId,
+            'name' => $rawId,
+            'plugin' => $pluginCode,
+            'slot' => null,
+            'page' => self::normalizeAdminUiPages($extension['page'] ?? null),
+            'priority' => (int) ($extension['priority'] ?? 20),
+            'title' => isset($extension['title']) ? (string) $extension['title'] : null,
+            'type' => $type,
+            'component' => trim((string) ($extension['component'] ?? $rawId)),
+            'context' => is_array($extension['context'] ?? null) ? $extension['context'] : [],
+            'script' => self::resolveAdminUiAssetUrl($pluginCode, $extension['script'] ?? null),
+            'style' => self::resolveAdminUiAssetUrl($pluginCode, $extension['style'] ?? null),
+            'html' => null,
+            'url' => null,
+            'label' => isset($extension['label']) ? (string) $extension['label'] : null,
+            'action' => isset($extension['action']) ? (string) $extension['action'] : null,
+            'params' => is_array($extension['params'] ?? null) ? $extension['params'] : [],
+            'confirm' => isset($extension['confirm']) ? (string) $extension['confirm'] : null,
+            'variant' => in_array(($extension['variant'] ?? 'default'), ['default', 'outline', 'destructive', 'ghost', 'link'], true)
+                ? (string) ($extension['variant'] ?? 'default')
+                : 'default',
+            'icon' => isset($extension['icon']) ? (string) $extension['icon'] : null,
+            'anchor' => null,
+        ];
+
+        $slot = $extension['slot'] ?? null;
+        if (is_string($slot) && trim($slot) !== '') {
+            $item['slot'] = trim($slot);
+        }
+
+        // anchor 定位：字符串选择器或 ['selector'=>..., 'position'=>...]
+        $anchor = $extension['anchor'] ?? null;
+        if (is_string($anchor) && trim($anchor) !== '') {
+            $anchor = ['selector' => trim($anchor)];
+        }
+        if (is_array($anchor) && isset($anchor['selector']) && trim((string) $anchor['selector']) !== '') {
+            $position = (string) ($anchor['position'] ?? 'append');
+            if (!in_array($position, ['before', 'after', 'prepend', 'append'], true)) {
+                $position = 'append';
+            }
+            $item['anchor'] = [
+                'selector' => trim((string) $anchor['selector']),
+                'position' => $position,
+            ];
+            if (isset($anchor['page'])) {
+                $item['page'] = self::normalizeAdminUiPages($anchor['page']);
+            }
+        }
+
+        // 必须能定位到具名插槽或 CSS 锚点之一
+        if ($item['slot'] === null && $item['anchor'] === null) {
+            return null;
+        }
+
+        if ($type === 'html') {
+            if (!isset($extension['html']) || !is_string($extension['html']) || $extension['html'] === '') {
+                return null;
+            }
+            $item['html'] = $extension['html'];
+        } elseif ($type === 'iframe') {
+            $url = self::resolveAdminUiAssetUrl($pluginCode, $extension['url'] ?? null);
+            if ($url === null) {
+                return null;
+            }
+            $item['url'] = $url;
+        } elseif ($type === 'button' || $type === 'link') {
+            if ($item['label'] === null || $item['label'] === '') {
+                return null;
+            }
+            $url = self::resolveAdminUiAssetUrl($pluginCode, $extension['url'] ?? null);
+            $item['url'] = $url;
+            if ($type === 'link' && $url === null && $item['action'] === null) {
+                return null;
+            }
+        } elseif ($item['component'] === '') {
+            return null;
+        }
+
+        return $item;
+    }
+
+    /**
+     * 解析扩展块资源地址：绝对 URL / 站内绝对路径原样返回，相对路径拼到 /plugins/{code}/。
+     */
+    protected static function resolveAdminUiAssetUrl(string $pluginCode, mixed $path): ?string
+    {
+        if (!is_string($path)) {
+            return null;
+        }
+
+        $path = trim($path);
+        if ($path === '') {
+            return null;
+        }
+
+        if (preg_match('#^(https?:)?//#i', $path) === 1 || str_starts_with($path, '/')) {
+            return $path;
+        }
+
+        return '/plugins/' . $pluginCode . '/' . ltrim($path, '/');
+    }
+
+    /**
+     * 归一化扩展块生效页面列表，支持字符串、数组，默认 ['*']。
+     *
+     * @param mixed $page
+     * @return list<string>
+     */
+    protected static function normalizeAdminUiPages(mixed $page): array
+    {
+        if (is_string($page)) {
+            $page = [$page];
+        }
+        if (!is_array($page)) {
+            return ['*'];
+        }
+
+        $pages = [];
+        foreach ($page as $value) {
+            if (!is_string($value)) {
+                continue;
+            }
+            $value = ltrim(trim($value), '/');
+            if ($value === '') {
+                continue;
+            }
+            $pages[] = $value;
+        }
+
+        if ($pages === []) {
+            return ['*'];
+        }
+
+        return array_values(array_unique($pages));
+    }
+
+    /**
      * install default protocol plugins from plugins-core/
      */
     public static function installDefaultProtocols(): void

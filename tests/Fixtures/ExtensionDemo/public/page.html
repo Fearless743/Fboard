@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Extension Demo</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        margin: 0;
+        padding: 24px;
+        color: #111;
+      }
+      @media (prefers-color-scheme: dark) { body { color: #eee; } }
+      .card {
+        max-width: 640px;
+        border: 1px solid rgba(127, 127, 127, 0.3);
+        border-radius: 12px;
+        padding: 20px;
+      }
+      button {
+        padding: 6px 14px;
+        border-radius: 8px;
+        border: 1px solid rgba(127, 127, 127, 0.4);
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+      }
+      pre {
+        background: rgba(127, 127, 127, 0.12);
+        padding: 10px;
+        border-radius: 8px;
+        overflow: auto;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h2>插件整页（iframe）</h2>
+      <p>
+        这是 <code>plugins/ExtensionDemo/public/page.html</code>，通过
+        <code>admin_nav.pages</code> 声明、以 iframe 形式嵌入后台。
+      </p>
+      <p>
+        它复用后台的鉴权（读取 localStorage 中的 token），可直接调用
+        admin API：
+      </p>
+      <button id="load">调用 /plugin/types</button>
+      <pre id="out">（未调用）</pre>
+    </div>
+
+    <script>
+      // 同源 iframe 可访问父窗口的 window.settings 与共享的 localStorage
+      function securePath() {
+        try {
+          return (window.parent.settings && window.parent.settings.secure_path) || "";
+        } catch (e) {
+          return "";
+        }
+      }
+
+      document.getElementById("load").addEventListener("click", async function () {
+        var out = document.getElementById("out");
+        out.textContent = "加载中…";
+        try {
+          var token = localStorage.getItem("fboard-admin-auth") || "";
+          var res = await fetch("/api/v2/" + securePath() + "/plugin/types", {
+            headers: token ? { Authorization: token } : {},
+          });
+          var json = await res.json();
+          out.textContent = JSON.stringify(json, null, 2);
+        } catch (err) {
+          out.textContent = "请求失败：" + err;
+        }
+      });
+    </script>
+  </body>
+</html>

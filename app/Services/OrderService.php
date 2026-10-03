@@ -172,11 +172,17 @@ class OrderService
                         ->update(['status' => Order::STATUS_DISCOUNTED]);
                 }
 
+                $enableMulti = (int) admin_setting('multi_plan_enable', 0);
                 match ((string) $order->period) {
                     Plan::PERIOD_ONETIME => $this->buyByOneTime($plan),
                     Plan::PERIOD_RESET_TRAFFIC => app(TrafficResetService::class)->performReset($this->user, TrafficResetLog::SOURCE_ORDER),
                     default => $this->buyByPeriod($order, $plan),
                 };
+
+            // 新购/续费时写入多套餐表（不覆盖主字段），使新购不替换已有套餐
+            if ($enableMulti && ((int) $order->type === Order::TYPE_NEW_PURCHASE || $order->type === Order::TYPE_RENEWAL)) {
+                $this->addMultiPlan($plan, $order);
+            }
 
                 $this->setSpeedLimit($plan->speed_limit);
                 $this->setDeviceLimit($plan->device_limit);
@@ -553,12 +559,26 @@ class OrderService
 
     private function buyByPeriod(Order $order, Plan $plan)
     {
-        // change plan process
+        $enableMulti = (int) admin_setting('multi_plan_enable', 0);
+        // 升级：仍然覆盖主字段（保持管理员视角的"当前套餐"概念）
         if ((int) $order->type === Order::TYPE_UPGRADE) {
             $this->user->expired_at = time();
+            $this->user->transfer_enable = $plan->transfer_enable * 1073741824;
+            $this->user->plan_id = $plan->id;
+            $this->user->group_id = $plan->group_id;
+            $this->user->expired_at = $this->getTime($order->period, $this->user->expired_at);
+            return;
         }
+        // 新购/续费：若启用多套餐则只写关联表，不覆盖主字段
+        if ($enableMulti) {
+            // 新购时重置流量
+            if ($this->user->expired_at === NULL || $order->type === Order::TYPE_NEW_PURCHASE) {
+                app(TrafficResetService::class)->performReset($this->user, TrafficResetLog::SOURCE_ORDER);
+            }
+            return;
+        }
+        // 旧逻辑：覆盖主字段
         $this->user->transfer_enable = $plan->transfer_enable * 1073741824;
-        // 从一次性转换到循环或者新购的时候，重置流量
         if ($this->user->expired_at === NULL || $order->type === Order::TYPE_NEW_PURCHASE)
             app(TrafficResetService::class)->performReset($this->user, TrafficResetLog::SOURCE_ORDER);
         $this->user->plan_id = $plan->id;
@@ -568,11 +588,37 @@ class OrderService
 
     private function buyByOneTime(Plan $plan)
     {
+        $enableMulti = (int) admin_setting('multi_plan_enable', 0);
         app(TrafficResetService::class)->performReset($this->user, TrafficResetLog::SOURCE_ORDER);
-        $this->user->transfer_enable = $plan->transfer_enable * 1073741824;
-        $this->user->plan_id = $plan->id;
-        $this->user->group_id = $plan->group_id;
-        $this->user->expired_at = NULL;
+        // 一次性套餐：若开启多套餐，写入 user_plans；否则走旧逻辑覆盖主字段
+        if ($enableMulti) {
+            $this->addMultiPlan($plan, $this->order);
+        } else {
+            $this->user->transfer_enable = $plan->transfer_enable * 1073741824;
+            $this->user->plan_id = $plan->id;
+            $this->user->group_id = $plan->group_id;
+            $this->user->expired_at = NULL;
+        }
+    }
+
+    /**
+     * 将新购套餐写入多套餐关联表（不覆盖主字段）
+     * 适用于 TYPE_NEW_PURCHASE 和 TYPE_RENEWAL；升级（TYPE_UPGRADE）走旧逻辑覆盖主字段
+     */
+    private function addMultiPlan(Plan $plan, Order $order): void
+    {
+        // 一次性套餐永久有效，循环套餐按周期计算到期时间
+        $expiredAt = ($order->period === Plan::PERIOD_ONETIME)
+            ? null
+            : $this->getTime($order->period, $this->user->expired_at);
+
+        \App\Models\UserPlan::create([
+            'user_id' => $this->user->id,
+            'plan_id' => $plan->id,
+            'order_id' => $order->id,
+            'expired_at' => $expiredAt,
+            'speed_limit' => $plan->speed_limit,
+        ]);
     }
 
     /**

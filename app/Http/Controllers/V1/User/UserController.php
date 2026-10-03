@@ -10,6 +10,7 @@ use App\Models\Order;
 use App\Models\Plan;
 use App\Models\Ticket;
 use App\Models\User;
+use App\Models\UserPlan;
 use App\Services\Auth\LoginService;
 use App\Services\AuthService;
 use App\Services\Plugin\HookManager;
@@ -115,6 +116,21 @@ class UserController extends Controller
             return $this->fail([400, __('The user does not exist')]);
         }
         $user['avatar_url'] = 'https://cdn.v2ex.com/gravatar/' . md5($user->email) . '?s=64&d=identicon';
+
+        // 多套餐信息：累计流量、有效套餐列表
+        $user['transfer_enable'] = $user->getTotalTransferEnable();
+        $activePlans = $user->activeUserPlans()->load('plan:id,name,transfer_enable,speed_limit,device_limit');
+        $user['plan_list'] = $activePlans->map(function (UserPlan $up) {
+            $plan = $up->plan;
+            return [
+                'id' => $up->plan_id,
+                'name' => $plan?->name ?? '',
+                'expired_at' => $up->expired_at,
+                'speed_limit' => $up->speed_limit ?? $plan?->speed_limit ?? null,
+                'transfer_enable' => $plan ? $plan->transfer_enable * 1073741824 : 0,
+            ];
+        })->values()->all();
+
         $user = HookManager::filter('user.info.response', $user, $request);
         return $this->success($user);
     }
@@ -154,6 +170,7 @@ class UserController extends Controller
         if (!$user) {
             return $this->fail([400, __('The user does not exist')]);
         }
+        // 多套餐兼容：保留 plan_id 作为当前主套餐（供旧客户端），同时补充累计信息
         if ($user->plan_id) {
             $user['plan'] = Plan::find($user->plan_id);
             if (!$user['plan']) {
@@ -163,6 +180,17 @@ class UserController extends Controller
         $user['subscribe_url'] = Helper::getSubscribeUrl($user['token']);
         $userService = new UserService();
         $user['reset_day'] = $userService->getResetDay($user);
+        // 使用聚合后的累计流量与最早到期时间
+        $user['transfer_enable'] = $user->getTotalTransferEnable();
+        $user['expired_at'] = $user->getEffectiveExpiredAt();
+        $activePlans = $user->activeUserPlans()->load('plan:id,name');
+        $user['plan_list'] = $activePlans->map(function (UserPlan $up) {
+            return [
+                'id' => $up->plan_id,
+                'name' => $up->plan?->name ?? '',
+                'expired_at' => $up->expired_at,
+            ];
+        })->values()->all();
         $user = HookManager::filter('user.subscribe.response', $user);
         return $this->success($user);
     }

@@ -9,6 +9,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Collection;
 
 /**
  * App\Models\User
@@ -61,6 +62,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property-read \Illuminate\Database\Eloquent\Collection<int, UserLoginLog> $loginLogs 登录历史
  * @property-read User|null $parent 父账户
  * @property-read string $subscribe_url 订阅链接（动态生成）
+ * @property-read Collection<int, UserPlan> $userPlans 用户套餐关联
  */
 class User extends Authenticatable
 {
@@ -165,21 +167,96 @@ class User extends Authenticatable
     }
 
     /**
-     * 检查用户是否处于活跃状态
+     * 用户套餐关联列表（多套餐支持）
+     */
+    public function userPlans(): HasMany
+    {
+        return $this->hasMany(UserPlan::class, 'user_id', 'id');
+    }
+
+    /**
+     * 获取有效的套餐关联列表（未过期的）
+     */
+    public function activeUserPlans(): Collection
+    {
+        return $this->userPlans()
+            ->where(function ($query) {
+                $query->whereNull('expired_at')
+                      ->orWhere('expired_at', '>', time());
+            })
+            ->get();
+    }
+
+    /**
+     * 检查用户是否处于活跃状态（基于多套餐聚合）
      */
     public function isActive(): bool
     {
-        return !$this->banned && 
-               ($this->expired_at === null || $this->expired_at > time()) &&
-               $this->plan_id !== null;
+        if ($this->banned) {
+            return false;
+        }
+        // 优先检查新表是否有有效套餐
+        $activePlans = $this->activeUserPlans();
+        if ($activePlans->isNotEmpty()) {
+            return true;
+        }
+        // 回退到旧逻辑：plan_id + expired_at（兼容管理员直接设置）
+        return $this->plan_id !== null &&
+               ($this->expired_at === null || $this->expired_at > time());
     }
 
-    /** 
+    /**
      * 检查用户是否可用节点流量且充足
      */
     public function isAvailable(): bool
-    {     
-        return $this->isActive() && $this->getRemainingTraffic() > 0;   
+    {
+        return $this->isActive() && $this->getRemainingTraffic() > 0;
+    }
+
+    /**
+     * 获取所有套餐的累计流量（KB），用于订阅和客户端显示
+     */
+    public function getTotalTransferEnable(): int
+    {
+        $activePlans = $this->activeUserPlans();
+        if ($activePlans->isNotEmpty()) {
+            $total = $activePlans->sum(function ($up) {
+                return ($up->plan?->transfer_enable ?? 0) * 1073741824;
+            });
+            return (int) $total;
+        }
+        // 回退到旧字段
+        return (int) ($this->transfer_enable ?? 0);
+    }
+
+    /**
+     * 获取最高速度限制（取各套餐中的最大值）
+     */
+    public function getEffectiveSpeedLimit(): ?int
+    {
+        $activePlans = $this->activeUserPlans();
+        if ($activePlans->isNotEmpty()) {
+            $max = $activePlans->map(function ($up) {
+                return $up->speed_limit ?? $up->plan?->speed_limit ?? null;
+            })->filter()->max();
+            return $max !== null ? (int) $max : null;
+        }
+        return $this->speed_limit;
+    }
+
+    /**
+     * 获取最早的到期时间（用于判断用户何时完全过期）
+     */
+    public function getEffectiveExpiredAt(): ?int
+    {
+        $activePlans = $this->activeUserPlans();
+        if ($activePlans->isNotEmpty()) {
+            $min = $activePlans->map(function ($up) {
+                return $up->expired_at;
+            })->filter()->min();
+            return $min !== null ? (int) $min : null;
+        }
+        return $this->expired_at;
     }
 
     /**
@@ -201,25 +278,25 @@ class User extends Authenticatable
     }
 
     /**
-     * 获取剩余流量
+     * 获取剩余流量（使用聚合值）
      */
     public function getRemainingTraffic(): int
     {
         $used = $this->getTotalUsedTraffic();
-        $total = $this->transfer_enable ?? 0;
+        $total = $this->getTotalTransferEnable();
         return max(0, $total - $used);
     }
 
     /**
-     * 获取流量使用百分比
+     * 获取流量使用百分比（使用聚合值）
      */
     public function getTrafficUsagePercentage(): float
     {
-        $total = $this->transfer_enable ?? 0;
+        $total = $this->getTotalTransferEnable();
         if ($total <= 0) {
             return 0;
         }
-        
+
         $used = $this->getTotalUsedTraffic();
         return min(100, ($used / $total) * 100);
     }

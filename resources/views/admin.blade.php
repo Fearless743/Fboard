@@ -52,6 +52,13 @@
       $collectAssets('index.html');
     }
 
+    // 字体 @font-face 样式（约 540KB）由 JS 在运行时动态加载，避免阻塞首屏；
+    // 这里额外非阻塞预加载，使其与主包并行下载，缩短 CJK 字体切换延迟。
+    $fontCss = null;
+    if (is_array($manifest) && !empty($manifest['src/styles/fonts.ts']['file'])) {
+      $fontCss = $manifest['src/styles/fonts.ts']['file'];
+    }
+
     foreach (glob(public_path('assets/admin/locales/*.js')) ?: [] as $localeFile) {
       $locales[] = 'locales/' . basename($localeFile);
     }
@@ -59,6 +66,9 @@
   @endphp
 
   @if($entry && count($scripts) > 0)
+    @if($fontCss)
+      <link rel="preload" as="style" crossorigin href="/assets/admin/{{ $fontCss }}" />
+    @endif
     @foreach($styles as $css)
       <link rel="stylesheet" crossorigin href="/assets/admin/{{ $css }}" />
     @endforeach

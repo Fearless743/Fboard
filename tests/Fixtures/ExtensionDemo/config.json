@@ -1,0 +1,80 @@
+{
+  "name": "Extension Demo",
+  "code": "extension_demo",
+  "version": "1.0.0",
+  "description": "演示管理后台 UI 扩展：具名插槽、CSS 锚点、声明式按钮、侧边栏菜单、整页、i18n",
+  "author": "Fboard",
+  "type": "feature",
+  "config": {
+    "greeting": {
+      "type": "string",
+      "default": "Hello from Extension Demo",
+      "label": "问候语",
+      "description": "展示在整页中的问候语"
+    }
+  },
+  "admin_ui": [
+    {
+      "id": "demo_banner",
+      "slot": "content.before",
+      "type": "component",
+      "component": "DemoBanner",
+      "script": "admin.js",
+      "page": ["dashboard", "user", "user/*"]
+    },
+    {
+      "id": "demo_sync",
+      "slot": "page.actions",
+      "type": "button",
+      "label": "同步演示数据",
+      "action": "sync_demo",
+      "icon": "RefreshCw",
+      "variant": "outline",
+      "confirm": "确认执行演示同步？",
+      "params": { "scope": "all" },
+      "page": ["user", "user/*"]
+    },
+    {
+      "id": "demo_anchor",
+      "type": "html",
+      "anchor": { "selector": "main h1", "position": "after" },
+      "page": ["dashboard"],
+      "html": "<div style=\"margin-top:8px;padding:8px 12px;border-radius:8px;background:hsl(var(--muted));font-size:12px;color:hsl(var(--muted-foreground));\">这段内容通过 CSS 锚点注入到页面任意 DOM 位置。</div>"
+    }
+  ],
+  "admin_nav": {
+    "menus": [
+      {
+        "path": "extension-demo",
+        "label": "扩展演示",
+        "i18nKey": "plugin.extension_demo.title",
+        "icon": "Blocks",
+        "group": "nav.systemManagement",
+        "order": 90
+      },
+      {
+        "path": "extension-demo/child",
+        "label": "扩展演示子页",
+        "i18nKey": "plugin.extension_demo.child",
+        "icon": "Component",
+        "group": "nav.systemManagement",
+        "order": 91
+      }
+    ],
+    "pages": [
+      {
+        "path": "extension-demo",
+        "title": "扩展演示",
+        "type": "iframe",
+        "url": "page.html",
+        "height": "calc(100vh - 8rem)"
+      }
+    ],
+    "i18n": {
+      "zh-CN": { "plugin": { "extension_demo": { "title": "扩展演示", "child": "扩展演示子页" } } },
+      "en-US": { "plugin": { "extension_demo": { "title": "Extension Demo", "child": "Extension Demo Child" } } },
+      "zh-TW": { "plugin": { "extension_demo": { "title": "擴展演示", "child": "擴展演示子頁" } } },
+      "ru-RU": { "plugin": { "extension_demo": { "title": "Демо расширения", "child": "Дочерняя страница" } } }
+    }
+  }
+}

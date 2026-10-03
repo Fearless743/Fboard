@@ -206,6 +206,11 @@ Fboard has built-in hooks for many business-critical nodes. Plugin developers ca
 | **⚙️ Admin - System Config** | | | |
 | admin.config.save.before | action | data, request | Before saving system settings |
 | admin.config.save.after | action | data, request | After saving system settings |
+| **🖥️ Admin UI Extension** | | | |
+| admin.ui.extensions | filter | declarations | Collect admin UI extension blocks (`admin_ui` + `registerAdminExtension`) |
+| admin.ui.menus | filter | menus | Collect admin sidebar menus (`admin_nav.menus` + `registerAdminMenu`) |
+| admin.ui.pages | filter | pages | Collect admin full pages (`admin_nav.pages` + `registerAdminPage`) |
+| admin.ui.i18n | filter | bundles | Merge plugin translations (`admin_nav.i18n` + `registerAdminI18n`) |
 | **🎫 Ticket** | | | |
 | ticket.create.after | action | Ticket | After ticket creation |
 | ticket.reply.user.after | action | Ticket | After user replies to ticket |
@@ -386,6 +391,16 @@ Any plugin may return these fields; the admin SPA handles them generically:
 | `reload` | bool | Refresh plugin list (default true unless `type=link`) |
 
 > 💡 The action button only appears when the plugin is **enabled**. Prefer `open_url` over hardcoding frontend behavior for a single plugin name.
+
+### 🖥️ Admin UI Extension
+
+Plugins can inject controls into any admin page (named slots or CSS anchors), plus sidebar menus, full pages, and i18n — without modifying the admin SPA source. Full reference: [`admin-ui-extension.md`](./admin-ui-extension.md). Reference example (test fixture): `tests/Fixtures/ExtensionDemo/`.
+
+- Declarative: `config.json` keys `admin_ui` (extension blocks) and `admin_nav` (`menus` / `pages` / `i18n`).
+- Programmatic (in `boot()`): `registerAdminExtension()`, `registerAdminMenu()`, `registerAdminPage()`, `registerAdminI18n()`. Same shape as the `config.json` declarations; backend merges both sources.
+- Block types: `component` | `html` | `iframe` | `button` | `link`. A `button` block can call this plugin's `registerAction('...')` via `action` + `params`, or open `url`.
+- Manifest endpoints (behind `admin` middleware, enabled plugins only): `GET /api/v2/{secure_path}/plugin/ui` and `GET /api/v2/{secure_path}/plugin/ui/nav`. Backend normalizes entries (invalid ones dropped), dedupes by id/path, and sorts extensions by `priority` / menus by `order`.
+- Frontend: the admin SPA fetches both manifests at startup and loads `script` / `style` relative to `/plugins/{code}/`. `component` blocks/pages are rendered with a plain IIFE script via `window.FboardAdmin.registerExtension(id, Component)`.
 
 ---
 

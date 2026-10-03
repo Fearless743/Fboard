@@ -213,6 +213,125 @@ abstract class AbstractPlugin
     }
 
     /**
+     * 注册管理后台 UI 扩展块
+     * 插件可在 boot() 中调用此方法，把任意控件注入后台指定页面的指定位置。
+     *
+     * 每个扩展块支持两种定位方式（二选一）：
+     * - slot：注入到后台预定义的具名插槽，如 'content.before'、'content.after'、
+     *   'header.actions'、'sidebar.nav'、'sidebar.bottom'、'page.actions'、'dashboard.after' 等
+     * - anchor：按 CSS 选择器定位页面中任意 DOM 节点，position 取 before|after|prepend|append
+     *
+     * 控件内容由 type 决定：
+     * - component：由前端脚本通过 window.FboardAdmin.registerExtension(id, Component) 注册的 React 组件
+     * - html：直接渲染 html 字符串
+     * - iframe：以 iframe 加载 url
+     * - button：声明式按钮，点击后可选调用本插件的 registerAction（'action'）或打开链接（'url'）
+     * - link：声明式链接（等价于 type=button 且只带 url）
+     *
+     * @param array $extension 扩展块定义：
+     *   - 'id' => string, 必填，插件内唯一标识
+     *   - 'slot' => string, 具名插槽名（与 anchor 二选一）
+     *   - 'anchor' => string|array, CSS 选择器或 ['selector'=>..., 'position'=>...]
+     *   - 'page' => string|array, 生效页面（路由子路径，支持 '*' 与 'config/*'），默认 '*'
+     *   - 'priority' => int, 排序，越小越靠前，默认 20
+     *   - 'type' => string, component|html|iframe|button|link，默认 component
+     *   - 'component' => string, 组件注册 id，默认取 id
+     *   - 'script' => string, 前端脚本路径（相对插件 public/），如 'js/extension.js'
+     *   - 'style' => string, 样式路径（相对插件 public/）
+     *   - 'html' => string, type=html 时的内容
+     *   - 'url' => string, type=iframe/button/link 时的地址
+     *   - 'label' => string, type=button/link 时的按钮文案
+     *   - 'action' => string, type=button 时，点击后执行的 registerAction 名称
+     *   - 'params' => array, type=button 时传给 action 的参数
+     *   - 'confirm' => string, type=button 时的二次确认文案
+     *   - 'variant' => string, type=button 的样式：default|outline|destructive|ghost|link
+     *   - 'icon' => string, type=button 的 lucide 图标名
+     *   - 'title' => string, 可选标题
+     *   - 'context' => array, 透传给组件的任意 JSON 数据
+     * @return void
+     */
+    protected function registerAdminExtension(array $extension): void
+    {
+        $pluginCode = $this->pluginCode;
+
+        $this->filter('admin.ui.extensions', function ($extensions) use ($extension, $pluginCode) {
+            $extensions[] = array_merge(['plugin' => $pluginCode], $extension);
+            return $extensions;
+        });
+    }
+
+    /**
+     * 注册管理后台侧边栏菜单项（并可配套注册整页）。
+     *
+     * 插件可在 boot() 中调用此方法，向后台侧边栏/命令面板添加菜单项；
+     * 菜单指向的页面既可以是后台已有路由，也可以是本插件通过
+     * registerAdminPage() 声明的整页（iframe / 组件 / html），
+     * 或 'external' 外部链接。
+     *
+     * @param array $menu 菜单项定义：
+     *   - 'path' => string, 必填，后台路由子路径（如 'sub-sieve'），external 时为完整 URL
+     *   - 'label' => string, 必填，显示文案（literal，i18nKey 存在时优先用 i18nKey）
+     *   - 'i18nKey' => string, 可选，翻译 key（插件可在 registerAdminI18n 中提供）
+     *   - 'icon' => string, 可选，lucide 图标名（如 'Shield'），默认 'Puzzle'
+     *   - 'group' => string, 可选，归入现有分组（i18n key，如 'nav.systemManagement'）
+     *   - 'groupLabel' => string, 可选，新建分组的显示文案（group 不存在时使用）
+     *   - 'order' => int, 可选，排序，越小越靠前，默认 100
+     *   - 'external' => bool, 可选，是否外部链接，默认 false
+     *   - 'target' => string, 可选，external 时的打开方式 '_blank'|'_self'，默认 '_blank'
+     * @return void
+     */
+    protected function registerAdminMenu(array $menu): void
+    {
+        $pluginCode = $this->pluginCode;
+
+        $this->filter('admin.ui.menus', function ($menus) use ($menu, $pluginCode) {
+            $menus[] = array_merge(['plugin' => $pluginCode], $menu);
+            return $menus;
+        });
+    }
+
+    /**
+     * 注册管理后台整页（配合 registerAdminMenu 的菜单项使用）。
+     *
+     * @param array $page 页面定义：
+     *   - 'path' => string, 必填，后台路由子路径（与菜单项 path 一致）
+     *   - 'title' => string, 可选，页面标题
+     *   - 'type' => string, iframe|component|html，默认 iframe
+     *   - 'url' => string, type=iframe 时的地址（相对路径拼到 /plugins/{code}/）
+     *   - 'component' => string, type=component 时的组件注册 id
+     *   - 'html' => string, type=html 时的内容
+     *   - 'script' => string, 可选，前端脚本路径（相对插件 public/）
+     *   - 'style' => string, 可选，样式路径（相对插件 public/）
+     *   - 'height' => string, 可选，iframe 高度，默认 '100%'
+     * @return void
+     */
+    protected function registerAdminPage(array $page): void
+    {
+        $pluginCode = $this->pluginCode;
+
+        $this->filter('admin.ui.pages', function ($pages) use ($page, $pluginCode) {
+            $pages[] = array_merge(['plugin' => $pluginCode], $page);
+            return $pages;
+        });
+    }
+
+    /**
+     * 注册插件后台界面用的翻译（会合并进前端 i18n）。
+     *
+     * @param array<string, array<string, mixed>> $translations 形如 ['zh-CN' => ['nav' => [...]], 'en-US' => [...]]
+     * @return void
+     */
+    protected function registerAdminI18n(array $translations): void
+    {
+        $this->filter('admin.ui.i18n', function ($all) use ($translations) {
+            foreach ($translations as $lang => $bundle) {
+                $all[$lang] = array_replace_recursive($all[$lang] ?? [], $bundle);
+            }
+            return $all;
+        });
+    }
+
+    /**
      * 注册插件命令目录
      */
     public function registerCommands(): void

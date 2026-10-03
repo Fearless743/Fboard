@@ -354,6 +354,8 @@ class AdminRoute
                 $router->post('upgrade', [PluginController::class, 'upgrade']);
                 $router->get('readme', [PluginController::class, 'getReadme']);
                 $router->get('staticFiles', [PluginController::class, 'staticFiles']);
+                $router->get('ui', [PluginController::class, 'uiExtensions']);
+                $router->get('ui/nav', [PluginController::class, 'uiNavigation']);
                 $router->post('action', [PluginController::class, 'executeAction']);
             });
 

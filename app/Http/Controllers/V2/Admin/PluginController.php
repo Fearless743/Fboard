@@ -485,4 +485,30 @@ class PluginController extends Controller
             'data' => $files
         ]);
     }
+
+    /**
+     * 获取管理后台可用的 UI 扩展块
+     *
+     * 供后台 SPA 启动时拉取：当前所有已启用插件声明的插槽/锚点控件，
+     * 包含控件类型、定位信息、前端脚本与样式地址。
+     */
+    public function uiExtensions()
+    {
+        return response()->json([
+            'data' => $this->pluginManager->getAdminUiExtensions(),
+        ]);
+    }
+
+    /**
+     * 获取管理后台导航扩展（插件菜单 + 整页 + 翻译）
+     *
+     * 供后台 SPA 启动时拉取：已启用插件声明的侧边栏菜单项、整页定义，
+     * 以及供后台 i18n 合并的翻译包。
+     */
+    public function uiNavigation()
+    {
+        return response()->json([
+            'data' => $this->pluginManager->getAdminUiNavigation(),
+        ]);
+    }
 }

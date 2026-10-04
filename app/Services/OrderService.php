@@ -466,11 +466,29 @@ class OrderService
         // 先锁用户全部实例行，再做找行/建行业务。
         UserPlan::query()->where('user_id', $this->user->id)->lockForUpdate()->get();
 
-        match ((string) $order->period) {
+        $row = match ((string) $order->period) {
             Plan::PERIOD_ONETIME => $this->openPack($order, $plan),
             Plan::PERIOD_RESET_TRAFFIC => $this->openResetPackage($order, $plan),
             default => $this->openCycle($order, $plan),
         };
+
+        // 单套餐模式：每人至多一个有效实例行，新购/换套餐替换其它有效行。
+        if ($row && !UserPlan::isEnabled()) {
+            $this->retireOtherRows((int) $row->id);
+        }
+    }
+
+    /**
+     * 单套餐：退役该用户其它有效实例行（保留 $keepId）。
+     */
+    private function retireOtherRows(int $keepId): void
+    {
+        $now = time();
+        UserPlan::query()
+            ->where('user_id', $this->user->id)
+            ->where('id', '!=', $keepId)
+            ->where(fn ($q) => $q->whereNull('expired_at')->orWhere('expired_at', '>', $now))
+            ->update(['expired_at' => $now]);
     }
 
     /**
@@ -479,7 +497,7 @@ class OrderService
      * - 已过期后购买=新周期：复用同一行，配额覆盖、u/d 清零、到期从 now 起算。
      * 两者都追加 order_ids，不断史。禁止过期建新行，禁止盲建。
      */
-    private function openCycle(Order $order, Plan $plan): void
+    private function openCycle(Order $order, Plan $plan): UserPlan
     {
         $row = UserPlan::query()
             ->where('user_id', $this->user->id)
@@ -524,13 +542,15 @@ class OrderService
         $row->next_reset_at = $this->nextResetForPlan($plan, $row->expired_at);
         $row->appendOrderId((int) $order->id);
         $row->save();
+
+        return $row;
     }
 
     /**
      * 流量包：永远新建 pack 行；同事务退役同 plan 已耗尽的 pack 行
      * （u+d >= 配额的行 expired_at=now，行保留备查；有剩余额度的包行不动）。
      */
-    private function openPack(Order $order, Plan $plan): void
+    private function openPack(Order $order, Plan $plan): UserPlan
     {
         $row = new UserPlan();
         $row->forceFill([
@@ -565,6 +585,8 @@ class OrderService
             }
             $old->save();
         }
+
+        return $row;
     }
 
     /**
@@ -572,7 +594,7 @@ class OrderService
      * next_reset_at 按规则重算），追加订单 id；pack 行不参与。
      * 清零走统一 resetInstance（force=true），与 cron/手动同一函数。
      */
-    private function openResetPackage(Order $order, Plan $plan): void
+    private function openResetPackage(Order $order, Plan $plan): ?UserPlan
     {
         $row = UserPlan::query()
             ->where('user_id', $this->user->id)
@@ -592,6 +614,8 @@ class OrderService
         $row = UserPlan::query()->whereKey($row->id)->first();
         $row->appendOrderId((int) $order->id);
         $row->save();
+
+        return $row;
     }
 
     /**

@@ -2,7 +2,12 @@
 
 > 实例表 `v2_user_plan` 是套餐数据唯一权威源。`v2_user` 的 9 个套餐列
 > （`plan_id/group_id/transfer_enable/u/d/expired_at/speed_limit/device_limit/next_reset_at`）
-> 已删除；读取由 `User` 模型 accessor 实时聚合。无开关，始终生效。
+> 已删除；读取由 `User` 模型 accessor 实时聚合。
+>
+> 开关 `multi_plan_enable`（订阅配置段）控制**业务模式**：
+> 关闭 = 单套餐语义（每人至多一个有效实例行，新购/换套餐替换旧行）；
+> 开启 = 多套餐并行（同 plan 续费累加、不同 plan 并存）。
+> 数据始终以 `v2_user_plan` 为准，与已删的主表列无关。
 
 ## 发版顺序
 

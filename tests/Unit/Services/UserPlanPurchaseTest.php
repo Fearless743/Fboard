@@ -256,6 +256,29 @@ class UserPlanPurchaseTest extends TestCase
         $this->assertSame([$order->id], $row->order_ids);
     }
 
+    public function test_single_plan_mode_replaces_on_plan_change(): void
+    {
+        admin_setting(['multi_plan_enable' => 0]);
+        [$user, $planA, $planB] = $this->seedBasics();
+        $now = time();
+        $activeScope = fn ($q) => $q->whereNull('expired_at')->orWhere('expired_at', '>', $now);
+
+        $this->buy($user, $planA, Plan::PERIOD_MONTHLY);
+        $this->assertSame(1, UserPlan::where('user_id', $user->id)->where($activeScope)->count());
+
+        // 换套餐 = 替换：只保留一个有效行
+        $this->buy($user->refresh(), $planB, Plan::PERIOD_MONTHLY);
+        $active = UserPlan::where('user_id', $user->id)->where($activeScope)->get();
+        $this->assertCount(1, $active);
+        $this->assertSame($planB->id, (int) $active->first()->plan_id);
+
+        // 同 plan 续费累加
+        $this->buy($user->refresh(), $planB, Plan::PERIOD_MONTHLY);
+        $active = UserPlan::where('user_id', $user->id)->where($activeScope)->get();
+        $this->assertCount(1, $active);
+        $this->assertSame(20 * 1073741824, (int) $active->first()->transfer_enable);
+    }
+
     /**
      * 下单→支付→开通全链路。
      */

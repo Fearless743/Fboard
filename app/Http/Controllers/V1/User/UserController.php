@@ -264,6 +264,10 @@ class UserController extends Controller
      */
     public function planSort(Request $request)
     {
+        if (!UserPlan::isEnabled()) {
+            return $this->fail([400, __('多套餐功能未开启')]);
+        }
+
         $ids = $request->input('ids');
         if (!is_array($ids)) {
             return $this->fail([400, __('参数错误')]);

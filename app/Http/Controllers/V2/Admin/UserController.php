@@ -382,6 +382,11 @@ class UserController extends Controller
                 }
 
                 $this->syncUserPlans($locked, $request, $params);
+
+                // 单套餐模式的 legacy 单字段编辑：映射到该用户唯一 cycle 行。
+                if (!UserPlan::isEnabled() && !$request->exists('plans') && empty($params['clear_plans'])) {
+                    $this->applyLegacyPlanFields($locked, $params);
+                }
             });
 
             // 管理端实例 diff 不走 observer（只改实例表），显式通知节点。
@@ -427,6 +432,10 @@ class UserController extends Controller
         $plans = $params['plans'] ?? null;
         if (!is_array($plans) || empty($plans)) {
             return;
+        }
+
+        if (!UserPlan::isEnabled() && count($plans) > 1) {
+            throw new \RuntimeException('单套餐模式下每用户至多一个套餐');
         }
 
         // 先校验全部 plan_id，再动任何行。
@@ -481,6 +490,86 @@ class UserController extends Controller
         }
 
         UserPlan::query()->where('user_id', $user->id)->whereNotIn('id', $keepIds)->delete();
+    }
+
+    /**
+     * 单套餐模式的 legacy 单字段编辑：把 plan_id/expired_at/transfer_enable/
+     * speed_limit/device_limit 映射到该用户唯一 cycle 行（主表已无这些列）。
+     */
+    private function applyLegacyPlanFields(User $user, array $params): void
+    {
+        $planFields = ['plan_id', 'expired_at', 'transfer_enable', 'speed_limit', 'device_limit'];
+        $hasPlanField = false;
+        foreach ($planFields as $field) {
+            if (array_key_exists($field, $params)) {
+                $hasPlanField = true;
+                break;
+            }
+        }
+        if (!$hasPlanField) {
+            return;
+        }
+
+        $row = UserPlan::query()
+            ->where('user_id', $user->id)
+            ->where('kind', UserPlan::KIND_CYCLE)
+            ->orderByDesc('id')
+            ->first();
+
+        if (isset($params['plan_id'])) {
+            $plan = Plan::find((int) $params['plan_id']);
+            if (!$plan) {
+                throw new \RuntimeException('订阅计划不存在');
+            }
+            if (!$row) {
+                $row = new UserPlan();
+                $row->forceFill([
+                    'user_id' => $user->id,
+                    'plan_id' => $plan->id,
+                    'kind' => UserPlan::KIND_CYCLE,
+                    'group_id' => $plan->group_id,
+                    'order_ids' => [],
+                    'u' => 0,
+                    'd' => 0,
+                    'transfer_enable' => (int) $plan->transfer_enable * 1073741824,
+                    'sort_order' => 0,
+                ]);
+            } else {
+                $row->plan_id = $plan->id;
+                $row->group_id = $plan->group_id;
+            }
+        }
+
+        if (!$row) {
+            return;
+        }
+
+        if (array_key_exists('expired_at', $params)) {
+            $row->expired_at = $params['expired_at'] !== null ? (int) $params['expired_at'] : null;
+        }
+        if (array_key_exists('transfer_enable', $params)) {
+            $row->transfer_enable = (int) $params['transfer_enable'];
+        }
+        if (array_key_exists('speed_limit', $params)) {
+            $row->speed_limit = $params['speed_limit'] !== null ? (int) $params['speed_limit'] : null;
+        }
+        if (array_key_exists('device_limit', $params)) {
+            $row->device_limit = $params['device_limit'] !== null ? (int) $params['device_limit'] : null;
+        }
+        $row->save();
+
+        // 单套餐：退役其它有效行。
+        $this->retireOtherCycles($user->id, (int) $row->id);
+    }
+
+    private function retireOtherCycles(int $userId, int $keepId): void
+    {
+        $now = time();
+        UserPlan::query()
+            ->where('user_id', $userId)
+            ->where('id', '!=', $keepId)
+            ->where(fn ($q) => $q->whereNull('expired_at')->orWhere('expired_at', '>', $now))
+            ->update(['expired_at' => $now]);
     }
 
     // Export users to CSV.

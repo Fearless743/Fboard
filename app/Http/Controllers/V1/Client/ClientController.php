@@ -50,8 +50,8 @@ class ClientController extends Controller
             $servers = HookManager::filter('client.subscribe.servers', $servers, $user, $request);
         }
 
-        if (UserPlan::isEnabled() && $user instanceof \App\Models\User) {
-            // 订阅头/备注读的是 u/d/transfer_enable/expired_at：主表已冻结，
+        if ($user instanceof \App\Models\User) {
+            // 订阅头/备注读的是 u/d/transfer_enable/expired_at：主表是聚合投影，
             // 此处换成聚合计算值的展示副本（不落库），theme 与插件无需改动。
             $computed = $user->getComputedPlanFields();
             if (!empty($computed)) {

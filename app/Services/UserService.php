@@ -24,60 +24,32 @@ class UserService
      */
     public function getResetDay(User $user): ?int
     {
-        if (UserPlan::isEnabled()) {
-            // 多套餐：取全部有效 cycle 行最早的下次重置，还有多少天。
-            $rows = UserPlan::query()->where('user_id', $user->id)->get();
-            $now = time();
-            $next = null;
-            foreach ($rows as $row) {
-                if (!$row->isActive($now) || $row->next_reset_at === null) {
-                    continue;
-                }
-                $ts = (int) $row->next_reset_at;
-                if ($next === null || $ts < $next) {
-                    $next = $ts;
-                }
+        // 实例表是唯一数据源：取全部有效 cycle 行最早的下次重置，还有多少天。
+        $rows = UserPlan::query()->where('user_id', $user->id)->get();
+        $now = time();
+        $next = null;
+        foreach ($rows as $row) {
+            if (!$row->isActive($now) || $row->next_reset_at === null) {
+                continue;
             }
-            if ($next === null) {
-                return null;
+            $ts = (int) $row->next_reset_at;
+            if ($next === null || $ts < $next) {
+                $next = $ts;
             }
-            if ($next <= $now) {
-                return 0;
-            }
-
-            return (int) ceil(($next - $now) / 86400);
         }
-        // Use TrafficResetService to calculate the next reset time
-        $trafficResetService = app(TrafficResetService::class);
-        $nextResetTime = $trafficResetService->calculateNextResetTime($user);
-
-        if (!$nextResetTime) {
+        if ($next === null) {
             return null;
         }
-
-        // Calculate the remaining days from now to the next reset time
-        $now = time();
-        $resetTimestamp = $nextResetTime->timestamp;
-
-        if ($resetTimestamp <= $now) {
-            return 0; // Reset time has passed or is now
+        if ($next <= $now) {
+            return 0;
         }
 
-        // Calculate the difference in days (rounded up)
-        $daysDifference = ceil(($resetTimestamp - $now) / 86400);
-
-        return (int) $daysDifference;
+        return (int) ceil(($next - $now) / 86400);
     }
 
     public function isAvailable(User $user)
     {
-        if (UserPlan::isEnabled()) {
-            return $user->isAvailable();
-        }
-        if (!$user->banned && $user->transfer_enable && ($user->expired_at > time() || $user->expired_at === NULL)) {
-            return true;
-        }
-        return false;
+        return $user->isAvailable();
     }
 
     public function getAvailableUsers()
@@ -178,48 +150,34 @@ class UserService
 
         // 重新获取用户数据（可能已被重置）
         $user->refresh();
-        if (UserPlan::isEnabled()) {
-            // 同一聚合入口：legacy 字段名返回计算值（仅内存，不落库）。
-            $upload = 0;
-            $download = 0;
-            $quota = 0;
-            $nextResetAt = null;
-            $rows = UserPlan::query()->where('user_id', $user->id)->get();
-            $now = time();
-            foreach ($rows as $row) {
-                if (!$row->isActive($now)) {
-                    continue;
-                }
-                $upload += (int) $row->u;
-                $download += (int) $row->d;
-                $quota += (int) $row->transfer_enable;
-                if ($row->next_reset_at !== null && ($nextResetAt === null || (int) $row->next_reset_at < $nextResetAt)) {
-                    $nextResetAt = (int) $row->next_reset_at;
-                }
+        // 同一聚合入口：legacy 字段名返回计算值（仅内存，不落库）。
+        $upload = 0;
+        $download = 0;
+        $quota = 0;
+        $nextResetAt = null;
+        $rows = UserPlan::query()->where('user_id', $user->id)->get();
+        $now = time();
+        foreach ($rows as $row) {
+            if (!$row->isActive($now)) {
+                continue;
             }
-            $used = $upload + $download;
-
-            return [
-                'upload' => $upload,
-                'download' => $download,
-                'total_used' => $used,
-                'total_available' => $quota,
-                'remaining' => max(0, $quota - $used),
-                'usage_percentage' => $quota > 0 ? min(100, ($used / $quota) * 100) : 0,
-                'next_reset_at' => $nextResetAt,
-                'last_reset_at' => $user->last_reset_at,
-                'reset_count' => $user->reset_count,
-            ];
+            $upload += (int) $row->u;
+            $download += (int) $row->d;
+            $quota += (int) $row->transfer_enable;
+            if ($row->next_reset_at !== null && ($nextResetAt === null || (int) $row->next_reset_at < $nextResetAt)) {
+                $nextResetAt = (int) $row->next_reset_at;
+            }
         }
+        $used = $upload + $download;
 
         return [
-            'upload' => $user->u ?? 0,
-            'download' => $user->d ?? 0,
-            'total_used' => $user->getTotalUsedTraffic(),
-            'total_available' => $user->transfer_enable ?? 0,
-            'remaining' => $user->getRemainingTraffic(),
-            'usage_percentage' => $user->getTrafficUsagePercentage(),
-            'next_reset_at' => $user->next_reset_at,
+            'upload' => $upload,
+            'download' => $download,
+            'total_used' => $used,
+            'total_available' => $quota,
+            'remaining' => max(0, $quota - $used),
+            'usage_percentage' => $quota > 0 ? min(100, ($used / $quota) * 100) : 0,
+            'next_reset_at' => $nextResetAt,
             'last_reset_at' => $user->last_reset_at,
             'reset_count' => $user->reset_count,
         ];
@@ -280,14 +238,11 @@ class UserService
     }
 
     /**
-     * 注册/批量生成后调用：多套餐下按主表快照补建 cycle 首行（order_ids 为空）。
+     * 注册/批量生成后调用：按主表快照补建 cycle 首行（order_ids 为空）。
      * 主表字段照常写（注册流程依赖），实例行保证新用户即有一行可用。
      */
     public function seedInitialPlanRow(User $user): void
     {
-        if (!UserPlan::isEnabled()) {
-            return;
-        }
         if ($user->plan_id === null || (int) $user->transfer_enable <= 0) {
             return;
         }

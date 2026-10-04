@@ -69,42 +69,8 @@ class NodeSyncService
      */
     public static function notifyUserChanged(User $user): void
     {
-        if (UserPlan::isEnabled()) {
-            self::notifyUserChangedMulti($user);
-            return;
-        }
-        if (!$user->group_id)
-            return;
-
-        $servers = Server::whereJsonContains('group_ids', (string) $user->group_id)->get();
-        foreach ($servers as $server) {
-            if (!self::isNodeOnline($server->id))
-                continue;
-
-            if ((bool) admin_setting('maintenance_mode', 0)) {
-                self::push($server->id, 'sync.users', ['users' => []]);
-                continue;
-            }
-
-            if ($user->isAvailable()) {
-                self::push($server->id, 'sync.user.delta', [
-                    'action' => 'add',
-                    'users' => [
-                        [
-                            'id' => $user->id,
-                            'uuid' => $user->uuid,
-                            'speed_limit' => $user->speed_limit,
-                            'device_limit' => $user->device_limit,
-                        ]
-                    ],
-                ]);
-            } else {
-                self::push($server->id, 'sync.user.delta', [
-                    'action' => 'remove',
-                    'users' => [['id' => $user->id]],
-                ]);
-            }
-        }
+        // 实例表是唯一数据源：无条件走实例路径。
+        self::notifyUserChangedMulti($user);
     }
 
     /**

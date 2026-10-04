@@ -154,31 +154,16 @@ class UserPlanAdminTest extends TestCase
         ], $this->auth())->assertStatus(500);
     }
 
-    public function test_frozen_master_fields_rejected(): void
+    public function test_master_fields_accepted_and_synced(): void
     {
         [$user] = $this->seedBasics();
 
+        // 主表 9 列恢复可写（实例表无行时直接落主表；有行时走 diff 后回写聚合）。
         $resp = $this->postJson($this->adminUrl('/user/update'), [
             'id' => $user->id,
             'expired_at' => time() + 999,
         ], $this->auth());
-        $resp->assertStatus(400);
-    }
-
-    public function test_plans_rejected_when_switch_off(): void
-    {
-        admin_setting(['multi_plan_enable' => 0]);
-        [$user] = $this->seedBasics();
-
-        // 开关关闭走 legacy：主表可写，plans 被拒
-        $this->postJson($this->adminUrl('/user/update'), [
-            'id' => $user->id,
-            'expired_at' => time() + 999,
-        ], $this->auth())->assertOk();
-        $this->postJson($this->adminUrl('/user/update'), [
-            'id' => $user->id,
-            'plans' => [],
-        ], $this->auth())->assertStatus(400);
+        $resp->assertOk();
     }
 
     public function test_fetch_and_detail_contain_plan_list_and_computed(): void

@@ -68,47 +68,33 @@ class TrafficFetchJob implements ShouldQueue
             ->all();
 
         $now = time();
-        $touched = [];
 
-        if (UserPlan::isEnabled()) {
-            $touched = $this->allocateMulti($userIds, $this->data, $rate, $reportTs, $resetAt, $now);
-        } else {
+        // 实例表是唯一数据源：无条件走实例分摊；主表 u/d/t 同步双写（兼容旧读法）。
+        $touched = $this->allocateMulti($userIds, $this->data, $rate, $reportTs, $resetAt, $now);
+
+        if (!empty($touched)) {
+            $perUser = [];
             foreach ($this->data as $uid => $v) {
                 $uid = (int) $uid;
-
-                // 这份 report 是重置之前收到的：期间流量已由 performReset 清零。
-                // 若照常累加，队列积压时会出现「刚重置完，u/d 又瞬间弹回超额」的假象，
-                // 让用户以为刚买的套餐几分钟就没了。旧周期流量不该计入新额度。
-                $lastResetAt = $resetAt[$uid] ?? 0;
-                if ($lastResetAt > 0 && $reportTs < $lastResetAt) {
+                if (!in_array($uid, $touched, true)) {
                     continue;
                 }
-
-                // 流量列是整数字节；倍率可能是 1.5 等 float，必须 round 后再写入，
-                // 避免 SQLite/MySQL 严格模式下 float 写入 INTEGER 失败或截断不一致。
                 $uInc = (int) max(0, (int) round(((float) $v[0]) * $rate));
                 $dInc = (int) max(0, (int) round(((float) $v[1]) * $rate));
                 if ($uInc === 0 && $dInc === 0) {
                     continue;
                 }
-
-                User::where('id', $uid)
-                    ->incrementEach(
-                        [
-                            'u' => $uInc,
-                            'd' => $dInc,
-                        ],
-                        ['t' => $now]
-                    );
-
-                $touched[] = $uid;
+                $perUser[$uid] = [$uInc, $dInc];
             }
-        }
-
-        if (!empty($touched)) {
-            if (UserPlan::isEnabled()) {
-                User::whereIn('id', $touched)->update(['t' => $now]);
+            // 主表双写：逐用户一条 UPDATE（与旧语义一致），失败不影响实例已落库。
+            foreach ($perUser as $uid => [$uInc, $dInc]) {
+                try {
+                    User::where('id', $uid)->incrementEach(['u' => $uInc, 'd' => $dInc], ['t' => $now]);
+                } catch (\Throwable $e) {
+                    report($e);
+                }
             }
+            User::whereIn('id', $touched)->update(['t' => $now]);
             Redis::sadd('traffic:pending_check', ...$touched);
         }
     }

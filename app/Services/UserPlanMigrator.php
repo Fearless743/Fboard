@@ -1,11 +1,10 @@
 <?php
 
-namespace App\Console\Commands;
+namespace App\Services;
 
 use App\Models\Plan;
 use App\Models\User;
 use App\Models\UserPlan;
-use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -14,16 +13,15 @@ use Illuminate\Support\Facades\Log;
  * - 单套餐用户建 cycle 行（kind=1，order_ids=[]，9 列值照抄含 u/d 全额与 group 快照）；
  * - 脏数据：plan_id null 跳过；plan 已删建行但限速/设备置空+日志；零配额跳过；
  * - 同 (user, plan) 已有 cycle 行跳过；
- * - down() 拒绝执行：回滚用反填脚本（删列 PR），不可直接回滚本迁移。
+ * - 数据库 migration 与 artisan 命令共用此实现，禁各写各的。
  */
-class MigrateUserPlans extends Command
+class UserPlanMigrator
 {
-    protected $signature = 'fboard:migrate-user-plans {--dry-run : 只统计将要迁移的行数，不写库}';
-    protected $description = '单套餐用户主表数据幂等迁入套餐实例表';
-
-    public function handle(): int
+    /**
+     * @return array{scanned:int,created:int,skipped_no_plan:int,skipped_zero_quota:int,skipped_existing:int,missing_plan:int}
+     */
+    public static function run(?callable $progress = null): array
     {
-        $dryRun = (bool) $this->option('dry-run');
         $stats = [
             'scanned' => 0,
             'created' => 0,
@@ -32,10 +30,6 @@ class MigrateUserPlans extends Command
             'skipped_existing' => 0,
             'missing_plan' => 0,
         ];
-
-        if ($dryRun) {
-            $this->info('DRY-RUN：只统计，不写库');
-        }
 
         $lastId = 0;
         do {
@@ -50,22 +44,20 @@ class MigrateUserPlans extends Command
             foreach ($users as $user) {
                 $lastId = (int) $user->id;
                 $stats['scanned']++;
-                $this->migrateUser($user, $stats, $dryRun);
+                self::migrateUser($user, $stats);
+                if ($progress) {
+                    $progress($stats);
+                }
             }
         } while (true);
 
-        $this->table(
-            ['scanned', 'created', 'skipped(no plan)', 'skipped(zero quota)', 'skipped(existing)', 'missing plan'],
-            [[
-                $stats['scanned'], $stats['created'], $stats['skipped_no_plan'],
-                $stats['skipped_zero_quota'], $stats['skipped_existing'], $stats['missing_plan'],
-            ]]
-        );
-
-        return self::SUCCESS;
+        return $stats;
     }
 
-    private function migrateUser(User $user, array &$stats, bool $dryRun): void
+    /**
+     * @param array{scanned:int,created:int,skipped_no_plan:int,skipped_zero_quota:int,skipped_existing:int,missing_plan:int} $stats
+     */
+    public static function migrateUser(User $user, array &$stats): void
     {
         if ($user->plan_id === null) {
             $stats['skipped_no_plan']++;
@@ -86,31 +78,21 @@ class MigrateUserPlans extends Command
         }
 
         $plan = Plan::query()->find($user->plan_id);
-        $groupId = $user->group_id;
-        if ($plan) {
-            $groupId = $plan->group_id;
-        } else {
+        if (!$plan) {
             $stats['missing_plan']++;
             Log::warning('[migrate-user-plans] plan 已删除，仍建行（限速/设备置空）', [
                 'user_id' => $user->id, 'plan_id' => $user->plan_id,
             ]);
-            if ($dryRun) {
-                return;
-            }
-            $this->createRow($user, null);
+            self::createRow($user, null);
             $stats['created']++;
             return;
         }
 
-        if ($dryRun) {
-            $stats['created']++;
-            return;
-        }
-        $this->createRow($user, $plan);
+        self::createRow($user, $plan);
         $stats['created']++;
     }
 
-    private function createRow(User $user, ?Plan $plan): void
+    public static function createRow(User $user, ?Plan $plan): void
     {
         // 主表 expired_at 0/null 归一为永久（与历史迁移口径一致）。
         $expiredAt = $user->expired_at ? (int) $user->expired_at : null;

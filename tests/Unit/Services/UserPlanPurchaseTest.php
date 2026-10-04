@@ -36,7 +36,7 @@ class UserPlanPurchaseTest extends TestCase
         ]);
     }
 
-    public function test_new_purchase_creates_cycle_row_and_leaves_master_untouched(): void
+    public function test_new_purchase_creates_cycle_row_and_syncs_master(): void
     {
         [$user, $planA] = $this->seedBasics();
         $now = time();
@@ -57,10 +57,10 @@ class UserPlanPurchaseTest extends TestCase
         $this->assertNull($row->speed_limit);
         $this->assertNull($row->device_limit);
 
-        // 主表快照列冻结
+        // 主表是聚合投影：同步回写
         $user->refresh();
-        $this->assertNull($user->plan_id);
-        $this->assertSame(0, (int) $user->transfer_enable);
+        $this->assertSame($planA->id, (int) $user->plan_id);
+        $this->assertSame(10 * 1073741824, (int) $user->transfer_enable);
     }
 
     public function test_renewal_reuses_row_accumulates_quota_keeps_usage(): void

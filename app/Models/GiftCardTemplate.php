@@ -121,11 +121,11 @@ class GiftCardTemplate extends Model
             case self::TYPE_GENERAL:
                 $rewards = $this->rewards ?? [];
                 if (isset($rewards['transfer_enable']) || isset($rewards['expire_days']) || isset($rewards['reset_package'])) {
-                    // 多套餐：持有实例行即视为有订阅（主表 plan_id 已冻结，不可作判据）；
+                    // 持有实例行即视为有订阅（主表 plan_id 是聚合投影）；
                     // 套餐卡自带目标行（没有则建），无需既有订阅。
                     $hasPlan = $user->plan_id
-                        || (UserPlan::isEnabled() && $user->hasAnyUserPlan())
-                        || (UserPlan::isEnabled() && isset($rewards['plan_id']) && Plan::find($rewards['plan_id']));
+                        || $user->hasAnyUserPlan()
+                        || (isset($rewards['plan_id']) && Plan::find($rewards['plan_id']));
                     if (!$hasPlan) {
                         return false;
                     }
@@ -159,15 +159,13 @@ class GiftCardTemplate extends Model
         // 检查允许的套餐
         if (isset($conditions['allowed_plans'])) {
             $heldPlanIds = $user->plan_id ? [(int) $user->plan_id] : [];
-            if (UserPlan::isEnabled()) {
-                $heldPlanIds = array_merge(
-                    $heldPlanIds,
-                    UserPlan::query()->where('user_id', $user->id)
-                        ->distinct()->pluck('plan_id')
-                        ->map(fn ($id) => (int) $id)->all()
-                );
-                $heldPlanIds = array_values(array_unique($heldPlanIds));
-            }
+            $heldPlanIds = array_merge(
+                $heldPlanIds,
+                UserPlan::query()->where('user_id', $user->id)
+                    ->distinct()->pluck('plan_id')
+                    ->map(fn ($id) => (int) $id)->all()
+            );
+            $heldPlanIds = array_values(array_unique($heldPlanIds));
             if (empty(array_intersect($heldPlanIds, array_map('intval', (array) $conditions['allowed_plans'])))) {
                 return false;
             }

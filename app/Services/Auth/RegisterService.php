@@ -179,6 +179,8 @@ class RegisterService
         if (!$user->save()) {
             return [false, [500, __('Register failed')]];
         }
+        // 多套餐：试用/指定套餐注册后补建实例首行（无行则沿用主表，开关内聚）。
+        $userService->seedInitialPlanRow($user);
 
         HookManager::call('user.register.after', $user);
 

@@ -10,6 +10,7 @@ use App\Models\GiftCardUsage;
 use App\Models\Plan;
 use App\Models\TrafficResetLog;
 use App\Models\User;
+use App\Models\UserPlan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -187,33 +188,28 @@ class GiftCardService
             $this->user->refresh();
         }
 
-        if (isset($rewards['transfer_enable']) && $rewards['transfer_enable'] > 0) {
-            $this->user->transfer_enable = ($this->user->transfer_enable ?? 0) + $rewards['transfer_enable'];
+        // 套餐卡的流量/设备数由 grantPlan 统一落到该 plan 行（只加一次）；
+        // 非套餐卡才走独立奖励行（首个有效 cycle 行，无行回退主表）。
+        $giftPlan = isset($rewards['plan_id']) ? Plan::find($rewards['plan_id']) : null;
+
+        if (isset($rewards['transfer_enable']) && $rewards['transfer_enable'] > 0 && !$giftPlan) {
+            $this->grantTransfer($rewards['transfer_enable']);
         }
 
-        if (isset($rewards['device_limit']) && $rewards['device_limit'] > 0) {
-            $this->user->device_limit = ($this->user->device_limit ?? 0) + $rewards['device_limit'];
+        if (isset($rewards['device_limit']) && $rewards['device_limit'] > 0 && !$giftPlan) {
+            $this->grantDeviceLimit($rewards['device_limit']);
         }
 
         if (isset($rewards['reset_package']) && $rewards['reset_package']) {
-            if ($this->user->plan_id) {
-                app(TrafficResetService::class)->performReset($this->user, TrafficResetLog::SOURCE_GIFT_CARD);
-            }
+            $this->grantResetPackage($rewards);
         }
 
-        if (isset($rewards['plan_id'])) {
-            $plan = Plan::find($rewards['plan_id']);
-            if ($plan) {
-                $userService->assignPlan(
-                    $this->user,
-                    $plan,
-                    $rewards['plan_validity_days'] ?? 0
-                );
-            }
+        if ($giftPlan) {
+            $this->grantPlan($giftPlan, $rewards);
         } else {
             // 只有在不是套餐卡的情况下，才处理独立的有效期奖励
             if (isset($rewards['expire_days']) && $rewards['expire_days'] > 0) {
-                $userService->extendSubscription($this->user, $rewards['expire_days']);
+                $this->grantExpireDays($rewards['expire_days']);
             }
         }
 
@@ -221,6 +217,138 @@ class GiftCardService
         if (!$this->user->save()) {
             throw new ApiException('用户信息更新失败');
         }
+    }
+
+    /**
+     * 多套餐目标行：plan 卡找该 plan 的 cycle 行（没有则建，配额按 plan 快照），
+     * 纯流量/设备/有效期奖励找扣减顺序首个有效 cycle 行，都没有则回退主表。
+     */
+    private function resolveGiftRow(?Plan $plan): ?UserPlan
+    {
+        if (!UserPlan::isEnabled()) {
+            return null;
+        }
+        // 先锁用户全部实例行，与订单/管理端一致。
+        UserPlan::query()->where('user_id', $this->user->id)->lockForUpdate()->get();
+
+        if ($plan) {
+            $row = UserPlan::query()
+                ->where('user_id', $this->user->id)
+                ->where('plan_id', $plan->id)
+                ->where('kind', UserPlan::KIND_CYCLE)
+                ->orderBy('id', 'desc')
+                ->first();
+            if (!$row) {
+                $row = new UserPlan();
+                $row->forceFill([
+                    'user_id' => $this->user->id,
+                    'plan_id' => $plan->id,
+                    'kind' => UserPlan::KIND_CYCLE,
+                    'group_id' => $plan->group_id,
+                    'order_ids' => [],
+                    'transfer_enable' => (int) $plan->transfer_enable * 1073741824,
+                    'u' => 0,
+                    'd' => 0,
+                    'expired_at' => null,
+                    'speed_limit' => $plan->speed_limit,
+                    'device_limit' => $plan->device_limit,
+                    'sort_order' => 0,
+                ]);
+                $row->save();
+            }
+
+            return $row;
+        }
+
+        $query = UserPlan::query()->where('user_id', $this->user->id);
+        UserPlan::applyDeductionOrder($query);
+
+        return $query->where('kind', UserPlan::KIND_CYCLE)->first();
+    }
+
+    private function grantTransfer(int $bytes): void
+    {
+        $row = $this->resolveGiftRow(null);
+        if ($row) {
+            $row->transfer_enable = (int) $row->transfer_enable + $bytes;
+            $row->save();
+            return;
+        }
+        $this->user->transfer_enable = ($this->user->transfer_enable ?? 0) + $bytes;
+    }
+
+    private function grantDeviceLimit(int $count): void
+    {
+        $row = $this->resolveGiftRow(null);
+        if ($row) {
+            $row->device_limit = ((int) $row->device_limit) + $count;
+            $row->save();
+            return;
+        }
+        $this->user->device_limit = ($this->user->device_limit ?? 0) + $count;
+    }
+
+    private function grantResetPackage(array $rewards): void
+    {
+        if (!UserPlan::isEnabled()) {
+            if ($this->user->plan_id) {
+                app(TrafficResetService::class)->performReset($this->user, TrafficResetLog::SOURCE_GIFT_CARD);
+            }
+            return;
+        }
+        $plan = isset($rewards['plan_id']) ? Plan::find($rewards['plan_id']) : null;
+        $row = $this->resolveGiftRow($plan);
+        if ($row) {
+            app(TrafficResetService::class)->resetInstance($row, TrafficResetLog::SOURCE_GIFT_CARD, true);
+        } elseif ($this->user->plan_id) {
+            app(TrafficResetService::class)->performReset($this->user, TrafficResetLog::SOURCE_GIFT_CARD);
+        }
+    }
+
+    private function grantPlan(Plan $plan, array $rewards): void
+    {
+        if (!UserPlan::isEnabled()) {
+            app(UserService::class)->assignPlan(
+                $this->user,
+                $plan,
+                $rewards['plan_validity_days'] ?? 0
+            );
+            return;
+        }
+        // 已有行不断行：配额不清零（礼包 transfer 另计），只刷新快照并顺延有效期。
+        $row = $this->resolveGiftRow($plan);
+        $row->group_id = $plan->group_id;
+        $row->speed_limit = $plan->speed_limit;
+        $row->device_limit = $plan->device_limit;
+        $validityDays = (int) ($rewards['plan_validity_days'] ?? 0);
+        if ($validityDays > 0) {
+            $base = $row->expired_at ? max((int) $row->expired_at, time()) : time();
+            $row->expired_at = $base + $validityDays * 86400;
+        }
+        $row->next_reset_at = app(TrafficResetService::class)
+            ->calculateNextResetTimeForPlan($plan, $row->expired_at)?->timestamp;
+        $row->save();
+
+        if (isset($rewards['transfer_enable']) && $rewards['transfer_enable'] > 0) {
+            $row->transfer_enable = (int) $row->transfer_enable + (int) $rewards['transfer_enable'];
+            $row->save();
+        }
+    }
+
+    private function grantExpireDays(int $days): void
+    {
+        if (!UserPlan::isEnabled()) {
+            app(UserService::class)->extendSubscription($this->user, $days);
+            return;
+        }
+        $row = $this->resolveGiftRow(null);
+        if (!$row) {
+            app(UserService::class)->extendSubscription($this->user, $days);
+            return;
+        }
+        $base = $row->expired_at ? max((int) $row->expired_at, time()) : time();
+        $row->expired_at = $base + $days * 86400;
+        $row->save();
     }
 
     /**
@@ -255,6 +383,18 @@ class GiftCardService
         if (isset($rewards['transfer_enable']) && $rewards['transfer_enable'] > 0) {
             $inviteTransfer = intval($rewards['transfer_enable'] * $rate);
             if ($inviteTransfer > 0) {
+                if (UserPlan::isEnabled()) {
+                    $row = UserPlan::query()->where('user_id', $inviteUser->id)
+                        ->where('kind', UserPlan::KIND_CYCLE)
+                        ->orderBy('id', 'desc')
+                        ->first();
+                    if ($row) {
+                        $row->transfer_enable = (int) $row->transfer_enable + $inviteTransfer;
+                        $row->save();
+                        $inviteRewards['transfer_enable'] = $inviteTransfer;
+                        return $inviteRewards;
+                    }
+                }
                 $inviteUser->transfer_enable = ($inviteUser->transfer_enable ?? 0) + $inviteTransfer;
                 $inviteUser->save();
                 $inviteRewards['transfer_enable'] = $inviteTransfer;

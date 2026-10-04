@@ -36,6 +36,15 @@ class UserUpdate extends FormRequest
             'device_limit' => 'nullable|integer',
             'invite_user_id' => 'nullable|integer|min:1',
             'invite_user_email' => 'nullable|email:strict',
+            // 多套餐实例 diff：plans 缺席=不碰，空数组=不操作，清空需 clear_plans=true
+            'plans' => 'nullable|array',
+            'plans.*.id' => 'nullable|integer',
+            'plans.*.plan_id' => 'required|integer',
+            'plans.*.expired_at' => 'nullable|integer',
+            'plans.*.speed_limit' => 'nullable|integer',
+            'plans.*.device_limit' => 'nullable|integer',
+            'plans.*.transfer_enable' => 'nullable|integer|min:0',
+            'clear_plans' => 'boolean',
         ];
 
         return HookManager::filter('admin.user.update.rules', $rules, $this);

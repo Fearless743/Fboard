@@ -4,6 +4,7 @@ namespace App\Http\Controllers\V1\Client;
 
 use App\Http\Controllers\Controller;
 use App\Models\Server;
+use App\Models\UserPlan;
 use App\Services\Plugin\HookManager;
 use App\Services\ProtocolDefinitionRegistry;
 use App\Services\ServerService;
@@ -47,6 +48,17 @@ class ClientController extends Controller
         if ($servers === null) {
             $servers = ServerService::getAvailableServers($user);
             $servers = HookManager::filter('client.subscribe.servers', $servers, $user, $request);
+        }
+
+        if (UserPlan::isEnabled() && $user instanceof \App\Models\User) {
+            // 订阅头/备注读的是 u/d/transfer_enable/expired_at：主表已冻结，
+            // 此处换成聚合计算值的展示副本（不落库），theme 与插件无需改动。
+            $computed = $user->getComputedPlanFields();
+            if (!empty($computed)) {
+                $display = clone $user;
+                $display->forceFill($computed);
+                $user = $display;
+            }
         }
 
         $clientInfo = $this->getClientInfo($request);

@@ -6,6 +6,7 @@ use App\Jobs\SendEmailJob;
 use App\Models\MailLog;
 use App\Models\MailTemplate;
 use App\Models\User;
+use App\Models\UserPlan;
 use App\Utils\CacheKey;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Config;
@@ -100,6 +101,13 @@ class MailService
             try {
                 $statistics['processed_users']++;
                 $emailsSent = 0;
+
+                if (UserPlan::isEnabled()) {
+                    // 同一聚合入口：legacy 字段名覆盖为计算值（仅内存，不落库）。
+                    foreach ($user->getComputedPlanFields() as $key => $value) {
+                        $user->setAttribute($key, $value);
+                    }
+                }
 
                 // 检查并发送过期提醒
                 if ($user->remind_expire && $this->shouldSendExpireRemind($user)) {

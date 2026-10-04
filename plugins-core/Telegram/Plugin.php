@@ -5,6 +5,7 @@ namespace Plugin\Telegram;
 use App\Models\Order;
 use App\Models\Ticket;
 use App\Models\User;
+use App\Models\UserPlan;
 use App\Services\Plugin\AbstractPlugin;
 use App\Services\Plugin\HookManager;
 use App\Services\TelegramService;
@@ -76,6 +77,11 @@ class Plugin extends AbstractPlugin
     if (!$user)
       return;
     $user->load('plan');
+    if (UserPlan::isEnabled()) {
+      foreach ($user->getComputedPlanFields() as $key => $value) {
+        $user->setAttribute($key, $value);
+      }
+    }
     $transfer_enable = $this->transferToGBString($user->transfer_enable);
     $remaining_traffic = $this->transferToGBString($user->transfer_enable - $user->u - $user->d);
     $u = $this->transferToGBString($user->u);
@@ -329,6 +335,12 @@ class Plugin extends AbstractPlugin
     $user = $this->getBoundUser($msg);
     if (!$user) {
       return;
+    }
+
+    if (UserPlan::isEnabled()) {
+      foreach ($user->getComputedPlanFields() as $key => $value) {
+        $user->setAttribute($key, $value);
+      }
     }
 
     $transferUsed = $user->u + $user->d;

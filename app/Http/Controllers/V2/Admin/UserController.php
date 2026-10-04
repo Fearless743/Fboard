@@ -11,6 +11,7 @@ use App\Models\CommissionLog;
 use App\Models\Plan;
 use App\Models\User;
 use App\Models\UserLoginLog;
+use App\Models\UserPlan;
 use App\Services\AuthService;
 use App\Services\NodeSyncService;
 use App\Services\Plugin\HookManager;
@@ -208,6 +209,11 @@ class UserController extends Controller
             ->select((new User())->getTable() . '.*')
             ->selectRaw('(u + d) as total_used');
 
+        if (UserPlan::isEnabled()) {
+            // 聚合列一次查完 + 实例明细预加载（transform 里拼 plan_list，禁 N+1）
+            $userModel->withPlanAggregate()->with('userPlans');
+        }
+
         $userModel = HookManager::filter('admin.user.fetch.query', $userModel, $request);
 
         $this->applyFiltersAndSorts($request, $userModel);
@@ -238,6 +244,15 @@ class UserController extends Controller
         $user['balance'] = $user['balance'] / 100;
         $user['commission_balance'] = $user['commission_balance'] / 100;
         $user['subscribe_url'] = Helper::getSubscribeUrl($user['token']);
+        if (UserPlan::isEnabled()) {
+            // legacy 字段名不变，值为实例聚合；另加 plan_list（含耗尽行）。
+            $computed = $model->getComputedPlanFields();
+            if (!empty($computed)) {
+                $user = array_merge($user, $computed);
+            }
+            $user['plan_list'] = $model->getPlanList();
+            unset($user['userPlans'], $user['user_plans']);
+        }
         return HookManager::filter('admin.user.transform', $user, $model);
     }
 
@@ -249,6 +264,13 @@ class UserController extends Controller
             'id.required' => '用户ID不能为空'
         ]);
         $user = User::find($request->input('id'))->load('invite_user');
+        if (UserPlan::isEnabled()) {
+            $user->loadMissing('userPlans');
+            foreach ($user->getComputedPlanFields() as $key => $value) {
+                $user->setAttribute($key, $value);
+            }
+            $user->setAttribute('plan_list', $user->getPlanList());
+        }
         $user = HookManager::filter('admin.user.detail', $user, $request);
         return $this->success($user);
     }
@@ -260,6 +282,18 @@ class UserController extends Controller
         $user = User::find($request->input('id'));
         if (!$user) {
             return $this->fail([400202, '用户不存在']);
+        }
+        if (!UserPlan::isEnabled() && ($request->exists('plans') || !empty($params['clear_plans']))) {
+            return $this->fail([400201, '多套餐功能未开启']);
+        }
+        if (UserPlan::isEnabled()) {
+            // 旧列冻结：主表 9 套餐列零读写，一律走 plans[] 实例 diff。
+            $frozen = ['plan_id', 'group_id', 'transfer_enable', 'u', 'd', 'expired_at', 'speed_limit', 'device_limit', 'next_reset_at'];
+            foreach ($frozen as $field) {
+                if (array_key_exists($field, $params) && $params[$field] !== null) {
+                    return $this->fail([400201, "多套餐模式下【{$field}】请通过套餐实例编辑"]);
+                }
+            }
         }
         if (isset($params['email'])) {
             if (User::byEmail($params['email'])->first() && $user->email !== $params['email']) {
@@ -336,10 +370,30 @@ class UserController extends Controller
         ]);
 
         try {
-            $user->update($params);
+            DB::transaction(function () use ($user, $params, $request) {
+                // 三铁律：管理端写实例前永远先锁用户行。
+                $locked = User::query()->lockForUpdate()->find($user->id);
+                if (!$locked) {
+                    throw new \RuntimeException('用户不存在');
+                }
+                UserPlan::query()->where('user_id', $user->id)->lockForUpdate()->get();
+
+                $base = $params;
+                unset($base['plans'], $base['clear_plans']);
+                if (UserPlan::isEnabled()) {
+                    // 旧列冻结：null 值也不得落库（fill 会清空主表）。
+                    unset($base['plan_id'], $base['group_id'], $base['transfer_enable'], $base['u'], $base['d'], $base['expired_at'], $base['speed_limit'], $base['device_limit'], $base['next_reset_at']);
+                }
+                $locked->fill($base);
+                if (!$locked->save()) {
+                    throw new \RuntimeException('保存失败');
+                }
+
+                $this->syncUserPlans($locked, $request, $params);
+            });
         } catch (\Exception $e) {
             Log::error($e);
-            return $this->fail([500, '保存失败']);
+            return $this->fail([500, $e instanceof \RuntimeException ? $e->getMessage() : '保存失败']);
         }
 
         HookManager::call('admin.user.update.after', [
@@ -349,6 +403,90 @@ class UserController extends Controller
         ]);
 
         return $this->success(true);
+    }
+
+    /**
+     * 多套餐实例 diff（与基字段同事务）。
+     * - plans 缺席 = 不碰实例；空数组 = 不操作（清空必须 clear_plans=true 二次确认）；
+     * - 非空 plans = 全量期望集合：更新列出的行、新增无 id 的行、删除未列出的旧行；
+     * - 可编辑：plan_id/expired_at/限速/设备数；sort_order 与剩余额度（transfer/u/d）只读不动；
+     * - 新增行配额默认取 plan 快照，可用 transfer_enable 覆盖。
+     */
+    private function syncUserPlans(User $user, Request $request, array $params): void
+    {
+        $clear = (bool) ($params['clear_plans'] ?? false);
+        if (!UserPlan::isEnabled()) {
+            return;
+        }
+
+        if ($clear) {
+            if ($request->exists('plans') && !empty($params['plans'])) {
+                throw new \RuntimeException('清空与 plans 不能同时提交');
+            }
+            UserPlan::query()->where('user_id', $user->id)->delete();
+            return;
+        }
+
+        if (!$request->exists('plans')) {
+            return;
+        }
+        $plans = $params['plans'] ?? null;
+        if (!is_array($plans) || empty($plans)) {
+            return;
+        }
+
+        // 先校验全部 plan_id，再动任何行。
+        $planIds = collect($plans)->pluck('plan_id')->map(fn ($id) => (int) $id)->unique()->all();
+        $existingPlans = Plan::query()->whereIn('id', $planIds)->get()->keyBy('id');
+        foreach ($planIds as $planId) {
+            if (!$existingPlans->has($planId)) {
+                throw new \RuntimeException("订阅计划不存在: {$planId}");
+            }
+        }
+
+        $existing = UserPlan::query()->where('user_id', $user->id)->get()->keyBy('id');
+        $keepIds = [];
+        foreach ($plans as $item) {
+            $rowId = isset($item['id']) ? (int) $item['id'] : 0;
+            $plan = $existingPlans->get((int) $item['plan_id']);
+            if ($rowId > 0) {
+                $row = $existing->get($rowId);
+                if (!$row) {
+                    throw new \RuntimeException("套餐实例不存在或不属于该用户: {$rowId}");
+                }
+                $row->forceFill([
+                    'plan_id' => $plan->id,
+                    'group_id' => $plan->group_id,
+                    'expired_at' => $item['expired_at'] ?? null,
+                    'speed_limit' => $item['speed_limit'] ?? null,
+                    'device_limit' => $item['device_limit'] ?? null,
+                ]);
+                $row->save();
+                $keepIds[] = $row->id;
+            } else {
+                $row = new UserPlan();
+                $row->forceFill([
+                    'user_id' => $user->id,
+                    'plan_id' => $plan->id,
+                    'kind' => UserPlan::KIND_CYCLE,
+                    'group_id' => $plan->group_id,
+                    'order_ids' => [],
+                    'transfer_enable' => isset($item['transfer_enable'])
+                        ? (int) $item['transfer_enable']
+                        : (int) $plan->transfer_enable * 1073741824,
+                    'u' => 0,
+                    'd' => 0,
+                    'expired_at' => $item['expired_at'] ?? null,
+                    'speed_limit' => $item['speed_limit'] ?? $plan->speed_limit,
+                    'device_limit' => $item['device_limit'] ?? $plan->device_limit,
+                    'sort_order' => 0,
+                ]);
+                $row->save();
+                $keepIds[] = $row->id;
+            }
+        }
+
+        UserPlan::query()->where('user_id', $user->id)->whereNotIn('id', $keepIds)->delete();
     }
 
     // Export users to CSV.
@@ -372,6 +510,7 @@ class UserController extends Controller
             ->with('plan:id,name')
             ->orderBy('id', 'asc')
             ->select([
+                'id',
                 'email',
                 'balance',
                 'commission_balance',
@@ -382,6 +521,10 @@ class UserController extends Controller
                 'token',
                 'plan_id'
             ]);
+
+        if (UserPlan::isEnabled()) {
+            $query->with('userPlans');
+        }
 
         if ($scope === 'selected') {
             $query->whereIn('id', $userIds);
@@ -414,14 +557,29 @@ class UserController extends Controller
             $query->chunk(500, function ($users) use ($output) {
                 foreach ($users as $user) {
                     try {
+                        $quota = $user->transfer_enable;
+                        $used = $user->u + $user->d;
+                        $expiredAt = $user->expired_at;
+                        $planName = $user->plan ? $user->plan->name : '无订阅';
+                        if (UserPlan::isEnabled()) {
+                            // 与列表同一聚合入口；订阅计划列展示全部有效实例名
+                            $computed = $user->getComputedPlanFields();
+                            if (!empty($computed)) {
+                                $quota = $computed['transfer_enable'];
+                                $used = $computed['u'] + $computed['d'];
+                                $expiredAt = $computed['expired_at'];
+                            }
+                            $names = array_unique(array_column($user->getPlanList(), 'name'));
+                            $planName = !empty($names) ? implode(';', $names) : '无订阅';
+                        }
                         $row = [
                             $user->email,
                             number_format($user->balance / 100, 2),
                             number_format($user->commission_balance / 100, 2),
-                            Helper::trafficConvert($user->transfer_enable),
-                            Helper::trafficConvert($user->transfer_enable - ($user->u + $user->d)),
-                            $user->expired_at ? date('Y-m-d H:i:s', $user->expired_at) : '长期有效',
-                            $user->plan ? $user->plan->name : '无订阅',
+                            Helper::trafficConvert($quota),
+                            Helper::trafficConvert($quota - $used),
+                            $expiredAt ? date('Y-m-d H:i:s', $expiredAt) : '长期有效',
+                            $planName,
                             Helper::getSubscribeUrl($user->token)
                         ];
                         fputcsv($output, $row);
@@ -471,6 +629,7 @@ class UserController extends Controller
             if (!$user->save()) {
                 return $this->fail([500, '生成失败']);
             }
+            $userService->seedInitialPlanRow($user);
             return $this->success(true);
         }
 
@@ -502,6 +661,7 @@ class UserController extends Controller
             foreach ($usersData as $userData) {
                 $user = $userService->createUser($userData);
                 $user->save();
+                $userService->seedInitialPlanRow($user);
                 $users[] = $user;
             }
             DB::commit();
@@ -583,6 +743,7 @@ class UserController extends Controller
             foreach ($usersData as $userData) {
                 $user = $userService->createUser($userData);
                 $user->save();
+                $userService->seedInitialPlanRow($user);
                 $users[] = $user;
             }
             DB::commit();
@@ -651,6 +812,10 @@ class UserController extends Controller
             ->with('plan:id,name')
             ->orderBy('id', 'desc');
 
+        if (UserPlan::isEnabled()) {
+            $builder->with('userPlans');
+        }
+
         if ($scope === 'filtered') {
             // filtered: apply filters/sort
             $builder->orderBy($sort, $sortType);
@@ -668,6 +833,23 @@ class UserController extends Controller
 
         $builder->chunk($chunkSize, function ($users) use ($subject, $content, $appName, $appUrl) {
             foreach ($users as $user) {
+                $planName = $user->plan?->name ?? '';
+                $expiredAt = $user->expired_at;
+                $quota = (int) ($user->transfer_enable ?? 0);
+                $used = (int) (($user->u ?? 0) + ($user->d ?? 0));
+                if (UserPlan::isEnabled()) {
+                    // 与列表同一聚合入口；多实例时套餐名用分号拼接
+                    $computed = $user->getComputedPlanFields();
+                    if (!empty($computed)) {
+                        $quota = (int) $computed['transfer_enable'];
+                        $used = (int) $computed['u'] + (int) $computed['d'];
+                        $expiredAt = $computed['expired_at'];
+                    }
+                    $names = array_unique(array_column($user->getPlanList(), 'name'));
+                    if (!empty($names)) {
+                        $planName = implode(';', $names);
+                    }
+                }
                 $vars = [
                     'app.name' => $appName,
                     'app.url' => $appUrl,
@@ -675,11 +857,11 @@ class UserController extends Controller
                     'user.id' => $user->id,
                     'user.email' => $user->email,
                     'user.uuid' => $user->uuid,
-                    'user.plan_name' => $user->plan?->name ?? '',
-                    'user.expired_at' => $user->expired_at ? date('Y-m-d H:i:s', $user->expired_at) : '',
-                    'user.transfer_enable' => (int) ($user->transfer_enable ?? 0),
-                    'user.transfer_used' => (int) (($user->u ?? 0) + ($user->d ?? 0)),
-                    'user.transfer_left' => (int) (($user->transfer_enable ?? 0) - (($user->u ?? 0) + ($user->d ?? 0))),
+                    'user.plan_name' => $planName,
+                    'user.expired_at' => $expiredAt ? date('Y-m-d H:i:s', $expiredAt) : '',
+                    'user.transfer_enable' => $quota,
+                    'user.transfer_used' => $used,
+                    'user.transfer_left' => (int) ($quota - $used),
                 ];
 
                 $templateValue = [

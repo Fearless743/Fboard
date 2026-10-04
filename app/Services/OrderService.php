@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Exceptions\ApiException;
+use App\Jobs\NodeUserSyncJob;
 use App\Jobs\OrderHandleJob;
 use App\Models\Coupon;
 use App\Models\Order;
@@ -204,6 +205,13 @@ class OrderService
         }
 
         $order = $this->order;
+        $userId = (int) $order->user_id;
+
+        // 多套餐：主表不再变更，observer 不会触发；开通后显式通知节点
+        // （按分组并集拆多份下发，见 NodeSyncService）。
+        if (UserPlan::isEnabled()) {
+            NodeUserSyncJob::dispatch($userId, 'updated');
+        }
 
         // 必须按订单 type 匹配（新购/续费/升级），勿误用 STATUS_* 常量。
         // 历史上曾写成 STATUS_PROCESSING，虽与 TYPE_NEW_PURCHASE 同为 1 碰巧生效，语义错误。

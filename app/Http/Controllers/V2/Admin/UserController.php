@@ -7,6 +7,7 @@ use App\Http\Requests\Admin\UserGenerate;
 use App\Http\Requests\Admin\UserSendMail;
 use App\Http\Requests\Admin\UserUpdate;
 use App\Jobs\SendEmailJob;
+use App\Jobs\NodeUserSyncJob;
 use App\Models\CommissionLog;
 use App\Models\Plan;
 use App\Models\User;
@@ -391,6 +392,11 @@ class UserController extends Controller
 
                 $this->syncUserPlans($locked, $request, $params);
             });
+
+            // 管理端实例 diff 不走 observer（只改实例表），显式通知节点。
+            if (UserPlan::isEnabled() && ($request->exists('plans') || !empty($params['clear_plans']))) {
+                NodeUserSyncJob::dispatch($user->id, 'updated');
+            }
         } catch (\Exception $e) {
             Log::error($e);
             return $this->fail([500, $e instanceof \RuntimeException ? $e->getMessage() : '保存失败']);

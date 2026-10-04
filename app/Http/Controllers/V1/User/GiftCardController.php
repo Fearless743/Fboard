@@ -6,6 +6,7 @@ use App\Exceptions\ApiException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\User\GiftCardCheckRequest;
 use App\Http\Requests\User\GiftCardRedeemRequest;
+use App\Jobs\NodeUserSyncJob;
 use App\Models\GiftCardUsage;
 use App\Services\GiftCardService;
 use Illuminate\Http\Request;
@@ -73,6 +74,11 @@ class GiftCardController extends Controller
                 'user_id' => $request->user()->id,
                 'rewards' => $result['rewards'],
             ]);
+
+            // 多套餐：实例表变更不走 observer，显式通知节点。
+            if (!empty($result['sync_user_id'])) {
+                NodeUserSyncJob::dispatch((int) $result['sync_user_id'], 'updated');
+            }
 
             return $this->success([
                 'message' => '兑换成功！',

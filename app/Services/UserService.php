@@ -9,6 +9,7 @@ use App\Models\Order;
 use App\Models\Plan;
 use App\Models\Server;
 use App\Models\User;
+use App\Models\UserPlan;
 use App\Services\Plugin\HookManager;
 use App\Services\TrafficResetService;
 use App\Models\TrafficResetLog;
@@ -47,6 +48,9 @@ class UserService
 
     public function isAvailable(User $user)
     {
+        if (UserPlan::isEnabled()) {
+            return $user->isAvailable();
+        }
         if (!$user->banned && $user->transfer_enable && ($user->expired_at > time() || $user->expired_at === NULL)) {
             return true;
         }

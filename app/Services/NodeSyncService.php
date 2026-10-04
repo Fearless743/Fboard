@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Server;
 use App\Models\ServerMachine;
 use App\Models\User;
+use App\Models\UserPlan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
@@ -68,6 +69,10 @@ class NodeSyncService
      */
     public static function notifyUserChanged(User $user): void
     {
+        if (UserPlan::isEnabled()) {
+            self::notifyUserChangedMulti($user);
+            return;
+        }
         if (!$user->group_id)
             return;
 
@@ -92,6 +97,74 @@ class NodeSyncService
                             'device_limit' => $user->device_limit,
                         ]
                     ],
+                ]);
+            } else {
+                self::push($server->id, 'sync.user.delta', [
+                    'action' => 'remove',
+                    'users' => [['id' => $user->id]],
+                ]);
+            }
+        }
+    }
+
+    /**
+     * 多套餐用户变更同步：同一用户按有效分组并集拆多份下发，
+     * 每份仅 group_id 不同（取实例快照值）；节点侧按 user id 去重。
+     * 匹配逻辑保持单 group 过滤不变：只推给覆盖了该分组的节点。
+     */
+    private static function notifyUserChangedMulti(User $user): void
+    {
+        $agg = $user->getPlanAggregate();
+        $groupIds = $agg['group_ids'];
+
+        if (empty($groupIds)) {
+            // 已无有效实例：兜底从主表分组移除（迁移冻结值），
+            // 覆盖不到的靠节点定期拉取自愈。
+            if ($user->group_id) {
+                self::notifyUserRemovedFromGroup($user->id, (int) $user->group_id);
+            }
+            return;
+        }
+
+        $servers = Server::where(function ($query) use ($groupIds) {
+            foreach (array_values($groupIds) as $index => $groupId) {
+                if ($index === 0) {
+                    $query->whereJsonContains('group_ids', (string) $groupId);
+                } else {
+                    $query->orWhereJsonContains('group_ids', (string) $groupId);
+                }
+                $query->orWhereJsonContains('group_ids', (int) $groupId);
+            }
+        })->get();
+
+        $available = !$user->banned && $agg['is_active'] && $agg['remaining'] > 0;
+
+        foreach ($servers as $server) {
+            if (!self::isNodeOnline($server->id))
+                continue;
+
+            if ((bool) admin_setting('maintenance_mode', 0)) {
+                self::push($server->id, 'sync.users', ['users' => []]);
+                continue;
+            }
+
+            $nodeGroups = array_map('intval', (array) ($server->group_ids ?? []));
+            $covered = array_values(array_intersect($groupIds, $nodeGroups));
+            if (empty($covered)) {
+                continue;
+            }
+
+            if ($available) {
+                $copies = array_map(fn (int $gid) => [
+                    'id' => $user->id,
+                    'uuid' => $user->uuid,
+                    'speed_limit' => $agg['speed_limit'],
+                    'device_limit' => $agg['device_limit'],
+                    'group_id' => $gid,
+                ], $covered);
+                self::push($server->id, 'sync.user.delta', [
+                    'action' => 'add',
+                    'users' => $copies,
                 ]);
             } else {
                 self::push($server->id, 'sync.user.delta', [

@@ -1,49 +1,44 @@
 # 多套餐（multi-plan）运维手册
 
-> 开关：`multi_plan_enable`（订阅配置段，默认关闭）。关闭 = 单套餐旧行为；
-> 开启后用户可同时持有多个套餐，新购不再替换已有。
+> 实例表 `v2_user_plan` 是套餐数据唯一权威源。`v2_user` 的 9 个套餐列
+> （`plan_id/group_id/transfer_enable/u/d/expired_at/speed_limit/device_limit/next_reset_at`）
+> 已删除；读取由 `User` 模型 accessor 实时聚合。无开关，始终生效。
 
 ## 发版顺序
 
-1. **发版 N**：建表 + 代码全切新表 + 迁移/对账/反填/一致性命令。旧列冻结
-   （多套餐下管理端直写主表 9 列会被拒绝，测试断言零读写）。
-2. 开开关前先迁移，再开开关。
-3. **发版 N+1**：对账零差异 → 删列 migration（独立 PR）。
+1. **建表 + 迁移**：`2026_10_04_000001_create_v2_user_plan_table` 建表并在同一
+   migration 内自动迁入存量单套餐用户（`UserPlanMigrator::run()`，幂等可重跑）。
+   无需任何手动命令。
+2. **删列**：`2026_10_05_000001_drop_plan_columns_from_v2_user_table` 删除主表 9 列
+   （自动先删依赖索引）。大表先确认 instant drop 支持（MySQL 8.0.29+），否则低峰或 pt-osc。
 
-## 迁移
+## 迁移（存量数据）
 
-```bash
-# 先看数，不写库
-php artisan fboard:migrate-user-plans --dry-run
-# 正式迁移（可重跑可中断）
-php artisan fboard:migrate-user-plans
-```
-
-- 单套餐用户建 cycle 行（`kind=1`，`order_ids=[]`，9 列值照抄含 `u/d` 全额与
-  `group_id` 快照）；`expired_at` 0/null 归一为永久。
+- 建表 migration 内自动执行，单套餐用户建 cycle 行（`kind=1`，`order_ids=[]`，
+  9 列值照抄含 `u/d` 全额与 `group_id` 快照）；`expired_at` 0/null 归一为永久。
 - 脏数据：`plan_id` null 跳过；指向已删套餐建行但限速置空+日志；
   零配额无订阅不建行；已有 cycle 行跳过。
-- 开关开启不触发迁移（迁移是独立一次性命令）。
 
-## 对账与一致性检查（常驻）
+## 一致性检查（常驻）
 
 ```bash
 php artisan fboard:check-user-plans
 ```
 
 - 扫 `(user,plan,kind=1)` 重复行；
-- 有实例行的用户：实例聚合必须 == 主表快照，差异即失败退出（供 cron 告警）；
-- 只报不改。
-- 定时：每日 01:30 自动跑。
+- 扫 pack 行残留 `next_reset_at`（应为 null）；
+- 扫负配额/负用量等脏数据；
+- 只报不改；定时每日 01:30 自动跑。
 
 ## 回滚
 
-- **删列前**：关开关即回滚（主表快照仍在，开通/扣减/重置走旧路径）。
-  注意删列前主表已冻结：开关关闭期间的新购不会写主表，
-  回滚后这部分数据只在实例表，需人工核对。
-- **删列后**：重建列 + 反填脚本（与删列同 PR，演练一次）。
-  反填口径 = 实例聚合（配额/用量求和、到期取最晚、限速/设备取 max、
-  分组取有效实例第一个），与 `getPlanAggregate()` 一致。
+```bash
+php artisan migrate:rollback   # 回滚删列 migration
+```
+
+- down() 自动重建 9 列，并从 `v2_user_plan` 有效实例聚合反填回 `v2_user`；
+- 反填口径 = 实例聚合（配额/用量求和、到期取最晚、限速/设备取 max、
+  分组/套餐单值才回填，`next_reset_at` 取最早已有效实例），与 `getPlanAggregate()` 一致。
 
 ## 清理
 

@@ -272,9 +272,8 @@ class GiftCardService
         if ($row) {
             $row->transfer_enable = (int) $row->transfer_enable + $bytes;
             $row->save();
-            return;
         }
-        $this->user->transfer_enable = ($this->user->transfer_enable ?? 0) + $bytes;
+        // 无有效 cycle 行则不落（主表已无 transfer_enable 列）。
     }
 
     private function grantDeviceLimit(int $count): void
@@ -283,9 +282,7 @@ class GiftCardService
         if ($row) {
             $row->device_limit = ((int) $row->device_limit) + $count;
             $row->save();
-            return;
         }
-        $this->user->device_limit = ($this->user->device_limit ?? 0) + $count;
     }
 
     private function grantResetPackage(array $rewards): void
@@ -369,11 +366,8 @@ class GiftCardService
                 if ($row) {
                     $row->transfer_enable = (int) $row->transfer_enable + $inviteTransfer;
                     $row->save();
-                } else {
-                    // 兜底：邀请人无实例行时才写主表（正常迁移后不会触发）。
-                    $inviteUser->transfer_enable = ($inviteUser->transfer_enable ?? 0) + $inviteTransfer;
-                    $inviteUser->save();
                 }
+                // 邀请人无实例行则不落（主表已无 transfer_enable 列）。
                 $inviteRewards['transfer_enable'] = $inviteTransfer;
             }
         }

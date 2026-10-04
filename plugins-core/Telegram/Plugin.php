@@ -77,9 +77,7 @@ class Plugin extends AbstractPlugin
     if (!$user)
       return;
     $user->load('plan');
-    foreach ($user->getComputedPlanFields() as $key => $value) {
-      $user->setAttribute($key, $value);
-    }
+    $user->loadMissing('userPlans');
     $transfer_enable = $this->transferToGBString($user->transfer_enable);
     $remaining_traffic = $this->transferToGBString($user->transfer_enable - $user->u - $user->d);
     $u = $this->transferToGBString($user->u);
@@ -335,9 +333,7 @@ class Plugin extends AbstractPlugin
       return;
     }
 
-    foreach ($user->getComputedPlanFields() as $key => $value) {
-      $user->setAttribute($key, $value);
-    }
+    $user->loadMissing('userPlans');
 
     $transferUsed = $user->u + $user->d;
     $transferTotal = $user->transfer_enable;

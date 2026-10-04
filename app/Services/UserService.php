@@ -54,24 +54,25 @@ class UserService
 
     public function getAvailableUsers()
     {
-        return User::whereRaw('u + d < transfer_enable')
-            ->where(function ($query) {
-                $query->where('expired_at', '>=', time())
-                    ->orWhere('expired_at', NULL);
-            })
+        // 实例表是唯一数据源：持有有效实例且聚合剩余 > 0。
+        return User::query()
             ->where('banned', 0)
+            ->wherePlanAvailable()
             ->get();
     }
 
     public function getUnAvailbaleUsers()
     {
-        return User::where(function ($query) {
-            $query->where('expired_at', '<', time())
-                ->orWhere('expired_at', 0);
-        })
-            ->where(function ($query) {
-                $query->where('plan_id', NULL)
-                    ->orWhere('transfer_enable', 0);
+        // 无有效实例（未迁移/无套餐/全部过期）的用户。
+        $now = time();
+
+        return User::query()
+            ->whereNotExists(function ($q) use ($now) {
+                $q->selectRaw('1')->from('v2_user_plan')
+                    ->whereColumn('v2_user_plan.user_id', 'v2_user.id')
+                    ->where(function ($w) use ($now) {
+                        $w->whereNull('expired_at')->orWhere('expired_at', '>', $now);
+                    });
             })
             ->get();
     }
@@ -201,34 +202,28 @@ class UserService
         // 默认设置
         $user->remind_expire = admin_setting('default_remind_expire', 1);
         $user->remind_traffic = admin_setting('default_remind_traffic', 1);
-        $user->expired_at = null;
 
-        // 可选字段
+        // 可选账号字段
         $this->setOptionalFields($user, $data);
 
-        // 处理计划
+        // 处理计划：只暂存意图，实例行在 save 后由 seedInitialPlanRow() 创建。
         if (isset($data['plan_id'])) {
-            $this->setPlanForUser($user, $data['plan_id'], $data['expired_at'] ?? null);
+            $this->prepareInitialPlan($user, (int) $data['plan_id'], $data['expired_at'] ?? null);
         } else {
-            $this->setTryOutPlan(user: $user);
+            $this->prepareTryOutPlan($user);
         }
 
         return $user;
     }
 
     /**
-     * 设置可选字段
+     * 设置可选字段（仅账号/关系字段）。
+     * 套餐字段（plan_id/group_id/transfer_enable/expired_at/speed_limit/device_limit）
+     * 已迁到 v2_user_plan，由 draftInitialPlan + seedInitialPlanRow() 处理。
      */
     private function setOptionalFields(User $user, array $data): void
     {
-        $optionalFields = [
-            'invite_user_id',
-            'telegram_id',
-            'group_id',
-            'speed_limit',
-            'expired_at',
-            'transfer_enable'
-        ];
+        $optionalFields = ['invite_user_id', 'telegram_id'];
 
         foreach ($optionalFields as $field) {
             if (array_key_exists($field, $data)) {
@@ -238,46 +233,39 @@ class UserService
     }
 
     /**
-     * 注册/批量生成后调用：按主表快照补建 cycle 首行（order_ids 为空）。
-     * 主表字段照常写（注册流程依赖），实例行保证新用户即有一行可用。
+     * 注册/批量生成后（用户已 save）调用：按 draftInitialPlan 建 cycle 首行。
+     * 主表已无套餐列，意图只在内存 draft 中，这里落到 v2_user_plan。
      */
     public function seedInitialPlanRow(User $user): void
     {
-        if ($user->plan_id === null || (int) $user->transfer_enable <= 0) {
+        $draft = $user->draftInitialPlan;
+        if (!$draft || empty($draft['plan_id']) || (int) $draft['transfer_enable'] <= 0) {
             return;
         }
         $exists = UserPlan::query()
             ->where('user_id', $user->id)
-            ->where('plan_id', $user->plan_id)
+            ->where('plan_id', $draft['plan_id'])
             ->where('kind', UserPlan::KIND_CYCLE)
             ->exists();
         if ($exists) {
             return;
         }
 
-        $plan = Plan::find($user->plan_id);
-        $groupId = $user->group_id;
-        $speedLimit = $user->speed_limit;
-        $deviceLimit = $user->device_limit;
-        if ($plan) {
-            $groupId = $plan->group_id;
-            $speedLimit = $plan->speed_limit;
-            $deviceLimit = $plan->device_limit;
-        }
-        $expiredAt = $user->expired_at ? (int) $user->expired_at : null;
+        $plan = Plan::find($draft['plan_id']);
+        $expiredAt = $draft['expired_at'] !== null ? (int) $draft['expired_at'] : null;
         $row = new UserPlan();
         $row->forceFill([
             'user_id' => $user->id,
-            'plan_id' => $user->plan_id,
+            'plan_id' => $draft['plan_id'],
             'kind' => UserPlan::KIND_CYCLE,
-            'group_id' => $groupId,
+            'group_id' => $draft['group_id'],
             'order_ids' => [],
-            'transfer_enable' => (int) $user->transfer_enable,
+            'transfer_enable' => (int) $draft['transfer_enable'],
             'u' => 0,
             'd' => 0,
             'expired_at' => $expiredAt,
-            'speed_limit' => $speedLimit,
-            'device_limit' => $deviceLimit,
+            'speed_limit' => $draft['speed_limit'],
+            'device_limit' => $draft['device_limit'],
             'sort_order' => 0,
         ]);
         $next = app(TrafficResetService::class)->calculateNextResetTimeForPlan($plan, $expiredAt);
@@ -286,79 +274,46 @@ class UserService
     }
 
     /**
-     * 为用户设置计划
+     * 暂存「指定套餐开通」意图（不写库）。
      */
-    private function setPlanForUser(User $user, int $planId, ?int $expiredAt = null): void
+    private function prepareInitialPlan(User $user, int $planId, ?int $expiredAt = null): void
     {
         $plan = Plan::find($planId);
-        if (!$plan)
+        if (!$plan) {
             return;
-
-        $user->plan_id = $plan->id;
-        $user->group_id = $plan->group_id;
-        $user->transfer_enable = $plan->transfer_enable * 1073741824;
-        $user->speed_limit = $plan->speed_limit;
-
-        if ($expiredAt) {
-            $user->expired_at = $expiredAt;
-        }
-    }
-
-    /**
-     * 为用户分配一个新套餐或续费现有套餐
-     *
-     * @param User $user 用户模型
-     * @param Plan $plan 套餐模型
-     * @param int $validityDays 购买天数
-     * @return User 更新后的用户模型
-     */
-    public function assignPlan(User $user, Plan $plan, int $validityDays): User
-    {
-        $user->plan_id = $plan->id;
-        $user->group_id = $plan->group_id;
-        $user->transfer_enable = $plan->transfer_enable * 1073741824;
-        $user->speed_limit = $plan->speed_limit;
-        $user->device_limit = $plan->device_limit;
-
-        if ($validityDays > 0) {
-            $user = $this->extendSubscription($user, $validityDays);
         }
 
-        $user->save();
-        return $user;
+        $user->draftInitialPlan = [
+            'plan_id' => $plan->id,
+            'group_id' => $plan->group_id,
+            'speed_limit' => $plan->speed_limit,
+            'device_limit' => $plan->device_limit,
+            'transfer_enable' => (int) $plan->transfer_enable * 1073741824,
+            'expired_at' => $expiredAt ?: null,
+        ];
     }
 
     /**
-     * 延长用户的订阅有效期
-     *
-     * @param User $user 用户模型
-     * @param int $days 延长天数
-     * @return User 更新后的用户模型
+     * 暂存「试用套餐开通」意图（不写库）。
      */
-    public function extendSubscription(User $user, int $days): User
+    private function prepareTryOutPlan(User $user): void
     {
-        $currentExpired = $user->expired_at ?? time();
-        $user->expired_at = max($currentExpired, time()) + ($days * 86400);
-
-        return $user;
-    }
-
-    /**
-     * 设置试用计划
-     */
-    private function setTryOutPlan(User $user): void
-    {
-        if (!(int) admin_setting('try_out_plan_id', 0))
+        $planId = (int) admin_setting('try_out_plan_id', 0);
+        if (!$planId) {
             return;
-
-        $plan = Plan::find(admin_setting('try_out_plan_id'));
-        if (!$plan)
+        }
+        $plan = Plan::find($planId);
+        if (!$plan) {
             return;
+        }
 
-        $user->transfer_enable = $plan->transfer_enable * 1073741824;
-        $user->plan_id = $plan->id;
-        $user->group_id = $plan->group_id;
-        $user->expired_at = time() + (admin_setting('try_out_hour', 1) * 3600);
-        $user->speed_limit = $plan->speed_limit;
+        $user->draftInitialPlan = [
+            'plan_id' => $plan->id,
+            'group_id' => $plan->group_id,
+            'speed_limit' => $plan->speed_limit,
+            'device_limit' => null,
+            'transfer_enable' => (int) $plan->transfer_enable * 1073741824,
+            'expired_at' => time() + ((int) admin_setting('try_out_hour', 1) * 3600),
+        ];
     }
 }

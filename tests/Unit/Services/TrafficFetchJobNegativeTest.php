@@ -4,6 +4,7 @@ namespace Tests\Unit\Services;
 
 use App\Jobs\TrafficFetchJob;
 use App\Models\User;
+use App\Models\UserPlan;
 use App\Utils\Helper;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Redis;
@@ -19,7 +20,6 @@ class TrafficFetchJobNegativeTest extends TestCase
     public function test_negative_increments_do_not_reduce_user_traffic(): void
     {
         // 负增量钳为 0 后该用户没有任何流量增量，不应再进入超额检查队列。
-        // （旧实现无条件 sadd，把大量零流量用户反复塞进 pending_check。）
         Redis::shouldReceive('sadd')->never();
         $user = new User();
         $user->forceFill([
@@ -27,13 +27,26 @@ class TrafficFetchJobNegativeTest extends TestCase
             'password' => password_hash('p', PASSWORD_DEFAULT),
             'uuid' => Helper::guid(true),
             'token' => Helper::guid(),
-            'u' => 1_000_000,
-            'd' => 2_000_000,
-            'transfer_enable' => 10_000_000_000,
             'created_at' => time(),
             'updated_at' => time(),
         ]);
         $user->save();
+
+        // 实例表是唯一数据源：用量断言读实例行。
+        $row = new UserPlan();
+        $row->forceFill([
+            'user_id' => $user->id,
+            'plan_id' => 1,
+            'kind' => UserPlan::KIND_CYCLE,
+            'group_id' => 1,
+            'order_ids' => [],
+            'transfer_enable' => 10_000_000_000,
+            'u' => 1_000_000,
+            'd' => 2_000_000,
+            'expired_at' => null,
+            'sort_order' => 0,
+        ]);
+        $row->save();
 
         $job = new TrafficFetchJob(
             ['rate' => 1],
@@ -43,8 +56,8 @@ class TrafficFetchJobNegativeTest extends TestCase
         );
         $job->handle();
 
-        $user->refresh();
-        $this->assertSame(1_000_000, (int) $user->u, '负 u 不得减少上行');
-        $this->assertSame(2_000_000, (int) $user->d, '负 d 不得减少下行');
+        $row->refresh();
+        $this->assertSame(1_000_000, (int) $row->u, '负 u 不得减少上行');
+        $this->assertSame(2_000_000, (int) $row->d, '负 d 不得减少下行');
     }
 }

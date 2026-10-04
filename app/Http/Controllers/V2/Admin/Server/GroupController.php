@@ -16,7 +16,7 @@ class GroupController extends Controller
     {
         $serverGroups = ServerGroup::query()
             ->orderByDesc('id')
-            ->withCount('users')
+            ->withCount(['userPlans as users_count'])
             ->get();
 
         // 只在需要时手动加载server_count
@@ -58,7 +58,7 @@ class GroupController extends Controller
         if (Plan::where('group_id', $groupId)->exists()) {
             return $this->fail([400, '该组已被订阅所使用，无法删除']);
         }
-        if (User::where('group_id', $groupId)->exists()) {
+        if (\App\Models\UserPlan::where('group_id', $groupId)->exists()) {
             return $this->fail([400, '该组已被用户所使用，无法删除']);
         }
         return $this->success($serverGroup->delete());

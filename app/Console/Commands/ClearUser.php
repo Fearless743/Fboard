@@ -39,10 +39,13 @@ class ClearUser extends Command
      */
     public function handle()
     {
-        $builder = User::where('plan_id', NULL)
-            ->where('transfer_enable', 0)
-            ->where('expired_at', 0)
-            ->where('last_login_at', NULL);
+        // 主表已无套餐列：无任何实例行 = 无套餐。
+        $builder = User::query()
+            ->whereNull('last_login_at')
+            ->whereNotExists(function ($q) {
+                $q->selectRaw('1')->from('v2_user_plan')
+                    ->whereColumn('v2_user_plan.user_id', 'v2_user.id');
+            });
         $count = $builder->count();
         if ($builder->delete()) {
             $this->info("已删除{$count}位没有任何数据的用户");

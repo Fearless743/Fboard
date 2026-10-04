@@ -78,10 +78,34 @@ class User extends Authenticatable
         'remind_traffic' => 'boolean',
         'commission_auto_check' => 'boolean',
         'commission_rate' => 'float',
-        'next_reset_at' => 'timestamp',
+        // next_reset_at 已无主表列（accessor 实时取实例聚合），不再 cast。
         'last_reset_at' => 'timestamp',
     ];
     protected $hidden = ['password'];
+
+    /**
+     * v2_user 已删除的套餐列（套餐数据唯一权威源 = v2_user_plan）。
+     * 对这些属性的写入一律忽略，避免误写不存在的列；读取走上方 accessor 聚合。
+     */
+    private const DROPPED_PLAN_COLUMNS = [
+        'plan_id', 'group_id', 'transfer_enable', 'u', 'd',
+        'expired_at', 'next_reset_at', 'speed_limit', 'device_limit',
+    ];
+
+    public function setAttribute($key, $value)
+    {
+        if (in_array($key, self::DROPPED_PLAN_COLUMNS, true)) {
+            return $this;
+        }
+
+        return parent::setAttribute($key, $value);
+    }
+
+    /**
+     * 注册/批量生成时暂存的套餐意图（普通 PHP 属性，不持久化）。
+     * save 后由 UserService::seedInitialPlanRow() 落到 v2_user_plan。
+     */
+    public ?array $draftInitialPlan = null;
 
     public const COMMISSION_TYPE_SYSTEM = 0;
     public const COMMISSION_TYPE_PERIOD = 1;
@@ -119,6 +143,56 @@ class User extends Authenticatable
     public function group(): BelongsTo
     {
         return $this->belongsTo(ServerGroup::class, 'group_id', 'id');
+    }
+
+    // ===== 读兼容层（v2_user 套餐列已删）=====
+    // 主表 9 套餐列的值一律实时取自实例聚合，语义 = getPlanAggregate()。
+    // 列表/批量场景应先预加载 userPlans（或 withPlanAggregate），避免逐行查库。
+    // 禁止对这些属性赋值（列不存在）；写套餐一律走 v2_user_plan。
+
+    protected function planId(): Attribute
+    {
+        return Attribute::get(fn () => $this->getPlanAggregate()['plan_id']);
+    }
+
+    protected function groupId(): Attribute
+    {
+        return Attribute::get(fn () => $this->getPlanAggregate()['group_id']);
+    }
+
+    protected function transferEnable(): Attribute
+    {
+        return Attribute::get(fn () => $this->getPlanAggregate()['quota']);
+    }
+
+    protected function u(): Attribute
+    {
+        return Attribute::get(fn () => $this->getPlanAggregate()['used_u']);
+    }
+
+    protected function d(): Attribute
+    {
+        return Attribute::get(fn () => $this->getPlanAggregate()['used_d']);
+    }
+
+    protected function expiredAt(): Attribute
+    {
+        return Attribute::get(fn () => $this->getPlanAggregate()['expired_at']);
+    }
+
+    protected function speedLimit(): Attribute
+    {
+        return Attribute::get(fn () => $this->getPlanAggregate()['speed_limit']);
+    }
+
+    protected function deviceLimit(): Attribute
+    {
+        return Attribute::get(fn () => $this->getPlanAggregate()['device_limit']);
+    }
+
+    protected function nextResetAt(): Attribute
+    {
+        return Attribute::get(fn () => $this->getPlanAggregate()['next_reset_at']);
     }
 
     /**
@@ -162,6 +236,7 @@ class User extends Authenticatable
             ->withMax(['userPlans as plans_expired_max' => $active], 'expired_at')
             ->withMax(['userPlans as plans_speed_max' => $active], 'speed_limit')
             ->withMax(['userPlans as plans_device_max' => $active], 'device_limit')
+            ->withMin(['userPlans as plans_next_min' => $active], 'next_reset_at')
             ->withCount(['userPlans as plans_active_count' => $active])
             ->withCount(['userPlans as plans_permanent_count' => fn (Builder $q): Builder => UserPlan::applyActive($q, $now)->whereNull('expired_at')]);
     }
@@ -197,6 +272,21 @@ class User extends Authenticatable
             ->whereRaw("{$sum('u + d')} >= {$sum('transfer_enable')}", [$now, $now]);
     }
 
+    /**
+     * SQL 内判定复用入口：持有有效实例且聚合剩余 > 0 的用户。
+     */
+    public function scopeWherePlanAvailable(Builder $query, ?int $now = null): Builder
+    {
+        $now ??= time();
+        $table = $query->getModel()->getTable();
+        $valid = '(expired_at IS NULL OR expired_at > ?)';
+        $sum = fn (string $expr) => "(SELECT COALESCE(SUM({$expr}), 0) FROM v2_user_plan"
+            . " WHERE v2_user_plan.user_id = {$table}.id AND {$valid})";
+
+        return $query->wherePlanActive($now)
+            ->whereRaw("{$sum('u + d')} < {$sum('transfer_enable')}", [$now, $now]);
+    }
+
     public function hasActiveUserPlan(?int $now = null): bool
     {
         return $this->activeUserPlans($now)->exists();
@@ -207,7 +297,7 @@ class User extends Authenticatable
      * 聚合语义（实时计算）：有效实例=未到期；配额/用量=有效实例之和；
      * 到期=任一永久则 null 否则最晚；限速/设备=有效值 max；分组=有效实例 group_id 去重并集。
      *
-     * @return array{is_active:bool,quota:int,used:int,remaining:int,expired_at:?int,speed_limit:?int,device_limit:?int,group_ids:int[],active_count:int}
+     * @return array{is_active:bool,quota:int,used:int,used_u:int,used_d:int,remaining:int,expired_at:?int,speed_limit:?int,device_limit:?int,group_ids:int[],plan_id:?int,group_id:?int,next_reset_at:?int,active_count:int}
      */
     public function getPlanAggregate(?int $now = null): array
     {
@@ -231,7 +321,8 @@ class User extends Authenticatable
                 $this->getAttribute('plans_speed_max') !== null ? (int) $this->getAttribute('plans_speed_max') : null,
                 $this->getAttribute('plans_device_max') !== null ? (int) $this->getAttribute('plans_device_max') : null,
                 $this->activeUserPlans($now)->pluck('group_id')->map(fn ($v) => (int) $v)->unique()->sort()->values()->all(),
-                $this->activeUserPlans($now)->pluck('plan_id')->map(fn ($v) => (int) $v)->unique()->values()->all()
+                $this->activeUserPlans($now)->pluck('plan_id')->map(fn ($v) => (int) $v)->unique()->values()->all(),
+                $this->getAttribute('plans_next_min') !== null ? (int) $this->getAttribute('plans_next_min') : null
             );
         }
 
@@ -248,7 +339,8 @@ class User extends Authenticatable
             $instances->max('speed_limit') !== null ? (int) $instances->max('speed_limit') : null,
             $instances->max('device_limit') !== null ? (int) $instances->max('device_limit') : null,
             $instances->pluck('group_id')->map(fn ($v) => (int) $v)->unique()->sort()->values()->all(),
-            $instances->pluck('plan_id')->map(fn ($v) => (int) $v)->unique()->values()->all()
+            $instances->pluck('plan_id')->map(fn ($v) => (int) $v)->unique()->values()->all(),
+            $instances->min(fn (UserPlan $p) => $p->next_reset_at !== null ? (int) $p->next_reset_at : null)
         );
     }
 
@@ -269,7 +361,7 @@ class User extends Authenticatable
      * 到期行调用方自行过滤或由 isActive 判断。
      *
      * @param \Illuminate\Support\Collection<int, UserPlan> $instances
-     * @return array{is_active:bool,quota:int,used:int,remaining:int,expired_at:?int,speed_limit:?int,device_limit:?int,group_ids:int[],active_count:int}
+     * @return array{is_active:bool,quota:int,used:int,used_u:int,used_d:int,remaining:int,expired_at:?int,speed_limit:?int,device_limit:?int,group_ids:int[],plan_id:?int,group_id:?int,next_reset_at:?int,active_count:int}
      */
     public static function summarizeInstances($instances, int $now): array
     {
@@ -279,6 +371,7 @@ class User extends Authenticatable
         $maxExpired = $plans->max(fn (UserPlan $p) => $p->expired_at !== null ? (int) $p->expired_at : null);
         $maxSpeed = $plans->max(fn (UserPlan $p) => $p->speed_limit !== null ? (int) $p->speed_limit : null);
         $maxDevice = $plans->max(fn (UserPlan $p) => $p->device_limit !== null ? (int) $p->device_limit : null);
+        $minNext = $plans->min(fn (UserPlan $p) => $p->next_reset_at !== null ? (int) $p->next_reset_at : null);
 
         return self::normalizePlanAggregate(
             (int) $plans->sum(fn (UserPlan $p) => (int) $p->transfer_enable),
@@ -290,7 +383,8 @@ class User extends Authenticatable
             $maxSpeed !== null ? (int) $maxSpeed : null,
             $maxDevice !== null ? (int) $maxDevice : null,
             $groupIds,
-            $planIds
+            $planIds,
+            $minNext !== null ? (int) $minNext : null
         );
     }
 
@@ -307,7 +401,8 @@ class User extends Authenticatable
         ?int $maxSpeedLimit,
         ?int $maxDeviceLimit,
         array $groupIds,
-        array $planIds = []
+        array $planIds = [],
+        ?int $minNextResetAt = null
     ): array {
         $used = $usedU + $usedD;
         $planIds = array_values(array_unique(array_map('intval', $planIds)));
@@ -327,6 +422,7 @@ class User extends Authenticatable
             // 单 plan 单组时回填主表 plan_id/group_id，多值时 null（诚实未知）。
             'plan_id' => count($planIds) === 1 ? $planIds[0] : null,
             'group_id' => count($groupIds) === 1 ? $groupIds[0] : null,
+            'next_reset_at' => $minNextResetAt,
             'active_count' => $activeCount,
         ];
     }

@@ -65,9 +65,7 @@ class ServerService
         }
         $servers = [];
         foreach ($groupIds as $groupId) {
-            $scoped = clone $user;
-            $scoped->group_id = $groupId;
-            foreach (self::getAvailableServersForGroup($scoped) as $server) {
+            foreach (self::getAvailableServersForGroup($user, (int) $groupId) as $server) {
                 $servers[$server['id']] = $server;
             }
         }
@@ -78,13 +76,13 @@ class ServerService
     /**
      * 单组订阅节点查询（匹配逻辑保持单 group 过滤不变）。
      */
-    private static function getAvailableServersForGroup(User $user): array
+    private static function getAvailableServersForGroup(User $user, int $groupId): array
     {
-        $servers = Server::where(function ($query) use ($user) {
-                $groupId = (string) $user->group_id;
+        $servers = Server::where(function ($query) use ($groupId) {
+                $groupStr = (string) $groupId;
                 // 同时匹配字符串和整型两种存储形式，避免 JSON_CONTAINS 类型不匹配
-                $query->whereJsonContains('group_ids', $groupId)
-                      ->orWhereJsonContains('group_ids', (int) $groupId);
+                $query->whereJsonContains('group_ids', $groupStr)
+                      ->orWhereJsonContains('group_ids', $groupId);
             })
             ->where('show', true)
             ->where(function ($query) {

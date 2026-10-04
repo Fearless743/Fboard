@@ -69,7 +69,8 @@ class MailService
             'skipped' => 0,
         ];
 
-        User::select('id', 'email', 'expired_at', 'transfer_enable', 'u', 'd', 'remind_expire', 'remind_traffic')
+        User::select('id', 'email', 'remind_expire', 'remind_traffic')
+            ->with('userPlans')
             ->where(function ($query) {
                 $query->where('remind_expire', true)
                     ->orWhere('remind_traffic', true);
@@ -102,10 +103,7 @@ class MailService
                 $statistics['processed_users']++;
                 $emailsSent = 0;
 
-                // 同一聚合入口：legacy 字段名覆盖为计算值（仅内存，不落库）。
-                foreach ($user->getComputedPlanFields() as $key => $value) {
-                    $user->setAttribute($key, $value);
-                }
+                // 读侧由 User accessor 实时聚合（userPlans 已预加载），无需手动覆盖。
 
                 // 检查并发送过期提醒
                 if ($user->remind_expire && $this->shouldSendExpireRemind($user)) {

@@ -3,33 +3,28 @@
 namespace App\Observers;
 
 use App\Models\Plan;
-use App\Models\User;
+use App\Models\UserPlan;
 use App\Services\TrafficResetService;
 
+/**
+ * 套餐 reset_traffic_method 变更后，重算所有持有该套餐实例的 cycle 行 next_reset_at。
+ */
 class PlanObserver
 {
-    /**
-     * reset user  next_reset_at
-     */
     public function updated(Plan $plan): void
     {
         if (!$plan->isDirty('reset_traffic_method')) {
             return;
         }
         $trafficResetService = app(TrafficResetService::class);
-        User::where('plan_id', $plan->id)
-            ->where('banned', 0)
-            ->where(function ($query) {
-                $query->where('expired_at', '>', time())
-                    ->orWhereNull('expired_at');
-            })
+        UserPlan::where('plan_id', $plan->id)
+            ->where('kind', UserPlan::KIND_CYCLE)
             ->lazyById(500)
-            ->each(function (User $user) use ($trafficResetService) {
-                $nextResetTime = $trafficResetService->calculateNextResetTime($user);
-                $user->update([
+            ->each(function (UserPlan $row) use ($trafficResetService, $plan) {
+                $nextResetTime = $trafficResetService->calculateNextResetTimeForPlan($plan, $row->expired_at);
+                $row->update([
                     'next_reset_at' => $nextResetTime?->timestamp,
                 ]);
             });
     }
 }
-

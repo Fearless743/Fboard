@@ -179,10 +179,15 @@ class PlanService
             return true;
         }
 
-        $activeUserCount = User::where('plan_id', $plan->id)
-            ->where(function ($query) {
-                $query->where('expired_at', '>=', time())
-                    ->orWhereNull('expired_at');
+        // 统计持有该 plan 有效实例的用户数（主表已无 plan_id/expired_at 列）。
+        $activeUserCount = User::query()
+            ->whereExists(function ($query) use ($plan) {
+                $query->selectRaw('1')->from('v2_user_plan')
+                    ->whereColumn('v2_user_plan.user_id', 'v2_user.id')
+                    ->where('v2_user_plan.plan_id', $plan->id)
+                    ->where(function ($w) {
+                        $w->whereNull('expired_at')->orWhere('expired_at', '>', time());
+                    });
             })
             ->count();
 

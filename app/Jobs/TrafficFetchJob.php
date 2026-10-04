@@ -69,31 +69,10 @@ class TrafficFetchJob implements ShouldQueue
 
         $now = time();
 
-        // 实例表是唯一数据源：无条件走实例分摊；主表 u/d/t 同步双写（兼容旧读法）。
+        // 实例表是唯一数据源：用量只写 v2_user_plan；主表仅刷新 t（最后活跃）。
         $touched = $this->allocateMulti($userIds, $this->data, $rate, $reportTs, $resetAt, $now);
 
         if (!empty($touched)) {
-            $perUser = [];
-            foreach ($this->data as $uid => $v) {
-                $uid = (int) $uid;
-                if (!in_array($uid, $touched, true)) {
-                    continue;
-                }
-                $uInc = (int) max(0, (int) round(((float) $v[0]) * $rate));
-                $dInc = (int) max(0, (int) round(((float) $v[1]) * $rate));
-                if ($uInc === 0 && $dInc === 0) {
-                    continue;
-                }
-                $perUser[$uid] = [$uInc, $dInc];
-            }
-            // 主表双写：逐用户一条 UPDATE（与旧语义一致），失败不影响实例已落库。
-            foreach ($perUser as $uid => [$uInc, $dInc]) {
-                try {
-                    User::where('id', $uid)->incrementEach(['u' => $uInc, 'd' => $dInc], ['t' => $now]);
-                } catch (\Throwable $e) {
-                    report($e);
-                }
-            }
             User::whereIn('id', $touched)->update(['t' => $now]);
             Redis::sadd('traffic:pending_check', ...$touched);
         }

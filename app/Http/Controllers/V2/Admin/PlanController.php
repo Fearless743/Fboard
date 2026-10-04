@@ -7,6 +7,7 @@ use App\Http\Requests\Admin\PlanSave;
 use App\Models\Order;
 use App\Models\Plan;
 use App\Models\User;
+use App\Models\UserPlan;
 use App\Services\Plugin\HookManager;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -23,14 +24,15 @@ class PlanController extends Controller
             ->with([
                 'group:id,name'
             ])
-            ->withCount([
-                'users',
-                'users as active_users_count' => function ($query) {
-                    $query->where(function ($q) {
+            ->addSelect([
+                'users_count' => UserPlan::selectRaw('COUNT(DISTINCT user_id)')
+                    ->whereColumn('plan_id', 'v2_plan.id'),
+                'active_users_count' => UserPlan::selectRaw('COUNT(DISTINCT user_id)')
+                    ->whereColumn('plan_id', 'v2_plan.id')
+                    ->where(function ($q) {
                         $q->where('expired_at', '>', time())
                           ->orWhereNull('expired_at');
-                    });
-                }
+                    }),
             ]);
 
         // 名称模糊搜索（含拼音支持）
@@ -132,7 +134,7 @@ class PlanController extends Controller
         }
 
         // 仅拦截未过期订阅（含永久 expired_at=null）；已过期用户允许删除
-        $hasActiveUsers = User::where('plan_id', $planId)
+        $hasActiveUsers = UserPlan::where('plan_id', $planId)
             ->where(function ($query) {
                 $query->where('expired_at', '>', time())
                     ->orWhereNull('expired_at');
@@ -154,8 +156,8 @@ class PlanController extends Controller
 
         DB::beginTransaction();
         try {
-            // 已过期用户仍挂着 plan_id，解除关联后再删套餐
-            User::where('plan_id', $planId)->update(['plan_id' => null]);
+            // 解除该套餐的实例关联后再删套餐（已校验无活跃实例）。
+            UserPlan::where('plan_id', $planId)->delete();
             $result = $plan->delete();
             DB::commit();
         } catch (\Exception $e) {

@@ -96,16 +96,13 @@ class UserController extends Controller
         $user = User::where('id', $request->user()->id)
             ->select([
                 'email',
-                'transfer_enable',
                 'last_login_at',
                 'created_at',
                 'banned',
                 'remind_expire',
                 'remind_traffic',
-                'expired_at',
                 'balance',
                 'commission_balance',
-                'plan_id',
                 'discount',
                 'commission_rate',
                 'telegram_id',
@@ -115,17 +112,16 @@ class UserController extends Controller
         if (!$user) {
             return $this->fail([400, __('The user does not exist')]);
         }
-        $user['avatar_url'] = 'https://cdn.v2ex.com/gravatar/' . md5($user->email) . '?s=64&d=identicon';
+        $data = $user->toArray();
+        $data['avatar_url'] = 'https://cdn.v2ex.com/gravatar/' . md5($user->email) . '?s=64&d=identicon';
         $model = User::find($request->user()->id);
         if ($model) {
             $model->loadMissing('userPlans');
-            foreach ($model->getComputedPlanFields() as $key => $value) {
-                $user[$key] = $value;
-            }
-            $user['plan_list'] = $model->getPlanList();
+            $data = array_merge($data, $model->getComputedPlanFields());
+            $data['plan_list'] = $model->getPlanList();
         }
-        $user = HookManager::filter('user.info.response', $user, $request);
-        return $this->success($user);
+        $data = HookManager::filter('user.info.response', $data, $request);
+        return $this->success($data);
     }
 
     public function getStat(Request $request)
@@ -146,46 +142,31 @@ class UserController extends Controller
     public function getSubscribe(Request $request)
     {
         $user = User::where('id', $request->user()->id)
-            ->select([
-                'plan_id',
-                'token',
-                'expired_at',
-                'u',
-                'd',
-                'transfer_enable',
-                'email',
-                'uuid',
-                'device_limit',
-                'speed_limit',
-                'next_reset_at'
-            ])
+            ->select(['token', 'email', 'uuid'])
             ->first();
         if (!$user) {
             return $this->fail([400, __('The user does not exist')]);
         }
+        $data = $user->toArray();
         $model = User::find($request->user()->id);
         if ($model) {
             $model->loadMissing('userPlans');
             $computed = $model->getComputedPlanFields();
-            foreach ($computed as $key => $value) {
-                $user[$key] = $value;
-            }
-            $user['plan_list'] = $model->getPlanList();
-            // 主 plan_id 已冻结：plan 对象按单实例直出，多实例时置空由 plan_list 承载
+            $data = array_merge($data, $computed);
+            $data['plan_list'] = $model->getPlanList();
+            // 主表已无 plan_id：plan 对象按单实例直出，多实例时置空由 plan_list 承载
             if (!empty($computed['plan_id'])) {
-                $user['plan'] = Plan::find($computed['plan_id']);
-                if (!$user['plan']) {
+                $data['plan'] = Plan::find($computed['plan_id']);
+                if (!$data['plan']) {
                     return $this->fail([400, __('Subscription plan does not exist')]);
                 }
-            } else {
-                unset($user['plan']);
             }
         }
-        $user['subscribe_url'] = Helper::getSubscribeUrl($user['token']);
+        $data['subscribe_url'] = Helper::getSubscribeUrl($data['token']);
         $userService = new UserService();
-        $user['reset_day'] = $userService->getResetDay($user);
-        $user = HookManager::filter('user.subscribe.response', $user);
-        return $this->success($user);
+        $data['reset_day'] = $userService->getResetDay($user);
+        $data = HookManager::filter('user.subscribe.response', $data);
+        return $this->success($data);
     }
 
     public function resetSecurity(Request $request)

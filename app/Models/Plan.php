@@ -324,9 +324,12 @@ class Plan extends Model
         return array_key_exists($period, self::getAvailablePeriods());
     }
 
-    public function users(): HasMany
+    /**
+     * 该套餐下的实例（v2_user 已无 plan_id 列）。
+     */
+    public function userPlans(): HasMany
     {
-        return $this->hasMany(User::class);
+        return $this->hasMany(UserPlan::class, 'plan_id', 'id');
     }
 
     public function group(): HasOne

@@ -112,6 +112,10 @@ class UserPlanPurchaseTest extends TestCase
         $this->assertSame(0, (int) $row->d);
         $this->assertGreaterThan($now, (int) $row->expired_at);
         $this->assertEqualsCanonicalizing([$o1->id, $o2->id], $row->order_ids);
+        // next 按新到期重算（实例锚定），不残留旧周期
+        $next = (int) $row->next_reset_at;
+        $this->assertGreaterThan($now, $next);
+        $this->assertLessThanOrEqual((int) $row->expired_at + 86400, $next);
     }
 
     public function test_different_plan_creates_new_cycle_row_not_upgrade(): void

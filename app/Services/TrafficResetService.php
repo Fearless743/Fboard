@@ -267,6 +267,12 @@ class TrafficResetService
 
     if ($resetMethod === Plan::RESET_TRAFFIC_FOLLOW_SYSTEM) {
       $resetMethod = (int) admin_setting('reset_traffic_method', Plan::RESET_TRAFFIC_MONTHLY);
+      if ($resetMethod === Plan::RESET_TRAFFIC_NEVER) {
+        // plan 显式跟随但系统未配置有效方式：退回按月（与历史默认一致），
+        // 避免新购/重置后 next_reset_at 为空导致 cron 永远扫不到该实例。
+        // 注：FOLLOW_SYSTEM 常量即 null，DB 取出已是 int，此处只拦 NEVER。
+        $resetMethod = Plan::RESET_TRAFFIC_MONTHLY;
+      }
     }
 
     $now = Carbon::now(config('app.timezone'));

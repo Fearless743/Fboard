@@ -158,11 +158,15 @@ class GiftCardService
                 ])
             );
 
+            $redeemedUserId = $this->user->id;
+            $touchedInstances = UserPlan::isEnabled();
+
             return [
                 'rewards' => $actualRewards,
                 'invite_rewards' => $inviteRewards,
                 'code' => $this->code->code,
                 'template_name' => $this->template->name,
+                'sync_user_id' => $touchedInstances ? $redeemedUserId : null,
             ];
         });
     }

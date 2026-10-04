@@ -157,8 +157,18 @@ class GiftCardTemplate extends Model
         }
 
         // 检查允许的套餐
-        if (isset($conditions['allowed_plans']) && $user->plan_id) {
-            if (!in_array($user->plan_id, $conditions['allowed_plans'])) {
+        if (isset($conditions['allowed_plans'])) {
+            $heldPlanIds = $user->plan_id ? [(int) $user->plan_id] : [];
+            if (UserPlan::isEnabled()) {
+                $heldPlanIds = array_merge(
+                    $heldPlanIds,
+                    UserPlan::query()->where('user_id', $user->id)
+                        ->distinct()->pluck('plan_id')
+                        ->map(fn ($id) => (int) $id)->all()
+                );
+                $heldPlanIds = array_values(array_unique($heldPlanIds));
+            }
+            if (empty(array_intersect($heldPlanIds, array_map('intval', (array) $conditions['allowed_plans'])))) {
                 return false;
             }
         }

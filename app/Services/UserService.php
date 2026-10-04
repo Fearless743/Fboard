@@ -178,6 +178,39 @@ class UserService
 
         // 重新获取用户数据（可能已被重置）
         $user->refresh();
+        if (UserPlan::isEnabled()) {
+            // 同一聚合入口：legacy 字段名返回计算值（仅内存，不落库）。
+            $upload = 0;
+            $download = 0;
+            $quota = 0;
+            $nextResetAt = null;
+            $rows = UserPlan::query()->where('user_id', $user->id)->get();
+            $now = time();
+            foreach ($rows as $row) {
+                if (!$row->isActive($now)) {
+                    continue;
+                }
+                $upload += (int) $row->u;
+                $download += (int) $row->d;
+                $quota += (int) $row->transfer_enable;
+                if ($row->next_reset_at !== null && ($nextResetAt === null || (int) $row->next_reset_at < $nextResetAt)) {
+                    $nextResetAt = (int) $row->next_reset_at;
+                }
+            }
+            $used = $upload + $download;
+
+            return [
+                'upload' => $upload,
+                'download' => $download,
+                'total_used' => $used,
+                'total_available' => $quota,
+                'remaining' => max(0, $quota - $used),
+                'usage_percentage' => $quota > 0 ? min(100, ($used / $quota) * 100) : 0,
+                'next_reset_at' => $nextResetAt,
+                'last_reset_at' => $user->last_reset_at,
+                'reset_count' => $user->reset_count,
+            ];
+        }
 
         return [
             'upload' => $user->u ?? 0,

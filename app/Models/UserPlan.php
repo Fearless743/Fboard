@@ -118,6 +118,14 @@ class UserPlan extends Model
      */
     public function scopeOrderedForDeduction(Builder $query): Builder
     {
+        return self::applyDeductionOrder($query);
+    }
+
+    /**
+     * 扣减排序的唯一定义处（Job 内批量预加载与单用户查询共用）。
+     */
+    public static function applyDeductionOrder(Builder $query): Builder
+    {
         return $query
             ->orderByRaw('CASE WHEN sort_order = 0 THEN 1 ELSE 0 END ASC, sort_order ASC')
             ->orderByRaw('CASE WHEN expired_at IS NULL THEN 1 ELSE 0 END ASC, expired_at ASC')

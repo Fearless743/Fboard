@@ -10,6 +10,7 @@ use App\Models\Order;
 use App\Models\Plan;
 use App\Models\Ticket;
 use App\Models\User;
+use App\Models\UserPlan;
 use App\Services\Auth\LoginService;
 use App\Services\AuthService;
 use App\Services\Plugin\HookManager;
@@ -254,5 +255,46 @@ class UserController extends Controller
 
         $url = $this->loginService->generateQuickLoginUrl($user, $request->input('redirect'));
         return $this->success($url);
+    }
+
+    /**
+     * 多套餐消耗顺序：收全量有序实例 id 数组，按下标赋 sort_order=1..n。
+     * 未列出的行保持原值（默认 0 沉底）。续费/新购不碰顺序。
+     */
+    public function planSort(Request $request)
+    {
+        if (!UserPlan::isEnabled()) {
+            return $this->fail([400, __('多套餐功能未开启')]);
+        }
+
+        $ids = $request->input('ids');
+        if (!is_array($ids)) {
+            return $this->fail([400, __('参数错误')]);
+        }
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+
+        $user = $request->user();
+        if (!empty($ids)) {
+            // 逐个校验归属当前用户：出现他人实例 id 即 403。
+            $owned = UserPlan::where('user_id', $user->id)
+                ->whereIn('id', $ids)
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+            sort($owned);
+            $sorted = $ids;
+            sort($sorted);
+            if ($owned !== $sorted) {
+                abort(403, '无权操作该套餐实例');
+            }
+        }
+
+        DB::transaction(function () use ($ids) {
+            foreach ($ids as $index => $id) {
+                UserPlan::whereKey($id)->update(['sort_order' => $index + 1]);
+            }
+        });
+
+        return $this->success(true);
     }
 }

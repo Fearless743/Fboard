@@ -722,8 +722,9 @@ class OrderService
     }
 
     /**
-     * 重置包：只重置订单 plan 对应的 cycle 行的 u/d（配额/到期不动，
+     * 重置包：只重置订单 plan 对应的 cycle 行（配额/到期不动，
      * next_reset_at 按规则重算），追加订单 id；pack 行不参与。
+     * 清零走统一 resetInstance（force=true），与 cron/手动同一函数。
      */
     private function openResetPackage(Order $order, Plan $plan): void
     {
@@ -738,9 +739,11 @@ class OrderService
             throw new \RuntimeException('该套餐没有可重置的周期实例');
         }
 
-        $row->u = 0;
-        $row->d = 0;
-        $row->next_reset_at = $this->nextResetForPlan($plan, $row->expired_at);
+        if (!app(TrafficResetService::class)->resetInstance($row, TrafficResetLog::SOURCE_ORDER, true)) {
+            throw new \RuntimeException('周期实例重置失败');
+        }
+
+        $row = UserPlan::query()->whereKey($row->id)->first();
         $row->appendOrderId((int) $order->id);
         $row->save();
     }

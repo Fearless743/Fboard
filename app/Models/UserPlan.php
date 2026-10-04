@@ -44,6 +44,14 @@ class UserPlan extends Model
     public const KIND_CYCLE = 1;
     public const KIND_PACK = 2;
 
+    /**
+     * 多套餐总开关（admin_setting multi_plan_enable，默认关闭=单套餐旧行为）。
+     */
+    public static function isEnabled(): bool
+    {
+        return (int) admin_setting('multi_plan_enable', 0) === 1;
+    }
+
     protected $attributes = [
         'order_ids' => '[]',
         'transfer_enable' => 0,

@@ -9,6 +9,7 @@ use App\Models\Order;
 use App\Models\Plan;
 use App\Models\TrafficResetLog;
 use App\Models\User;
+use App\Models\UserPlan;
 use App\Services\Plugin\HookManager;
 use App\Utils\Helper;
 use Illuminate\Support\Facades\DB;
@@ -172,14 +173,18 @@ class OrderService
                         ->update(['status' => Order::STATUS_DISCOUNTED]);
                 }
 
-                match ((string) $order->period) {
-                    Plan::PERIOD_ONETIME => $this->buyByOneTime($plan),
-                    Plan::PERIOD_RESET_TRAFFIC => app(TrafficResetService::class)->performReset($this->user, TrafficResetLog::SOURCE_ORDER),
-                    default => $this->buyByPeriod($order, $plan),
-                };
+                if (UserPlan::isEnabled()) {
+                    $this->openMultiPlan($order, $plan);
+                } else {
+                    match ((string) $order->period) {
+                        Plan::PERIOD_ONETIME => $this->buyByOneTime($plan),
+                        Plan::PERIOD_RESET_TRAFFIC => app(TrafficResetService::class)->performReset($this->user, TrafficResetLog::SOURCE_ORDER),
+                        default => $this->buyByPeriod($order, $plan),
+                    };
 
-                $this->setSpeedLimit($plan->speed_limit);
-                $this->setDeviceLimit($plan->device_limit);
+                    $this->setSpeedLimit($plan->speed_limit);
+                    $this->setDeviceLimit($plan->device_limit);
+                }
             }
 
             if (!$this->user->save()) {
@@ -268,7 +273,13 @@ class OrderService
         $order = $this->order;
         if ($order->period === Plan::PERIOD_RESET_TRAFFIC) {
             $order->type = Order::TYPE_RESET_TRAFFIC;
-        } else if ($user->plan_id !== NULL && $order->plan_id !== $user->plan_id && ($user->expired_at > time() || $user->expired_at === NULL)) {
+            return;
+        }
+        if (UserPlan::isEnabled()) {
+            $this->setOrderTypeMulti($user);
+            return;
+        }
+        if ($user->plan_id !== NULL && $order->plan_id !== $user->plan_id && ($user->expired_at > time() || $user->expired_at === NULL)) {
             if (!(int) admin_setting('plan_change_enable', 1))
                 throw new ApiException('目前不允许更改订阅，请联系客服或提交工单操作');
             $order->type = Order::TYPE_UPGRADE;
@@ -285,6 +296,26 @@ class OrderService
         } else { // 新购
             $order->type = Order::TYPE_NEW_PURCHASE;
         }
+    }
+
+    /**
+     * 多套餐下单类型判定（按实例，不读主表快照）。
+     * - onetime 永远新购；同 plan 持有 cycle 行（不管过没过期）即续费，否则一律新购。
+     * - 升级分支不可达：换套餐直接按新购下单；getSurplusValue 保持单套餐专用。
+     */
+    private function setOrderTypeMulti(User $user): void
+    {
+        $order = $this->order;
+        if ($order->period === Plan::PERIOD_ONETIME) {
+            $order->type = Order::TYPE_NEW_PURCHASE;
+            return;
+        }
+        $hasCycleRow = UserPlan::query()
+            ->where('user_id', $user->id)
+            ->where('plan_id', $order->plan_id)
+            ->where('kind', UserPlan::KIND_CYCLE)
+            ->exists();
+        $order->type = $hasCycleRow ? Order::TYPE_RENEWAL : Order::TYPE_NEW_PURCHASE;
     }
 
     public function setVipDiscount(User $user)
@@ -576,6 +607,155 @@ class OrderService
     }
 
     /**
+     * 多套餐开通：单写实例表，主表快照列一律不动。
+     * 调用时用户行已加锁；此处再锁该用户全部实例行（三铁律③），cycle 行复用不断行。
+     */
+    private function openMultiPlan(Order $order, Plan $plan): void
+    {
+        if ((int) $order->type === Order::TYPE_UPGRADE) {
+            // 多套餐下升级折抵禁用：升级分支不可达，收到升级单直接失败，提示按新购下单。
+            throw new \RuntimeException('多套餐模式下不支持升级折抵，请按新购下单');
+        }
+
+        // 先锁用户全部实例行，再做找行/建行业务。
+        UserPlan::query()->where('user_id', $this->user->id)->lockForUpdate()->get();
+
+        match ((string) $order->period) {
+            Plan::PERIOD_ONETIME => $this->openPack($order, $plan),
+            Plan::PERIOD_RESET_TRAFFIC => $this->openResetPackage($order, $plan),
+            default => $this->openCycle($order, $plan),
+        };
+    }
+
+    /**
+     * 周期套餐：按 (user, plan, kind=1) 找最新行，不管过没过期。
+     * - 有效期内购买=续费：配额累加、到期顺延、用量保留；
+     * - 已过期后购买=新周期：复用同一行，配额覆盖、u/d 清零、到期从 now 起算。
+     * 两者都追加 order_ids，不断史。禁止过期建新行，禁止盲建。
+     */
+    private function openCycle(Order $order, Plan $plan): void
+    {
+        $row = UserPlan::query()
+            ->where('user_id', $this->user->id)
+            ->where('plan_id', $plan->id)
+            ->where('kind', UserPlan::KIND_CYCLE)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $quota = (int) $plan->transfer_enable * 1073741824;
+        $now = time();
+
+        if (!$row) {
+            $row = new UserPlan();
+            $row->forceFill([
+                'user_id' => $this->user->id,
+                'plan_id' => $plan->id,
+                'kind' => UserPlan::KIND_CYCLE,
+                'group_id' => $plan->group_id,
+                'order_ids' => [],
+                'u' => 0,
+                'd' => 0,
+                'sort_order' => 0,
+            ]);
+            $row->transfer_enable = $quota;
+            $row->expired_at = $this->getTime((string) $order->period, $now);
+        } elseif ($row->isActive($now)) {
+            // 续费：累加配额、顺延到期（基准用实例自身的 expired_at）、用量保留
+            $row->transfer_enable = (int) $row->transfer_enable + $quota;
+            $row->expired_at = $this->getTime((string) $order->period, (int) $row->expired_at);
+        } else {
+            // 新周期：覆盖配额、清零用量、到期从 now 起算（防旧剩余额度白送）
+            $row->transfer_enable = $quota;
+            $row->u = 0;
+            $row->d = 0;
+            $row->exhausted_at = null;
+            $row->expired_at = $this->getTime((string) $order->period, $now);
+        }
+
+        $row->group_id = $plan->group_id;
+        $row->speed_limit = $plan->speed_limit;
+        $row->device_limit = $plan->device_limit;
+        $row->next_reset_at = $this->nextResetForPlan($plan, $row->expired_at);
+        $row->appendOrderId((int) $order->id);
+        $row->save();
+    }
+
+    /**
+     * 流量包：永远新建 pack 行；同事务退役同 plan 已耗尽的 pack 行
+     * （u+d >= 配额的行 expired_at=now，行保留备查；有剩余额度的包行不动）。
+     */
+    private function openPack(Order $order, Plan $plan): void
+    {
+        $row = new UserPlan();
+        $row->forceFill([
+            'user_id' => $this->user->id,
+            'plan_id' => $plan->id,
+            'kind' => UserPlan::KIND_PACK,
+            'group_id' => $plan->group_id,
+            'order_ids' => [(int) $order->id],
+            'transfer_enable' => (int) $plan->transfer_enable * 1073741824,
+            'u' => 0,
+            'd' => 0,
+            'expired_at' => null,
+            'speed_limit' => $plan->speed_limit,
+            'device_limit' => $plan->device_limit,
+            'sort_order' => 0,
+        ]);
+        $row->next_reset_at = $this->nextResetForPlan($plan, $row->expired_at);
+        $row->save();
+
+        $now = time();
+        $retired = UserPlan::query()
+            ->where('user_id', $this->user->id)
+            ->where('plan_id', $plan->id)
+            ->where('kind', UserPlan::KIND_PACK)
+            ->where('id', '!=', $row->id)
+            ->whereRaw('u + d >= transfer_enable')
+            ->get();
+        foreach ($retired as $old) {
+            $old->expired_at = $now;
+            if ($old->exhausted_at === null) {
+                $old->exhausted_at = $now;
+            }
+            $old->save();
+        }
+    }
+
+    /**
+     * 重置包：只重置订单 plan 对应的 cycle 行的 u/d（配额/到期不动，
+     * next_reset_at 按规则重算），追加订单 id；pack 行不参与。
+     */
+    private function openResetPackage(Order $order, Plan $plan): void
+    {
+        $row = UserPlan::query()
+            ->where('user_id', $this->user->id)
+            ->where('plan_id', $plan->id)
+            ->where('kind', UserPlan::KIND_CYCLE)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        if (!$row) {
+            throw new \RuntimeException('该套餐没有可重置的周期实例');
+        }
+
+        $row->u = 0;
+        $row->d = 0;
+        $row->next_reset_at = $this->nextResetForPlan($plan, $row->expired_at);
+        $row->appendOrderId((int) $order->id);
+        $row->save();
+    }
+
+    /**
+     * 实例 next_reset_at：锚定实例自身的 expired_at（各行独立周期）。
+     */
+    private function nextResetForPlan(Plan $plan, ?int $expiredAt): ?int
+    {
+        $next = app(TrafficResetService::class)->calculateNextResetTimeForPlan($plan, $expiredAt);
+
+        return $next?->timestamp;
+    }
+
+    /**
      * 计算套餐到期时间
      * @param string $periodKey
      * @param int $timestamp
@@ -608,6 +788,10 @@ class OrderService
             case 0:
                 break;
             case 1:
+                // 多套餐下主表 u/d 已冻结，实例用量由各自开通/重置路径维护，此处不再清主表。
+                if (UserPlan::isEnabled()) {
+                    break;
+                }
                 app(TrafficResetService::class)->performReset($this->user, TrafficResetLog::SOURCE_ORDER);
                 break;
         }

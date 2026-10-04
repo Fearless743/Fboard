@@ -121,7 +121,12 @@ class GiftCardTemplate extends Model
             case self::TYPE_GENERAL:
                 $rewards = $this->rewards ?? [];
                 if (isset($rewards['transfer_enable']) || isset($rewards['expire_days']) || isset($rewards['reset_package'])) {
-                    if (!$user->plan_id) {
+                    // 多套餐：持有实例行即视为有订阅（主表 plan_id 已冻结，不可作判据）；
+                    // 套餐卡自带目标行（没有则建），无需既有订阅。
+                    $hasPlan = $user->plan_id
+                        || (UserPlan::isEnabled() && $user->hasAnyUserPlan())
+                        || (UserPlan::isEnabled() && isset($rewards['plan_id']) && Plan::find($rewards['plan_id']));
+                    if (!$hasPlan) {
                         return false;
                     }
                 }

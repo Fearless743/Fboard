@@ -24,6 +24,29 @@ class UserService
      */
     public function getResetDay(User $user): ?int
     {
+        if (UserPlan::isEnabled()) {
+            // 多套餐：取全部有效 cycle 行最早的下次重置，还有多少天。
+            $rows = UserPlan::query()->where('user_id', $user->id)->get();
+            $now = time();
+            $next = null;
+            foreach ($rows as $row) {
+                if (!$row->isActive($now) || $row->next_reset_at === null) {
+                    continue;
+                }
+                $ts = (int) $row->next_reset_at;
+                if ($next === null || $ts < $next) {
+                    $next = $ts;
+                }
+            }
+            if ($next === null) {
+                return null;
+            }
+            if ($next <= $now) {
+                return 0;
+            }
+
+            return (int) ceil(($next - $now) / 86400);
+        }
         // Use TrafficResetService to calculate the next reset time
         $trafficResetService = app(TrafficResetService::class);
         $nextResetTime = $trafficResetService->calculateNextResetTime($user);
@@ -221,6 +244,57 @@ class UserService
                 $user->{$field} = $data[$field];
             }
         }
+    }
+
+    /**
+     * 注册/批量生成后调用：多套餐下按主表快照补建 cycle 首行（order_ids 为空）。
+     * 主表字段照常写（注册流程依赖），实例行保证新用户即有一行可用。
+     */
+    public function seedInitialPlanRow(User $user): void
+    {
+        if (!UserPlan::isEnabled()) {
+            return;
+        }
+        if ($user->plan_id === null || (int) $user->transfer_enable <= 0) {
+            return;
+        }
+        $exists = UserPlan::query()
+            ->where('user_id', $user->id)
+            ->where('plan_id', $user->plan_id)
+            ->where('kind', UserPlan::KIND_CYCLE)
+            ->exists();
+        if ($exists) {
+            return;
+        }
+
+        $plan = Plan::find($user->plan_id);
+        $groupId = $user->group_id;
+        $speedLimit = $user->speed_limit;
+        $deviceLimit = $user->device_limit;
+        if ($plan) {
+            $groupId = $plan->group_id;
+            $speedLimit = $plan->speed_limit;
+            $deviceLimit = $plan->device_limit;
+        }
+        $expiredAt = $user->expired_at ? (int) $user->expired_at : null;
+        $row = new UserPlan();
+        $row->forceFill([
+            'user_id' => $user->id,
+            'plan_id' => $user->plan_id,
+            'kind' => UserPlan::KIND_CYCLE,
+            'group_id' => $groupId,
+            'order_ids' => [],
+            'transfer_enable' => (int) $user->transfer_enable,
+            'u' => 0,
+            'd' => 0,
+            'expired_at' => $expiredAt,
+            'speed_limit' => $speedLimit,
+            'device_limit' => $deviceLimit,
+            'sort_order' => 0,
+        ]);
+        $next = app(TrafficResetService::class)->calculateNextResetTimeForPlan($plan, $expiredAt);
+        $row->next_reset_at = $next?->timestamp;
+        $row->save();
     }
 
     /**

@@ -13,6 +13,7 @@
       logo: "{{ $logo }}",
       secure_path: "{{ $secure_path }}",
     };
+    window.__MULTI_PLAN_ENABLE__ = {{ (int) admin_setting('multi_plan_enable', 0) ? 'true' : 'false' }};
   </script>
   @php
     $manifestPath = public_path('assets/admin/.vite/manifest.json');

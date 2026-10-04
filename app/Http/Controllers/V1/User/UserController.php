@@ -116,6 +116,16 @@ class UserController extends Controller
             return $this->fail([400, __('The user does not exist')]);
         }
         $user['avatar_url'] = 'https://cdn.v2ex.com/gravatar/' . md5($user->email) . '?s=64&d=identicon';
+        if (UserPlan::isEnabled()) {
+            $model = User::find($request->user()->id);
+            if ($model) {
+                $model->loadMissing('userPlans');
+                foreach ($model->getComputedPlanFields() as $key => $value) {
+                    $user[$key] = $value;
+                }
+                $user['plan_list'] = $model->getPlanList();
+            }
+        }
         $user = HookManager::filter('user.info.response', $user, $request);
         return $this->success($user);
     }
@@ -155,7 +165,26 @@ class UserController extends Controller
         if (!$user) {
             return $this->fail([400, __('The user does not exist')]);
         }
-        if ($user->plan_id) {
+        if (UserPlan::isEnabled()) {
+            $model = User::find($request->user()->id);
+            if ($model) {
+                $model->loadMissing('userPlans');
+                $computed = $model->getComputedPlanFields();
+                foreach ($computed as $key => $value) {
+                    $user[$key] = $value;
+                }
+                $user['plan_list'] = $model->getPlanList();
+                // 主 plan_id 已冻结：plan 对象按单实例直出，多实例时置空由 plan_list 承载
+                if (!empty($computed['plan_id'])) {
+                    $user['plan'] = Plan::find($computed['plan_id']);
+                    if (!$user['plan']) {
+                        return $this->fail([400, __('Subscription plan does not exist')]);
+                    }
+                } else {
+                    unset($user['plan']);
+                }
+            }
+        } elseif ($user->plan_id) {
             $user['plan'] = Plan::find($user->plan_id);
             if (!$user['plan']) {
                 return $this->fail([400, __('Subscription plan does not exist')]);

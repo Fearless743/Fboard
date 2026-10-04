@@ -124,6 +124,8 @@ class User extends Authenticatable
     /**
      * 名下全部套餐实例（多套餐）。
      * 注意：必须返回 HasMany（禁返回 Collection），调用方需要时再 ->get()。
+     *
+     * @return HasMany<UserPlan, $this>
      */
     public function userPlans(): HasMany
     {
@@ -132,6 +134,8 @@ class User extends Authenticatable
 
     /**
      * 名下有效套餐实例（expired_at 为 null 或 > now），保持链式。
+     *
+     * @return HasMany<UserPlan, $this>
      */
     public function activeUserPlans(?int $now = null): HasMany
     {
@@ -357,7 +361,7 @@ class User extends Authenticatable
      */
     public function isActive(): bool
     {
-        if (UserPlan::isEnabled()) {
+        if (UserPlan::isEnabled() && $this->hasAnyUserPlan()) {
             // 多套餐：有任一有效实例即活跃（只看未到期，不看剩余额度）。
             return !$this->banned && $this->hasActiveUserPlan();
         }
@@ -371,7 +375,7 @@ class User extends Authenticatable
      */
     public function isAvailable(): bool
     {
-        if (UserPlan::isEnabled()) {
+        if (UserPlan::isEnabled() && $this->hasAnyUserPlan()) {
             // 多套餐：活跃且聚合剩余>0。
             if ($this->banned) {
                 return false;
@@ -380,6 +384,116 @@ class User extends Authenticatable
             return $agg['is_active'] && $agg['remaining'] > 0;
         }
         return $this->isActive() && $this->getRemainingTraffic() > 0;
+    }
+
+    /**
+     * 名下是否有实例行（迁移前无行的用户沿用主表语义，保证开开关窗口安全）。
+     */
+    public function hasAnyUserPlan(): bool
+    {
+        if ($this->relationLoaded('userPlans')) {
+            return $this->userPlans->isNotEmpty();
+        }
+
+        return $this->userPlans()->exists();
+    }
+
+    /**
+     * 多套餐 API 计算字段（legacy 字段名，值为实例聚合）。
+     * 无实例行时返回 []，调用方沿用主表（未迁移兼容）。
+     *
+     * @return array<string, int|null>
+     */
+    public function getComputedPlanFields(?int $now = null): array
+    {
+        $now ??= time();
+        if (!UserPlan::isEnabled()) {
+            return [];
+        }
+        $rows = $this->relationLoaded('userPlans')
+            ? $this->userPlans
+            : $this->activeUserPlans($now)->get();
+        $active = $rows->filter(fn (UserPlan $p) => $p->isActive($now))->values();
+        if ($active->isEmpty()) {
+            return [];
+        }
+
+        $agg = self::summarizeInstances($active, $now);
+        $planIds = $active->map(fn (UserPlan $p) => (int) $p->plan_id)->unique()->values();
+        $groupIds = $active->map(fn (UserPlan $p) => (int) $p->group_id)->unique()->values();
+
+        return [
+            'transfer_enable' => $agg['quota'],
+            'u' => (int) $active->sum(fn (UserPlan $p) => (int) $p->u),
+            'd' => (int) $active->sum(fn (UserPlan $p) => (int) $p->d),
+            'expired_at' => $agg['expired_at'],
+            'speed_limit' => $agg['speed_limit'],
+            'device_limit' => $agg['device_limit'],
+            // 多行且 plan/分组不一致时置空（诚实未知），单套餐迁移用户不受影响。
+            'plan_id' => $planIds->count() === 1 ? $planIds->first() : null,
+            'group_id' => $groupIds->count() === 1 ? $groupIds->first() : null,
+        ];
+    }
+
+    /**
+     * plan_list：所有未到期行（不管剩没剩流量），耗尽行带 exhausted=true 前端置灰；
+     * 消失的只有到期行。expired_at 直接 int。
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function getPlanList(?int $now = null): array
+    {
+        $now ??= time();
+        if (!UserPlan::isEnabled()) {
+            return [];
+        }
+        if ($this->relationLoaded('userPlans')) {
+            $rows = $this->userPlans;
+        } else {
+            $rows = UserPlan::query()->with('plan:id,name')
+                ->where('user_id', $this->id)
+                ->orderBy('id')
+                ->get();
+        }
+
+        $planNames = $this->planNameMap($rows);
+        $list = [];
+        foreach ($rows as $row) {
+            if (!$row->isActive($now)) {
+                continue;
+            }
+            $used = (int) $row->u + (int) $row->d;
+            $quota = (int) $row->transfer_enable;
+            $list[] = [
+                'id' => (int) $row->id,
+                'plan_id' => (int) $row->plan_id,
+                'kind' => $row->kind->value,
+                'name' => $planNames->get($row->plan_id, '已删除套餐'),
+                'transfer_enable' => $quota,
+                'u' => (int) $row->u,
+                'd' => (int) $row->d,
+                'remaining' => max(0, $quota - $used),
+                'expired_at' => $row->expired_at !== null ? (int) $row->expired_at : null,
+                'speed_limit' => $row->speed_limit !== null ? (int) $row->speed_limit : null,
+                'device_limit' => $row->device_limit !== null ? (int) $row->device_limit : null,
+                'group_id' => (int) $row->group_id,
+                'sort_order' => (int) $row->sort_order,
+                'exhausted' => $used >= $quota,
+            ];
+        }
+
+        return $list;
+    }
+
+    /**
+     * plan_id → 名称映射（1 次查询；已删套餐的行不出现在映射里，调用方回退）。
+     *
+     * @param \Illuminate\Support\Collection<int, UserPlan> $rows
+     * @return \Illuminate\Support\Collection<int|string, string>
+     */
+    private function planNameMap($rows): \Illuminate\Support\Collection
+    {
+        return Plan::query()->whereIn('id', $rows->pluck('plan_id')->all())->pluck('name', 'id');
     }
 
     /**

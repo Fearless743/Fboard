@@ -112,17 +112,30 @@ class TrafficResetService
    */
   public function calculateNextResetTime(User $user): ?Carbon
   {
+    if (!$user->plan) {
+      return null;
+    }
+
+    return $this->calculateNextResetTimeForPlan($user->plan, $user->expired_at);
+  }
+
+  /**
+   * 按 (plan, expired_at) 计算下次重置时间。
+   * 多套餐实例重置与订单开通共用此入口：cycle 行按各自 expired_at 锚定周期。
+   */
+  public function calculateNextResetTimeForPlan(?Plan $plan, ?int $expiredAt): ?Carbon
+  {
     if (
-      !$user->plan
-      || $user->plan->reset_traffic_method === Plan::RESET_TRAFFIC_NEVER
-      || ($user->plan->reset_traffic_method === Plan::RESET_TRAFFIC_FOLLOW_SYSTEM
+      !$plan
+      || $plan->reset_traffic_method === Plan::RESET_TRAFFIC_NEVER
+      || ($plan->reset_traffic_method === Plan::RESET_TRAFFIC_FOLLOW_SYSTEM
         && (int) admin_setting('reset_traffic_method', Plan::RESET_TRAFFIC_MONTHLY) === Plan::RESET_TRAFFIC_NEVER)
-      || $user->expired_at === NULL
+      || $expiredAt === NULL
     ) {
       return null;
     }
 
-    $resetMethod = $user->plan->reset_traffic_method;
+    $resetMethod = $plan->reset_traffic_method;
 
     if ($resetMethod === Plan::RESET_TRAFFIC_FOLLOW_SYSTEM) {
       $resetMethod = (int) admin_setting('reset_traffic_method', Plan::RESET_TRAFFIC_MONTHLY);
@@ -132,9 +145,9 @@ class TrafficResetService
 
     return match ($resetMethod) {
       Plan::RESET_TRAFFIC_FIRST_DAY_MONTH => $this->getNextMonthFirstDay($now),
-      Plan::RESET_TRAFFIC_MONTHLY => $this->getNextMonthlyReset($user, $now),
+      Plan::RESET_TRAFFIC_MONTHLY => $this->getNextMonthlyResetAt($expiredAt, $now),
       Plan::RESET_TRAFFIC_FIRST_DAY_YEAR => $this->getNextYearFirstDay($now),
-      Plan::RESET_TRAFFIC_YEARLY => $this->getNextYearlyReset($user, $now),
+      Plan::RESET_TRAFFIC_YEARLY => $this->getNextYearlyResetAt($expiredAt, $now),
       default => null,
     };
   }
@@ -156,11 +169,20 @@ class TrafficResetService
    * 3. Prioritize the reset day in the current month if it has not passed yet.
    * 4. Handle cases where the day does not exist in a month (e.g., 31st in February).
    */
-  private function getNextMonthlyReset(User $user, Carbon $from): Carbon
+  /**
+   * Get the next monthly reset time anchored at the given expiration timestamp.
+   *
+   * Logic:
+   * 1. If the user has no expiration date, reset on the 1st of each month.
+   * 2. If the user has an expiration date, use the day of that date as the monthly reset day.
+   * 3. Prioritize the reset day in the current month if it has not passed yet.
+   * 4. Handle cases where the day does not exist in a month (e.g., 31st in February).
+   */
+  private function getNextMonthlyResetAt(int $expiredAt, Carbon $from): Carbon
   {
-    $expiredAt = Carbon::createFromTimestamp($user->expired_at, config('app.timezone'));
-    $resetDay = $expiredAt->day;
-    $resetTime = [$expiredAt->hour, $expiredAt->minute, $expiredAt->second];
+    $expired = Carbon::createFromTimestamp($expiredAt, config('app.timezone'));
+    $resetDay = $expired->day;
+    $resetTime = [$expired->hour, $expired->minute, $expired->second];
     
     $currentMonthTarget = $from->copy()->day($resetDay)->setTime(...$resetTime);
     if ($currentMonthTarget->timestamp > $from->timestamp) {
@@ -197,12 +219,21 @@ class TrafficResetService
    * 3. Prioritize the reset date in the current year if it has not passed yet.
    * 4. Handle the case of February 29th in a leap year.
    */
-  private function getNextYearlyReset(User $user, Carbon $from): Carbon
+  /**
+   * Get the next yearly reset time anchored at the given expiration timestamp.
+   *
+   * Logic:
+   * 1. If the user has no expiration date, reset on January 1st of each year.
+   * 2. If the user has an expiration date, use the month and day of that date as the yearly reset date.
+   * 3. Prioritize the reset date in the current year if it has not passed yet.
+   * 4. Handle the case of February 29th in a leap year.
+   */
+  private function getNextYearlyResetAt(int $expiredAt, Carbon $from): Carbon
   {
-    $expiredAt = Carbon::createFromTimestamp($user->expired_at, config('app.timezone'));
-    $resetMonth = $expiredAt->month;
-    $resetDay = $expiredAt->day;
-    $resetTime = [$expiredAt->hour, $expiredAt->minute, $expiredAt->second];
+    $expired = Carbon::createFromTimestamp($expiredAt, config('app.timezone'));
+    $resetMonth = $expired->month;
+    $resetDay = $expired->day;
+    $resetTime = [$expired->hour, $expired->minute, $expired->second];
 
     $currentYearTarget = $from->copy()->month($resetMonth)->day($resetDay)->setTime(...$resetTime);
     if ($currentYearTarget->timestamp > $from->timestamp) {

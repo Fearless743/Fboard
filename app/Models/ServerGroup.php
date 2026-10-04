@@ -24,9 +24,12 @@ class ServerGroup extends Model
         'updated_at' => 'timestamp'
     ];
 
-    public function users(): HasMany
+    /**
+     * 该组下的套餐实例（v2_user 已无 group_id 列）。
+     */
+    public function userPlans(): HasMany
     {
-        return $this->hasMany(User::class, 'group_id', 'id');
+        return $this->hasMany(UserPlan::class, 'group_id', 'id');
     }
 
     public function servers()

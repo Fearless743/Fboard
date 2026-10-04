@@ -5,7 +5,6 @@ namespace Tests\Unit\Services;
 use App\Jobs\TrafficFetchJob;
 use App\Models\GiftCardCode;
 use App\Models\GiftCardTemplate;
-use App\Models\Order;
 use App\Models\Plan;
 use App\Models\ServerGroup;
 use App\Models\TrafficResetLog;
@@ -14,7 +13,6 @@ use App\Models\UserPlan;
 use App\Services\GiftCardService;
 use App\Services\OrderService;
 use App\Services\TrafficResetService;
-use App\Services\UserPlanMigrator;
 use App\Services\UserService;
 use App\Utils\Helper;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -22,7 +20,7 @@ use Illuminate\Support\Facades\Redis;
 use Tests\TestCase;
 
 /**
- * 多套餐 PR6：迁移/对账/清理命令 + 旧列零读写 + 礼包/注册实例路径。
+ * 实例唯一数据源下：一致性检查、清理、礼包/注册实例路径、全流程主表只读聚合。
  */
 class UserPlanMigrationTest extends TestCase
 {
@@ -32,7 +30,6 @@ class UserPlanMigrationTest extends TestCase
     {
         parent::setUp();
         admin_setting([
-            'multi_plan_enable' => 1,
             'reset_traffic_method' => Plan::RESET_TRAFFIC_MONTHLY,
             'invite_commission' => 10,
             'commission_first_time_enable' => 0,
@@ -42,105 +39,37 @@ class UserPlanMigrationTest extends TestCase
         ]);
     }
 
-    public function test_migrate_copies_single_plan_users(): void
+    public function test_check_command_passes_on_consistent_data(): void
     {
         [$group, $plan] = $this->seedPlan();
-        $now = time();
-        $user = $this->makeUser([
-            'plan_id' => $plan->id, 'group_id' => $group->id,
-            'transfer_enable' => 1000, 'u' => 300, 'd' => 200,
-            'expired_at' => $now + 86400, 'speed_limit' => 10, 'device_limit' => 3,
-            'next_reset_at' => $now + 1000,
-        ]);
+        $user = $this->makeUser();
+        $this->makeRow($user->id, ['plan_id' => $plan->id, 'group_id' => $group->id]);
 
-        UserPlanMigrator::run();
-
-        $rows = UserPlan::where('user_id', $user->id)->get();
-        $this->assertCount(1, $rows);
-        $row = $rows->first();
-        $this->assertSame(UserPlan::KIND_CYCLE, $row->kind->value);
-        $this->assertSame([], $row->order_ids);
-        $this->assertSame(1000, (int) $row->transfer_enable);
-        $this->assertSame(300, (int) $row->u);
-        $this->assertSame(200, (int) $row->d);
-        $this->assertSame($now + 86400, (int) $row->expired_at);
-        $this->assertSame($group->id, (int) $row->group_id);
-        $this->assertNull($row->exhausted_at);
-        // next 按主表现值照抄（创建时 observer 会按 plan 重算，迁移只保证与主表一致）
-        $masterNext = User::find($user->id)->getRawOriginal('next_reset_at');
-        $this->assertSame($masterNext !== null ? (int) $masterNext : null, $row->next_reset_at !== null ? (int) $row->next_reset_at : null);
-        // 迁移不碰主表
-        $user->refresh();
-        $this->assertSame(1000, (int) $user->transfer_enable);
-    }
-
-    public function test_migrate_handles_dirty_data_and_is_idempotent(): void
-    {
-        [$group, $plan] = $this->seedPlan();
-        $noPlan = $this->makeUser(['plan_id' => null, 'transfer_enable' => 500]);
-        $zeroQuota = $this->makeUser(['plan_id' => $plan->id, 'transfer_enable' => 0]);
-        $deletedPlan = $this->makeUser(['plan_id' => 99999, 'transfer_enable' => 500, 'group_id' => $group->id]);
-        $ok = $this->makeUser(['plan_id' => $plan->id, 'transfer_enable' => 500]);
-
-        UserPlanMigrator::run();
-
-        $this->assertSame(0, UserPlan::where('user_id', $noPlan->id)->count());
-        $this->assertSame(0, UserPlan::where('user_id', $zeroQuota->id)->count());
-        $this->assertSame(1, UserPlan::where('user_id', $ok->id)->count());
-        // 已删套餐仍建行，限速/设备置空
-        $ghost = UserPlan::where('user_id', $deletedPlan->id)->sole();
-        $this->assertNull($ghost->speed_limit);
-        $this->assertNull($ghost->device_limit);
-        $this->assertSame($group->id, (int) $ghost->group_id);
-
-        // 可重跑：已有 cycle 行跳过，不翻倍
-        UserPlanMigrator::run();
-        $this->assertSame(1, UserPlan::where('user_id', $ok->id)->count());
-        $this->assertSame(1, UserPlan::where('user_id', $deletedPlan->id)->count());
-    }
-
-    public function test_migrator_is_idempotent_on_rerun(): void
-    {
-        [$group, $plan] = $this->seedPlan();
-        $user = $this->makeUser(['plan_id' => $plan->id, 'transfer_enable' => 500]);
-
-        UserPlanMigrator::run();
-        $this->assertSame(1, UserPlan::where('user_id', $user->id)->count());
-
-        // 可重跑：已有 cycle 行跳过，不翻倍
-        $stats = UserPlanMigrator::run();
-        $this->assertSame(1, UserPlan::where('user_id', $user->id)->count());
-        $this->assertSame(1, $stats['skipped_existing']);
-        $this->assertSame(0, $stats['created']);
-    }
-
-    public function test_check_command_clean_and_drift(): void
-    {
-        [$group, $plan] = $this->seedPlan();
-        $now = time();
-        $user = $this->makeUser([
-            'plan_id' => $plan->id, 'group_id' => $group->id,
-            'transfer_enable' => 1000, 'u' => 100, 'd' => 50,
-            'expired_at' => $now + 86400,
-        ]);
-        UserPlanMigrator::run();
-        // 主表限速与实例快照对齐（迁移时 plan 限速为空，主表也为空才零差异）
         $this->artisan('fboard:check-user-plans')->assertSuccessful();
-
-        // 主表被旁路改写 → 对账失败（只报不改）
-        User::whereKey($user->id)->update(['transfer_enable' => 2000]);
-        $this->artisan('fboard:check-user-plans')->assertFailed();
-        $this->assertSame(1, UserPlan::where('user_id', $user->id)->count());
     }
 
     public function test_check_command_detects_duplicate_cycle_rows(): void
     {
         [$group, $plan] = $this->seedPlan();
-        $user = $this->makeUser(['plan_id' => $plan->id, 'transfer_enable' => 500]);
-        UserPlanMigrator::run();
+        $user = $this->makeUser();
+        $row = $this->makeRow($user->id, ['plan_id' => $plan->id, 'group_id' => $group->id]);
         // 模拟流程 bug 造成的重复行
-        $dup = UserPlan::where('user_id', $user->id)->first()->replicate();
+        $dup = $row->replicate();
         $dup->save();
+
+        $this->artisan('fboard:check-user-plans')->assertFailed();
+    }
+
+    public function test_check_command_detects_pack_with_next_reset(): void
+    {
+        [$group, $plan] = $this->seedPlan();
+        $user = $this->makeUser();
+        $this->makeRow($user->id, [
+            'plan_id' => $plan->id,
+            'group_id' => $group->id,
+            'kind' => UserPlan::KIND_PACK,
+            'next_reset_at' => time() + 86400,
+        ]);
 
         $this->artisan('fboard:check-user-plans')->assertFailed();
     }
@@ -176,37 +105,37 @@ class UserPlanMigrationTest extends TestCase
         $this->assertNotNull(UserPlan::find($row->id)->exhausted_at);
     }
 
-    public function test_master_columns_synced_through_full_flow(): void
+    public function test_full_flow_keeps_master_columns_as_aggregate(): void
     {
         [$group, $plan] = $this->seedPlan();
-        $user = $this->makeUser([
+        $user = $this->makeUser();
+        $this->makeRow($user->id, [
             'plan_id' => $plan->id, 'group_id' => $group->id,
-            'transfer_enable' => 1000, 'u' => 0, 'd' => 0,
-            'expired_at' => time() + 86400,
+            'transfer_enable' => 1000, 'expired_at' => time() + 86400,
         ]);
-        UserPlanMigrator::run();
 
-        // 购买续费 → 分摊流量 → 重置 → 超额判定，全程主表 9 列 == 实例聚合
+        // 购买续费 → 分摊流量 → 重置，主表读值恒等于实例聚合。
         $plan->forceFill(['prices' => [Plan::PERIOD_MONTHLY => 1000]])->save();
         $order = OrderService::createFromRequest($user->refresh(), $plan, Plan::PERIOD_MONTHLY);
-        (new OrderService($order))->paid('cb-frozen');
+        (new OrderService($order))->paid('cb-flow');
 
         Redis::shouldReceive('sadd')->once();
         (new TrafficFetchJob(['rate' => 1], [$user->id => [100, 100]], 'vmess', time()))->handle();
 
         app(TrafficResetService::class)->manualReset($user->refresh());
 
-        Redis::shouldReceive('scard')->andReturn(0);
-        $this->artisan('check:traffic-exceeded');
+        $agg = $user->refresh()->getPlanAggregate();
+        $this->assertSame($agg['quota'], (int) $user->transfer_enable);
+        $this->assertSame($agg['used'], (int) $user->u + (int) $user->d);
+        $this->assertSame($agg['expired_at'], $user->expired_at);
 
         $this->artisan('fboard:check-user-plans')->assertSuccessful();
     }
 
-    public function test_gift_plan_card_writes_instance_not_master(): void
+    public function test_gift_plan_card_writes_instance(): void
     {
         [$group, $plan] = $this->seedPlan();
         $user = $this->makeUser();
-        $before = (int) $user->transfer_enable;
 
         $code = $this->seedGiftCode(['plan_id' => $plan->id, 'transfer_enable' => 777, 'plan_validity_days' => 7]);
         (new GiftCardService($code->code))->setUser($user->refresh())->redeem();
@@ -218,8 +147,6 @@ class UserPlanMigrationTest extends TestCase
         // plan 快照配额 + 礼包流量一次
         $this->assertSame(100 * 1073741824 + 777, (int) $row->transfer_enable);
         $this->assertGreaterThan(time(), (int) $row->expired_at);
-        $user->refresh();
-        $this->assertSame($before, (int) $user->transfer_enable);
     }
 
     public function test_gift_transfer_goes_to_primary_row(): void
@@ -233,7 +160,6 @@ class UserPlanMigrationTest extends TestCase
         (new GiftCardService($code->code))->setUser($user->refresh())->redeem();
 
         $this->assertSame(1500, (int) $row->refresh()->transfer_enable);
-        $this->assertSame(0, (int) $user->refresh()->transfer_enable);
     }
 
     public function test_registration_seeds_first_row(): void

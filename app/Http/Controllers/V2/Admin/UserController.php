@@ -134,9 +134,9 @@ class UserController extends Controller
                 : (int) $filterValue;
         }
 
-        // 处理计算字段
+        // 处理计算字段（主表已无 u/d 列：用量聚合自 v2_user_plan）
         $queryField = match ($field) {
-            'total_used' => DB::raw('(u + d)'),
+            'total_used' => DB::raw('(SELECT COALESCE(SUM(u + d), 0) FROM v2_user_plan WHERE v2_user_plan.user_id = v2_user.id)'),
             default => $field
         };
 
@@ -158,7 +158,7 @@ class UserController extends Controller
             $direction = !empty($sort['desc']) ? 'DESC' : 'ASC';
             // 计算字段需用表达式排序（selectRaw 别名在部分驱动/分页下不可靠）
             $orderField = match ($field) {
-                'total_used' => DB::raw('(u + d)'),
+                'total_used' => DB::raw('(SELECT COALESCE(SUM(u + d), 0) FROM v2_user_plan WHERE v2_user_plan.user_id = v2_user.id)'),
                 default => $field,
             };
             $builder->orderBy($orderField, $direction);
@@ -208,7 +208,7 @@ class UserController extends Controller
         $userModel = User::query()
             ->with(['plan:id,name', 'invite_user:id,email', 'group:id,name'])
             ->select((new User())->getTable() . '.*')
-            ->selectRaw('(u + d) as total_used');
+            ->selectRaw('(SELECT COALESCE(SUM(u + d), 0) FROM v2_user_plan WHERE v2_user_plan.user_id = v2_user.id) as total_used');
 
         // 聚合列一次查完 + 实例明细预加载（transform 里拼 plan_list，禁 N+1）
         $userModel->withPlanAggregate()->with('userPlans');
@@ -262,12 +262,12 @@ class UserController extends Controller
         ]);
         $user = User::find($request->input('id'))->load('invite_user');
         $user->loadMissing('userPlans');
-        foreach ($user->getComputedPlanFields() as $key => $value) {
-            $user->setAttribute($key, $value);
-        }
-        $user->setAttribute('plan_list', $user->getPlanList());
-        $user = HookManager::filter('admin.user.detail', $user, $request);
-        return $this->success($user);
+        $detail = $user->toArray();
+        unset($detail['user_plans'], $detail['userPlans']);
+        $detail = array_merge($detail, $user->getComputedPlanFields());
+        $detail['plan_list'] = $user->getPlanList();
+        $detail = HookManager::filter('admin.user.detail', $detail, $request);
+        return $this->success($detail);
     }
 
     public function update(UserUpdate $request)
@@ -362,15 +362,26 @@ class UserController extends Controller
                 UserPlan::query()->where('user_id', $user->id)->lockForUpdate()->get();
 
                 $base = $params;
-                unset($base['plans'], $base['clear_plans']);
+                unset(
+                    $base['plans'],
+                    $base['clear_plans'],
+                    // v2_user 已无套餐列：legacy 单字段不再落主表，套餐编辑一律走 plans[]。
+                    $base['plan_id'],
+                    $base['group_id'],
+                    $base['transfer_enable'],
+                    $base['u'],
+                    $base['d'],
+                    $base['expired_at'],
+                    $base['speed_limit'],
+                    $base['device_limit'],
+                    $base['next_reset_at']
+                );
                 $locked->fill($base);
                 if (!$locked->save()) {
                     throw new \RuntimeException('保存失败');
                 }
 
                 $this->syncUserPlans($locked, $request, $params);
-                // 管理端实例 diff 后同步聚合回主表（兼容旧读法）。
-                app(\App\Services\TrafficResetService::class)->syncUserMasterAggregate($user->id);
             });
 
             // 管理端实例 diff 不走 observer（只改实例表），显式通知节点。
@@ -497,12 +508,7 @@ class UserController extends Controller
                 'email',
                 'balance',
                 'commission_balance',
-                'transfer_enable',
-                'u',
-                'd',
-                'expired_at',
-                'token',
-                'plan_id'
+                'token'
             ]);
 
         $query->with('userPlans');

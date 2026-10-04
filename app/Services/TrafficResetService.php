@@ -130,36 +130,11 @@ class TrafficResetService
         $this->clearUserCache($user);
         HookManager::call('traffic.reset.after', $user);
       }
-      // 主表双写：实例清零后同步聚合回主表（兼容旧读法）。
-      $this->syncUserMasterAggregate($userId);
+      // 主表已无套餐列：实例清零后无需回写，读侧由 User accessor 实时聚合。
       NodeUserSyncJob::dispatch($userId, 'updated');
     }
 
     return $resetDone;
-  }
-
-  /**
-   * 实例聚合回写主表 9 列（兼容展示层/节点旧读法）。
-   */
-  public function syncUserMasterAggregate(int $userId): void
-  {
-    $user = User::query()->whereKey($userId)->first();
-    if (!$user) {
-      return;
-    }
-    $agg = $user->getPlanAggregate();
-    User::query()->whereKey($userId)->update([
-      'plan_id' => $agg['plan_id'],
-      'group_id' => $agg['group_id'],
-      'transfer_enable' => $agg['quota'],
-      'u' => $agg['used_u'],
-      'd' => $agg['used_d'],
-      'expired_at' => $agg['expired_at'],
-      'speed_limit' => $agg['speed_limit'],
-      'device_limit' => $agg['device_limit'],
-      'next_reset_at' => UserPlan::query()->where('user_id', $userId)
-        ->active()->orderBy('next_reset_at')->value('next_reset_at'),
-    ]);
   }
 
   /**
@@ -174,80 +149,6 @@ class TrafficResetService
       && $instance->isActive($now)
       && $instance->next_reset_at !== null
       && (int) $instance->next_reset_at <= $now;
-  }
-
-  /**
-   * Perform the traffic reset for a user.
-   *
-   * @param bool $force true = 无条件重置（手动/API/订单/礼品卡）；
-   *                    false = 事务内二次确认 next_reset_at 是否到期。
-   */
-  public function performReset(User $user, string $triggerSource = TrafficResetLog::SOURCE_MANUAL, bool $force = true): bool
-  {
-    try {
-      return DB::transaction(function () use ($user, $triggerSource, $force) {
-        // 必须在事务内重读并加行锁：用调用方传进来的模型做读改写会读到
-        // 事务外的陈旧快照。
-        $fresh = User::whereKey($user->getKey())->lockForUpdate()->first();
-        if (!$fresh) {
-          return false;
-        }
-
-        if (!$force && !$fresh->shouldResetTraffic()) {
-          return false;
-        }
-
-        $oldUpload = (int) ($fresh->u ?? 0);
-        $oldDownload = (int) ($fresh->d ?? 0);
-        $oldTotal = $oldUpload + $oldDownload;
-
-        $nextResetTime = $this->calculateNextResetTime($fresh);
-        $resetAt = time();
-
-        // 一次 UPDATE 完成清零 + 计数自增，reset_count 用 SQL 表达式避免读改写。
-        // 直接调用方模型的 update() 会把模型上其它脏字段一并写库，
-        // 那样订单流程里的 transfer_enable 会被隐式落库，语义不清。
-        $fresh->setAttribute('reset_count', DB::raw('COALESCE(reset_count, 0) + 1'));
-        $fresh->forceFill([
-          'u' => 0,
-          'd' => 0,
-          'last_reset_at' => $resetAt,
-          'next_reset_at' => $nextResetTime ? $nextResetTime->timestamp : null,
-        ])->save();
-
-        // 把重置结果同步回调用方的模型实例，只同步这几个字段，
-        // 保留订单流程尚未落库的 transfer_enable / plan_id 等脏字段。
-        $user->u = 0;
-        $user->d = 0;
-        $user->last_reset_at = $resetAt;
-        $user->next_reset_at = $nextResetTime ? $nextResetTime->timestamp : null;
-        $user->reset_count = ((int) $fresh->getRawOriginal('reset_count')) + 1;
-
-        $this->recordResetLog($fresh, [
-          'reset_type' => $this->getResetTypeFromPlan($fresh->plan),
-          'trigger_source' => $triggerSource,
-          'old_upload' => $oldUpload,
-          'old_download' => $oldDownload,
-          'old_total' => $oldTotal,
-          'new_upload' => 0,
-          'new_download' => 0,
-          'new_total' => 0,
-        ]);
-
-        $this->clearUserCache($fresh);
-        HookManager::call('traffic.reset.after', $fresh);
-        return true;
-      });
-    } catch (\Exception $e) {
-      Log::error(__('traffic_reset.reset_failed'), [
-        'user_id' => $user->id,
-        'email' => $user->email,
-        'error' => $e->getMessage(),
-        'trigger_source' => $triggerSource,
-      ]);
-
-      return false;
-    }
   }
 
   /**
@@ -401,26 +302,6 @@ class TrafficResetService
     return $nextYearTarget;
   }
 
-
-  /**
-   * Record the traffic reset log.
-   */
-  private function recordResetLog(User $user, array $data): void
-  {
-    TrafficResetLog::create([
-      'user_id' => $user->id,
-      'reset_type' => $data['reset_type'],
-      'reset_time' => now(),
-      'old_upload' => $data['old_upload'],
-      'old_download' => $data['old_download'],
-      'old_total' => $data['old_total'],
-      'new_upload' => $data['new_upload'],
-      'new_download' => $data['new_download'],
-      'new_total' => $data['new_total'],
-      'trigger_source' => $data['trigger_source'],
-      'metadata' => $data['metadata'] ?? null,
-    ]);
-  }
 
   /**
    * Get the reset type from the user's plan.

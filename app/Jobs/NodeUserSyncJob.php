@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\User;
+use App\Models\UserPlan;
 use App\Services\NodeSyncService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -39,6 +40,11 @@ class NodeUserSyncJob implements ShouldQueue
         } elseif ($this->action === 'deleted') {
             if ($this->oldGroupId) {
                 NodeSyncService::notifyUserRemovedFromGroup($this->userId, $this->oldGroupId);
+            } else {
+                // 主表已无 group_id：从该用户所有实例组移除。
+                UserPlan::where('user_id', $this->userId)
+                    ->distinct()->pluck('group_id')
+                    ->each(fn ($gid) => NodeSyncService::notifyUserRemovedFromGroup($this->userId, (int) $gid));
             }
         }
     }

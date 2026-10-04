@@ -175,7 +175,6 @@ class OrderService
                 }
 
                 $this->openMultiPlan($order, $plan);
-                $this->syncMasterAggregate();
             }
 
             if (!$this->user->save()) {
@@ -194,27 +193,11 @@ class OrderService
             return;
         }
 
-        $order = $this->order;
-        $userId = (int) $order->user_id;
-
-        // 主表是聚合投影，observer 读主表变更不会触发；开通后显式通知节点
+        // 主表已无套餐列：observer 不会触发；开通后显式通知节点
         // （按分组并集拆多份下发，见 NodeSyncService）。
-        NodeUserSyncJob::dispatch($userId, 'updated');
+        NodeUserSyncJob::dispatch((int) $this->order->user_id, 'updated');
 
-        // 必须按订单 type 匹配（新购/续费/升级），勿误用 STATUS_* 常量。
-        // 历史上曾写成 STATUS_PROCESSING，虽与 TYPE_NEW_PURCHASE 同为 1 碰巧生效，语义错误。
-        $eventId = match ((int) $order->type) {
-            Order::TYPE_NEW_PURCHASE => admin_setting('new_order_event_id', 0),
-            Order::TYPE_RENEWAL => admin_setting('renew_order_event_id', 0),
-            Order::TYPE_UPGRADE => admin_setting('change_order_event_id', 0),
-            default => 0,
-        };
-
-        if ($eventId) {
-            $this->openEvent($eventId);
-        }
-
-        HookManager::call('order.open.after', $order);
+        HookManager::call('order.open.after', $this->order);
     }
 
     public static function isDepositOrder(Order $order): bool
@@ -364,85 +347,6 @@ class OrderService
             ->first();
     }
 
-    private function getSurplusValue(User $user, Order $order)
-    {
-        if ($user->expired_at === NULL) {
-            $lastOneTimeOrder = Order::where('user_id', $user->id)
-                ->where('period', Plan::PERIOD_ONETIME)
-                ->where('status', Order::STATUS_COMPLETED)
-                ->orderBy('id', 'DESC')
-                ->first();
-            if (!$lastOneTimeOrder)
-                return;
-            $nowUserTraffic = Helper::transferToGB($user->transfer_enable);
-            if (!$nowUserTraffic)
-                return;
-            $paidTotalAmount = ($lastOneTimeOrder->total_amount + $lastOneTimeOrder->balance_amount);
-            if (!$paidTotalAmount)
-                return;
-            $trafficUnitPrice = $paidTotalAmount / $nowUserTraffic;
-            $notUsedTraffic = $nowUserTraffic - Helper::transferToGB($user->u + $user->d);
-            $result = $trafficUnitPrice * $notUsedTraffic;
-            $order->surplus_amount = (int) ($result > 0 ? $result : 0);
-            $order->surplus_order_ids = Order::where('user_id', $user->id)
-                ->whereNotIn('period', [Plan::PERIOD_RESET_TRAFFIC, Order::PERIOD_DEPOSIT])
-                ->where('type', '!=', Order::TYPE_DEPOSIT)
-                ->where('status', Order::STATUS_COMPLETED)
-                ->pluck('id')
-                ->all();
-        } else {
-            $orders = Order::query()
-                ->where('user_id', $user->id)
-                ->whereNotIn('period', [Plan::PERIOD_RESET_TRAFFIC, Plan::PERIOD_ONETIME, Order::PERIOD_DEPOSIT])
-                ->where('type', '!=', Order::TYPE_DEPOSIT)
-                ->where('status', Order::STATUS_COMPLETED)
-                ->get();
-
-            if ($orders->isEmpty()) {
-                $order->surplus_amount = 0;
-                $order->surplus_order_ids = [];
-                return;
-            }
-
-            // 只计用户实付（总价+余额抵扣），不计历史折抵字段，避免 surplus 互相叠加放大。
-            $orderAmountSum = $orders->sum(
-                fn($item) => (int) $item->total_amount + (int) $item->balance_amount
-            );
-            $orderMonthSum = $orders->sum(fn($item) => self::STR_TO_TIME[PlanService::getPeriodKey($item->period)] ?? 0);
-            $firstOrderAt = (int) $orders->min('created_at');
-
-            // 以用户当前 expired_at 为权益终点（比 first+addMonths 更贴近真实到期，避免日历月误差倒贴余额）
-            $expiredAtTs = $user->expired_at !== null
-                ? (int) $user->expired_at
-                : Carbon::createFromTimestamp($firstOrderAt)->addMonths($orderMonthSum)->timestamp;
-
-            $nowTs = time();
-            $totalSeconds = max(0, $expiredAtTs - $firstOrderAt);
-            $remainSeconds = max(0, $expiredAtTs - $nowTs);
-            $cycleRatio = $totalSeconds > 0 ? $remainSeconds / $totalSeconds : 0;
-
-            $plan = Plan::find($user->plan_id);
-            $totalTraffic = $plan?->transfer_enable * $orderMonthSum;
-            $usedTraffic = Helper::transferToGB($user->u + $user->d);
-            $remainTraffic = max(0, $totalTraffic - $usedTraffic);
-            $trafficRatio = $totalTraffic > 0 ? $remainTraffic / $totalTraffic : 0;
-
-            $ratio = $cycleRatio;
-            if (admin_setting('change_order_event_id', 0) == 1) {
-                $ratio = min($cycleRatio, $trafficRatio);
-            }
-
-            $surplus = (int) max(0, $orderAmountSum * $ratio);
-            // 折抵不得超过本单原价：同价/更贵升级不产生 surplus_credit 余额倒贴；
-            // 降级时仍可在 setOrderType 中用 (surplus - total) 形成 credit。
-            // 这里不截断到 total（尚未知本单最终价），但禁止因日历误差使 ratio 推高到 > 实付总额。
-            $surplus = min($surplus, (int) $orderAmountSum);
-
-            $order->surplus_amount = $surplus;
-            $order->surplus_order_ids = $orders->pluck('id')->all();
-        }
-    }
-
     public function paid(string $callbackNo)
     {
         // 行锁 + 事务内二次确认 status，避免并发回调/手动入账双开订阅。
@@ -548,42 +452,8 @@ class OrderService
         }
     }
 
-    private function setSpeedLimit($speedLimit)
-    {
-        $this->user->speed_limit = $speedLimit;
-    }
-
-    private function setDeviceLimit($deviceLimit)
-    {
-        $this->user->device_limit = $deviceLimit;
-    }
-
-    private function buyByPeriod(Order $order, Plan $plan)
-    {
-        // change plan process
-        if ((int) $order->type === Order::TYPE_UPGRADE) {
-            $this->user->expired_at = time();
-        }
-        $this->user->transfer_enable = $plan->transfer_enable * 1073741824;
-        // 从一次性转换到循环或者新购的时候，重置流量
-        if ($this->user->expired_at === NULL || $order->type === Order::TYPE_NEW_PURCHASE)
-            app(TrafficResetService::class)->performReset($this->user, TrafficResetLog::SOURCE_ORDER);
-        $this->user->plan_id = $plan->id;
-        $this->user->group_id = $plan->group_id;
-        $this->user->expired_at = $this->getTime($order->period, $this->user->expired_at);
-    }
-
-    private function buyByOneTime(Plan $plan)
-    {
-        app(TrafficResetService::class)->performReset($this->user, TrafficResetLog::SOURCE_ORDER);
-        $this->user->transfer_enable = $plan->transfer_enable * 1073741824;
-        $this->user->plan_id = $plan->id;
-        $this->user->group_id = $plan->group_id;
-        $this->user->expired_at = NULL;
-    }
-
     /**
-     * 多套餐开通：单写实例表，主表快照列一律不动。
+     * 多套餐开通：单写实例表（v2_user 已无套餐列）。
      * 调用时用户行已加锁；此处再锁该用户全部实例行（三铁律③），cycle 行复用不断行。
      */
     private function openMultiPlan(Order $order, Plan $plan): void
@@ -725,27 +595,6 @@ class OrderService
     }
 
     /**
-     * 实例聚合回写主表 9 列（兼容展示层/节点旧读法）。
-     * 主表是实例聚合的投影，不是数据源；所有业务判定一律读实例表。
-     */
-    private function syncMasterAggregate(): void
-    {
-        $agg = $this->user->getPlanAggregate();
-        $this->user->forceFill([
-            'plan_id' => $agg['plan_id'],
-            'group_id' => $agg['group_id'],
-            'transfer_enable' => $agg['quota'],
-            'u' => $agg['used_u'],
-            'd' => $agg['used_d'],
-            'expired_at' => $agg['expired_at'],
-            'speed_limit' => $agg['speed_limit'],
-            'device_limit' => $agg['device_limit'],
-            'next_reset_at' => UserPlan::query()->where('user_id', $this->user->id)
-                ->active()->orderBy('next_reset_at')->value('next_reset_at'),
-        ]);
-    }
-
-    /**
      * 实例 next_reset_at：锚定实例自身的 expired_at（各行独立周期）。
      */
     private function nextResetForPlan(Plan $plan, ?int $expiredAt): ?int
@@ -753,35 +602,6 @@ class OrderService
         $next = app(TrafficResetService::class)->calculateNextResetTimeForPlan($plan, $expiredAt);
 
         return $next?->timestamp;
-    }
-
-    /**
-     * 单套餐旧路径兜底：开通后实例表仍无行时，按主表快照补建 cycle 首行。
-     * （正常迁移后不会触发；防漏迁/脏数据导致实例表永久为空。）
-     */
-    private function seedInstanceFromMaster(Plan $plan): void
-    {
-        $exists = UserPlan::query()->where('user_id', $this->user->id)->exists();
-        if ($exists) {
-            return;
-        }
-        $row = new UserPlan();
-        $row->forceFill([
-            'user_id' => $this->user->id,
-            'plan_id' => $plan->id,
-            'kind' => UserPlan::KIND_CYCLE,
-            'group_id' => $this->user->group_id ?? $plan->group_id,
-            'order_ids' => [(int) $this->order->id],
-            'transfer_enable' => (int) $this->user->transfer_enable,
-            'u' => (int) $this->user->u,
-            'd' => (int) $this->user->d,
-            'expired_at' => $this->user->expired_at !== null ? (int) $this->user->expired_at : null,
-            'speed_limit' => $this->user->speed_limit,
-            'device_limit' => $this->user->device_limit,
-            'sort_order' => 0,
-        ]);
-        $row->next_reset_at = $this->nextResetForPlan($plan, $row->expired_at);
-        $row->save();
     }
 
     /**
@@ -809,17 +629,6 @@ class OrderService
             Plan::PERIOD_THREE_YEARLY => $base->addMonths((int) self::STR_TO_TIME[$periodKey])->timestamp,
             default => throw new ApiException('无效的套餐周期'),
         };
-    }
-
-    private function openEvent($eventId)
-    {
-        switch ((int) $eventId) {
-            case 0:
-                break;
-            case 1:
-                // 实例用量由各自开通/重置路径维护，此处不再清主表。
-                break;
-        }
     }
 
     protected function applyCoupon(string $couponCode): void

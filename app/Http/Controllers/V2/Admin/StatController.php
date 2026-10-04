@@ -334,11 +334,8 @@ class StatController extends Controller
         // Total users
         $totalUsers = User::count();
 
-        // Active users (users with valid subscription)
-        $activeUsers = User::where(function ($query) {
-            $query->where('expired_at', '>=', time())
-                ->orWhere('expired_at', NULL);
-        })->count();
+        // Active users (users with valid subscription instance)
+        $activeUsers = User::wherePlanActive()->count();
 
         // Previous month income for growth calculation
         $twoMonthsAgoIncome = Order::where('created_at', '>=', $twoMonthsAgoStart)

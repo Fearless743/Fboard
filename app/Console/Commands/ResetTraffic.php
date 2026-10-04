@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Models\User;
+use App\Models\Plan;
 use App\Models\UserPlan;
 use App\Models\TrafficResetLog;
 use App\Services\TrafficResetService;
@@ -113,10 +113,10 @@ class ResetTraffic extends Command
   private function performFix(): array
   {
     $startTime = microtime(true);
-    $nullUsers = $this->getNullResetTimeUsers();
+    $rows = $this->getNullResetTimeInstances();
 
-    if ($nullUsers->isEmpty()) {
-      $this->info("✅ 没有发现next_reset_at为null的用户");
+    if ($rows->isEmpty()) {
+      $this->info("✅ 没有发现next_reset_at为null的实例行");
       return [
         'total_found' => 0,
         'total_fixed' => 0,
@@ -125,47 +125,23 @@ class ResetTraffic extends Command
       ];
     }
 
-    $this->info("🔧 发现 {$nullUsers->count()} 个next_reset_at为null的用户，开始修正...");
+    $this->info("🔧 发现 {$rows->count()} 个next_reset_at为null的实例行，开始修正...");
 
-    $fixedCount = 0;
-    $errors = [];
-
-    foreach ($nullUsers as $user) {
-      try {
-        $nextResetTime = $this->trafficResetService->calculateNextResetTime($user);
-        if ($nextResetTime) {
-          $user->next_reset_at = $nextResetTime->timestamp;
-          $user->save();
-          $fixedCount++;
-        }
-      } catch (\Exception $e) {
-        $errors[] = [
-          'user_id' => $user->id,
-          'email' => $user->email,
-          'error' => $e->getMessage(),
-        ];
-        Log::error('修正用户next_reset_at失败', [
-          'user_id' => $user->id,
-          'error' => $e->getMessage(),
-        ]);
-      }
-    }
-
-    return [
-      'total_found' => $nullUsers->count(),
-      'total_fixed' => $fixedCount,
-      'error_count' => count($errors),
-      'duration' => round(microtime(true) - $startTime, 2),
-    ];
+    return $this->recalcInstances($rows, $startTime, '修正实例next_reset_at失败');
   }
 
   private function performForce(): array
   {
     $startTime = microtime(true);
-    $allUsers = $this->getAllUsers();
+    $rows = UserPlan::where('kind', UserPlan::KIND_CYCLE)
+      ->where(function ($query) {
+        $query->where('expired_at', '>', time())
+          ->orWhereNull('expired_at');
+      })
+      ->get();
 
-    if ($allUsers->isEmpty()) {
-      $this->info("✅ 没有发现需要处理的用户");
+    if ($rows->isEmpty()) {
+      $this->info("✅ 没有发现需要处理的实例行");
       return [
         'total_found' => 0,
         'total_fixed' => 0,
@@ -174,34 +150,43 @@ class ResetTraffic extends Command
       ];
     }
 
-    $this->info("⚡ 发现 {$allUsers->count()} 个用户，开始重新计算重置时间...");
+    $this->info("⚡ 发现 {$rows->count()} 个实例行，开始重新计算重置时间...");
 
+    return $this->recalcInstances($rows, $startTime, '强制重新计算实例next_reset_at失败');
+  }
+
+  /**
+   * 重算给定 cycle 行的 next_reset_at（锚定各自 expired_at，主表已无该列）。
+   */
+  private function recalcInstances($rows, float $startTime, string $logMessage): array
+  {
     $fixedCount = 0;
     $errors = [];
 
-    foreach ($allUsers as $user) {
+    foreach ($rows as $row) {
       try {
-        $nextResetTime = $this->trafficResetService->calculateNextResetTime($user);
+        $plan = Plan::find($row->plan_id);
+        $nextResetTime = $this->trafficResetService->calculateNextResetTimeForPlan($plan, $row->expired_at);
         if ($nextResetTime) {
-          $user->next_reset_at = $nextResetTime->timestamp;
-          $user->save();
+          $row->next_reset_at = $nextResetTime->timestamp;
+          $row->save();
           $fixedCount++;
         }
       } catch (\Exception $e) {
         $errors[] = [
-          'user_id' => $user->id,
-          'email' => $user->email,
+          'user_plan_id' => $row->id,
+          'user_id' => $row->user_id,
           'error' => $e->getMessage(),
         ];
-        Log::error('强制重新计算用户next_reset_at失败', [
-          'user_id' => $user->id,
+        Log::error($logMessage, [
+          'user_plan_id' => $row->id,
           'error' => $e->getMessage(),
         ]);
       }
     }
 
     return [
-      'total_found' => $allUsers->count(),
+      'total_found' => $rows->count(),
       'total_fixed' => $fixedCount,
       'error_count' => count($errors),
       'duration' => round(microtime(true) - $startTime, 2),
@@ -279,28 +264,15 @@ class ResetTraffic extends Command
 
 
 
-  private function getNullResetTimeUsers()
+  private function getNullResetTimeInstances()
   {
-    return User::whereNull('next_reset_at')
-      ->whereNotNull('plan_id')
+    return UserPlan::where('kind', UserPlan::KIND_CYCLE)
+      ->whereNull('next_reset_at')
       ->where(function ($query) {
         $query->where('expired_at', '>', time())
           ->orWhereNull('expired_at');
       })
-      ->where('banned', 0)
-      ->with('plan:id,name,reset_traffic_method')
-      ->get();
-  }
-
-  private function getAllUsers()
-  {
-    return User::whereNotNull('plan_id')
-      ->where(function ($query) {
-        $query->where('expired_at', '>', time())
-          ->orWhereNull('expired_at');
-      })
-      ->where('banned', 0)
-      ->with('plan:id,name,reset_traffic_method')
+      ->whereHas('user', fn ($q) => $q->where('banned', 0))
       ->get();
   }
 

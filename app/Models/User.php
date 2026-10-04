@@ -211,19 +211,9 @@ class User extends Authenticatable
 
         if ($this->userPlansLoaded()) {
             /** @var \Illuminate\Support\Collection<int, UserPlan> $plans */
-            $plans = $this->getRelation('userPlans')->filter(fn (UserPlan $p) => $p->isActive($now))->values();
-            $groupIds = $plans->map(fn (UserPlan $p) => (int) $p->group_id)->unique()->sort()->values()->all();
+            $plans = $this->getRelation('userPlans');
 
-            return self::normalizePlanAggregate(
-                $plans->sum(fn (UserPlan $p) => (int) $p->transfer_enable),
-                $plans->sum(fn (UserPlan $p) => (int) $p->u + (int) $p->d),
-                $plans->count(),
-                $plans->contains(fn (UserPlan $p) => $p->expired_at === null),
-                $plans->max(fn (UserPlan $p) => $p->expired_at !== null ? (int) $p->expired_at : null),
-                $plans->max(fn (UserPlan $p) => $p->speed_limit !== null ? (int) $p->speed_limit : null),
-                $plans->max(fn (UserPlan $p) => $p->device_limit !== null ? (int) $p->device_limit : null),
-                $groupIds
-            );
+            return self::summarizeInstances($plans, $now);
         }
 
         if ($this->hasEagerPlanAggregate()) {
@@ -263,6 +253,34 @@ class User extends Authenticatable
     {
         return array_key_exists('plans_active_count', $this->attributes)
             && array_key_exists('plans_quota', $this->attributes);
+    }
+
+    /**
+     * 实例集合 → 聚合数组（内存求和唯一实现）。
+     * getPlanAggregate 的 relation 预加载路径与节点下发共用：只看有效实例，
+     * 到期行调用方自行过滤或由 isActive 判断。
+     *
+     * @param \Illuminate\Support\Collection<int, UserPlan> $instances
+     * @return array{is_active:bool,quota:int,used:int,remaining:int,expired_at:?int,speed_limit:?int,device_limit:?int,group_ids:int[],active_count:int}
+     */
+    public static function summarizeInstances($instances, int $now): array
+    {
+        $plans = $instances->filter(fn (UserPlan $p) => $p->isActive($now))->values();
+        $groupIds = $plans->map(fn (UserPlan $p) => (int) $p->group_id)->unique()->sort()->values()->all();
+        $maxExpired = $plans->max(fn (UserPlan $p) => $p->expired_at !== null ? (int) $p->expired_at : null);
+        $maxSpeed = $plans->max(fn (UserPlan $p) => $p->speed_limit !== null ? (int) $p->speed_limit : null);
+        $maxDevice = $plans->max(fn (UserPlan $p) => $p->device_limit !== null ? (int) $p->device_limit : null);
+
+        return self::normalizePlanAggregate(
+            (int) $plans->sum(fn (UserPlan $p) => (int) $p->transfer_enable),
+            (int) $plans->sum(fn (UserPlan $p) => (int) $p->u + (int) $p->d),
+            $plans->count(),
+            $plans->contains(fn (UserPlan $p) => $p->expired_at === null),
+            $maxExpired !== null ? (int) $maxExpired : null,
+            $maxSpeed !== null ? (int) $maxSpeed : null,
+            $maxDevice !== null ? (int) $maxDevice : null,
+            $groupIds
+        );
     }
 
     /**
@@ -339,17 +357,29 @@ class User extends Authenticatable
      */
     public function isActive(): bool
     {
-        return !$this->banned && 
+        if (UserPlan::isEnabled()) {
+            // 多套餐：有任一有效实例即活跃（只看未到期，不看剩余额度）。
+            return !$this->banned && $this->hasActiveUserPlan();
+        }
+        return !$this->banned &&
                ($this->expired_at === null || $this->expired_at > time()) &&
                $this->plan_id !== null;
     }
 
-    /** 
+    /**
      * 检查用户是否可用节点流量且充足
      */
     public function isAvailable(): bool
-    {     
-        return $this->isActive() && $this->getRemainingTraffic() > 0;   
+    {
+        if (UserPlan::isEnabled()) {
+            // 多套餐：活跃且聚合剩余>0。
+            if ($this->banned) {
+                return false;
+            }
+            $agg = $this->getPlanAggregate();
+            return $agg['is_active'] && $agg['remaining'] > 0;
+        }
+        return $this->isActive() && $this->getRemainingTraffic() > 0;
     }
 
     /**

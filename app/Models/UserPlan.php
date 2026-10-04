@@ -45,12 +45,13 @@ class UserPlan extends Model
     public const KIND_PACK = 2;
 
     /**
-     * 实例表总开关已移除：实例表是唯一数据源，无条件启用。
-     * 保留方法供旧调用兼容，一律返回 true。
+     * 多套餐业务开关（admin_setting multi_plan_enable，默认关闭）。
+     * 仅控制业务模式：关闭 = 单套餐语义（每人至多一个有效实例行）；
+     * 开启 = 多套餐并行。数据始终以 v2_user_plan 为准，与主表列无关。
      */
     public static function isEnabled(): bool
     {
-        return true;
+        return (int) admin_setting('multi_plan_enable', 0) === 1;
     }
 
     protected $attributes = [

@@ -4,6 +4,7 @@ namespace Tests\Unit\Services;
 
 use App\Models\Server;
 use App\Models\User;
+use App\Models\UserPlan;
 use App\Services\ServerService;
 use App\Utils\Helper;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -182,6 +183,22 @@ class ServerAvailableUsersTest extends TestCase
             'updated_at' => time(),
         ]);
         $user->save();
+
+        // 实例表是唯一数据源：按主表快照补一行，保证节点下发能命中。
+        $row = new UserPlan();
+        $row->forceFill([
+            'user_id' => $user->id,
+            'plan_id' => 0,
+            'kind' => UserPlan::KIND_CYCLE,
+            'group_id' => $groupId,
+            'order_ids' => [],
+            'transfer_enable' => 1024 * 1024 * 1024,
+            'u' => 0,
+            'd' => 0,
+            'expired_at' => null,
+            'sort_order' => 0,
+        ]);
+        $row->save();
 
         return $user;
     }

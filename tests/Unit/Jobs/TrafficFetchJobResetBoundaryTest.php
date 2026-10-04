@@ -4,6 +4,7 @@ namespace Tests\Unit\Jobs;
 
 use App\Jobs\TrafficFetchJob;
 use App\Models\User;
+use App\Models\UserPlan;
 use App\Utils\Helper;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Redis;
@@ -21,7 +22,7 @@ class TrafficFetchJobResetBoundaryTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function makeUser(array $attrs = []): User
+    private function makeUser(array $attrs = []): array
     {
         $user = new User();
         $user->forceFill(array_merge([
@@ -37,13 +38,29 @@ class TrafficFetchJobResetBoundaryTest extends TestCase
         ], $attrs));
         $user->save();
 
-        return $user;
+        // 实例表是唯一数据源：给用户一行可用实例，断言读实例行。
+        $row = new UserPlan();
+        $row->forceFill([
+            'user_id' => $user->id,
+            'plan_id' => 0,
+            'kind' => UserPlan::KIND_CYCLE,
+            'group_id' => 0,
+            'order_ids' => [],
+            'transfer_enable' => 10_000_000_000,
+            'u' => 0,
+            'd' => 0,
+            'expired_at' => null,
+            'sort_order' => 0,
+        ]);
+        $row->save();
+
+        return [$user, $row];
     }
 
     public function test_report_before_reset_is_not_charged_to_new_cycle(): void
     {
         // 该用户从未重置过（last_reset_at = 0）→ 不做边界判断
-        $user = $this->makeUser();
+        [$user, $row] = $this->makeUser();
 
         Redis::shouldReceive('sadd')->never();
 
@@ -60,14 +77,14 @@ class TrafficFetchJobResetBoundaryTest extends TestCase
         );
         $job->handle();
 
-        $user->refresh();
-        $this->assertSame(0, (int) $user->u);
-        $this->assertSame(0, (int) $user->d, '重置前产生的流量不应计入重置后的额度');
+        $row->refresh();
+        $this->assertSame(0, (int) $row->u);
+        $this->assertSame(0, (int) $row->d, '重置前产生的流量不应计入重置后的额度');
     }
 
     public function test_report_after_reset_is_applied(): void
     {
-        $user = $this->makeUser();
+        [$user, $row] = $this->makeUser();
         $resetAt = time();
 
         $user->forceFill(['last_reset_at' => $resetAt])->save();
@@ -83,14 +100,14 @@ class TrafficFetchJobResetBoundaryTest extends TestCase
         );
         $job->handle();
 
-        $user->refresh();
-        $this->assertSame(1000, (int) $user->u);
-        $this->assertSame(2000, (int) $user->d);
+        $row->refresh();
+        $this->assertSame(1000, (int) $row->u);
+        $this->assertSame(2000, (int) $row->d);
     }
 
     public function test_user_without_reset_history_is_never_skipped(): void
     {
-        $user = $this->makeUser(['last_reset_at' => 0]);
+        [$user, $row] = $this->makeUser(['last_reset_at' => 0]);
 
         Redis::shouldReceive('sadd')->once()->andReturn(true);
 
@@ -103,14 +120,14 @@ class TrafficFetchJobResetBoundaryTest extends TestCase
         );
         $job->handle();
 
-        $user->refresh();
-        $this->assertSame(500, (int) $user->u);
-        $this->assertSame(700, (int) $user->d);
+        $row->refresh();
+        $this->assertSame(500, (int) $row->u);
+        $this->assertSame(700, (int) $row->d);
     }
 
     public function test_non_positive_rate_falls_back_to_one(): void
     {
-        $user = $this->makeUser();
+        [$user, $row] = $this->makeUser();
 
         Redis::shouldReceive('sadd')->once()->andReturn(true);
 
@@ -122,8 +139,8 @@ class TrafficFetchJobResetBoundaryTest extends TestCase
         );
         $job->handle();
 
-        $user->refresh();
-        $this->assertSame(1000, (int) $user->u, 'rate=0 不应把流量记成 0');
-        $this->assertSame(2000, (int) $user->d);
+        $row->refresh();
+        $this->assertSame(1000, (int) $row->u, 'rate=0 不应把流量记成 0');
+        $this->assertSame(2000, (int) $row->d);
     }
 }

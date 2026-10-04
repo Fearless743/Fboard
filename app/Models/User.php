@@ -223,13 +223,15 @@ class User extends Authenticatable
         if ($this->hasEagerPlanAggregate()) {
             return self::normalizePlanAggregate(
                 (int) $this->getAttribute('plans_quota'),
-                (int) $this->getAttribute('plans_u') + (int) $this->getAttribute('plans_d'),
+                (int) $this->getAttribute('plans_u'),
+                (int) $this->getAttribute('plans_d'),
                 (int) $this->getAttribute('plans_active_count'),
                 (int) $this->getAttribute('plans_permanent_count') > 0,
                 $this->getAttribute('plans_expired_max') !== null ? (int) $this->getAttribute('plans_expired_max') : null,
                 $this->getAttribute('plans_speed_max') !== null ? (int) $this->getAttribute('plans_speed_max') : null,
                 $this->getAttribute('plans_device_max') !== null ? (int) $this->getAttribute('plans_device_max') : null,
-                $this->activeUserPlans($now)->pluck('group_id')->map(fn ($v) => (int) $v)->unique()->sort()->values()->all()
+                $this->activeUserPlans($now)->pluck('group_id')->map(fn ($v) => (int) $v)->unique()->sort()->values()->all(),
+                $this->activeUserPlans($now)->pluck('plan_id')->map(fn ($v) => (int) $v)->unique()->values()->all()
             );
         }
 
@@ -238,13 +240,15 @@ class User extends Authenticatable
 
         return self::normalizePlanAggregate(
             (int) $instances->sum('transfer_enable'),
-            (int) $instances->sum('u') + (int) $instances->sum('d'),
+            (int) $instances->sum('u'),
+            (int) $instances->sum('d'),
             $instances->count(),
             $instances->contains(fn (UserPlan $p) => $p->expired_at === null),
             $instances->max('expired_at') !== null ? (int) $instances->max('expired_at') : null,
             $instances->max('speed_limit') !== null ? (int) $instances->max('speed_limit') : null,
             $instances->max('device_limit') !== null ? (int) $instances->max('device_limit') : null,
-            $instances->pluck('group_id')->map(fn ($v) => (int) $v)->unique()->sort()->values()->all()
+            $instances->pluck('group_id')->map(fn ($v) => (int) $v)->unique()->sort()->values()->all(),
+            $instances->pluck('plan_id')->map(fn ($v) => (int) $v)->unique()->values()->all()
         );
     }
 
@@ -271,19 +275,22 @@ class User extends Authenticatable
     {
         $plans = $instances->filter(fn (UserPlan $p) => $p->isActive($now))->values();
         $groupIds = $plans->map(fn (UserPlan $p) => (int) $p->group_id)->unique()->sort()->values()->all();
+        $planIds = $plans->map(fn (UserPlan $p) => (int) $p->plan_id)->unique()->values()->all();
         $maxExpired = $plans->max(fn (UserPlan $p) => $p->expired_at !== null ? (int) $p->expired_at : null);
         $maxSpeed = $plans->max(fn (UserPlan $p) => $p->speed_limit !== null ? (int) $p->speed_limit : null);
         $maxDevice = $plans->max(fn (UserPlan $p) => $p->device_limit !== null ? (int) $p->device_limit : null);
 
         return self::normalizePlanAggregate(
             (int) $plans->sum(fn (UserPlan $p) => (int) $p->transfer_enable),
-            (int) $plans->sum(fn (UserPlan $p) => (int) $p->u + (int) $p->d),
+            (int) $plans->sum(fn (UserPlan $p) => (int) $p->u),
+            (int) $plans->sum(fn (UserPlan $p) => (int) $p->d),
             $plans->count(),
             $plans->contains(fn (UserPlan $p) => $p->expired_at === null),
             $maxExpired !== null ? (int) $maxExpired : null,
             $maxSpeed !== null ? (int) $maxSpeed : null,
             $maxDevice !== null ? (int) $maxDevice : null,
-            $groupIds
+            $groupIds,
+            $planIds
         );
     }
 
@@ -292,23 +299,34 @@ class User extends Authenticatable
      */
     public static function normalizePlanAggregate(
         int $quota,
-        int $used,
+        int $usedU,
+        int $usedD,
         int $activeCount,
         bool $hasPermanent,
         ?int $maxExpiredAt,
         ?int $maxSpeedLimit,
         ?int $maxDeviceLimit,
-        array $groupIds
+        array $groupIds,
+        array $planIds = []
     ): array {
+        $used = $usedU + $usedD;
+        $planIds = array_values(array_unique(array_map('intval', $planIds)));
+        $groupIds = array_values(array_map('intval', $groupIds));
+
         return [
             'is_active' => $activeCount > 0,
             'quota' => $quota,
             'used' => $used,
+            'used_u' => $usedU,
+            'used_d' => $usedD,
             'remaining' => max(0, $quota - $used),
             'expired_at' => $activeCount === 0 ? null : ($hasPermanent ? null : $maxExpiredAt),
             'speed_limit' => $maxSpeedLimit,
             'device_limit' => $maxDeviceLimit,
-            'group_ids' => array_values(array_map('intval', $groupIds)),
+            'group_ids' => $groupIds,
+            // 单 plan 单组时回填主表 plan_id/group_id，多值时 null（诚实未知）。
+            'plan_id' => count($planIds) === 1 ? $planIds[0] : null,
+            'group_id' => count($groupIds) === 1 ? $groupIds[0] : null,
             'active_count' => $activeCount,
         ];
     }
@@ -361,8 +379,8 @@ class User extends Authenticatable
      */
     public function isActive(): bool
     {
-        if (UserPlan::isEnabled() && $this->hasAnyUserPlan()) {
-            // 多套餐：有任一有效实例即活跃（只看未到期，不看剩余额度）。
+        if ($this->hasAnyUserPlan()) {
+            // 有任一有效实例即活跃（只看未到期，不看剩余额度）。
             return !$this->banned && $this->hasActiveUserPlan();
         }
         return !$this->banned &&
@@ -375,8 +393,8 @@ class User extends Authenticatable
      */
     public function isAvailable(): bool
     {
-        if (UserPlan::isEnabled() && $this->hasAnyUserPlan()) {
-            // 多套餐：活跃且聚合剩余>0。
+        if ($this->hasAnyUserPlan()) {
+            // 活跃且聚合剩余>0。
             if ($this->banned) {
                 return false;
             }
@@ -407,9 +425,6 @@ class User extends Authenticatable
     public function getComputedPlanFields(?int $now = null): array
     {
         $now ??= time();
-        if (!UserPlan::isEnabled()) {
-            return [];
-        }
         $rows = $this->relationLoaded('userPlans')
             ? $this->userPlans
             : $this->activeUserPlans($now)->get();
@@ -444,9 +459,6 @@ class User extends Authenticatable
     public function getPlanList(?int $now = null): array
     {
         $now ??= time();
-        if (!UserPlan::isEnabled()) {
-            return [];
-        }
         if ($this->relationLoaded('userPlans')) {
             $rows = $this->userPlans;
         } else {

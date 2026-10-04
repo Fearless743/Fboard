@@ -174,18 +174,8 @@ class OrderService
                         ->update(['status' => Order::STATUS_DISCOUNTED]);
                 }
 
-                if (UserPlan::isEnabled()) {
-                    $this->openMultiPlan($order, $plan);
-                } else {
-                    match ((string) $order->period) {
-                        Plan::PERIOD_ONETIME => $this->buyByOneTime($plan),
-                        Plan::PERIOD_RESET_TRAFFIC => app(TrafficResetService::class)->performReset($this->user, TrafficResetLog::SOURCE_ORDER),
-                        default => $this->buyByPeriod($order, $plan),
-                    };
-
-                    $this->setSpeedLimit($plan->speed_limit);
-                    $this->setDeviceLimit($plan->device_limit);
-                }
+                $this->openMultiPlan($order, $plan);
+                $this->syncMasterAggregate();
             }
 
             if (!$this->user->save()) {
@@ -207,11 +197,9 @@ class OrderService
         $order = $this->order;
         $userId = (int) $order->user_id;
 
-        // 多套餐：主表不再变更，observer 不会触发；开通后显式通知节点
+        // 主表是聚合投影，observer 读主表变更不会触发；开通后显式通知节点
         // （按分组并集拆多份下发，见 NodeSyncService）。
-        if (UserPlan::isEnabled()) {
-            NodeUserSyncJob::dispatch($userId, 'updated');
-        }
+        NodeUserSyncJob::dispatch($userId, 'updated');
 
         // 必须按订单 type 匹配（新购/续费/升级），勿误用 STATUS_* 常量。
         // 历史上曾写成 STATUS_PROCESSING，虽与 TYPE_NEW_PURCHASE 同为 1 碰巧生效，语义错误。
@@ -283,27 +271,7 @@ class OrderService
             $order->type = Order::TYPE_RESET_TRAFFIC;
             return;
         }
-        if (UserPlan::isEnabled()) {
-            $this->setOrderTypeMulti($user);
-            return;
-        }
-        if ($user->plan_id !== NULL && $order->plan_id !== $user->plan_id && ($user->expired_at > time() || $user->expired_at === NULL)) {
-            if (!(int) admin_setting('plan_change_enable', 1))
-                throw new ApiException('目前不允许更改订阅，请联系客服或提交工单操作');
-            $order->type = Order::TYPE_UPGRADE;
-            if ((int) admin_setting('surplus_enable', 1))
-                $this->getSurplusValue($user, $order);
-            if ($order->surplus_amount >= $order->total_amount) {
-                $order->surplus_credit = (int) ($order->surplus_amount - $order->total_amount);
-                $order->total_amount = 0;
-            } else {
-                $order->total_amount = (int) ($order->total_amount - $order->surplus_amount);
-            }
-        } else if (($user->expired_at === null || $user->expired_at > time()) && $order->plan_id == $user->plan_id) { // 用户订阅未过期或按流量订阅 且购买订阅与当前订阅相同 === 续费
-            $order->type = Order::TYPE_RENEWAL;
-        } else { // 新购
-            $order->type = Order::TYPE_NEW_PURCHASE;
-        }
+        $this->setOrderTypeMulti($user);
     }
 
     /**
@@ -757,6 +725,27 @@ class OrderService
     }
 
     /**
+     * 实例聚合回写主表 9 列（兼容展示层/节点旧读法）。
+     * 主表是实例聚合的投影，不是数据源；所有业务判定一律读实例表。
+     */
+    private function syncMasterAggregate(): void
+    {
+        $agg = $this->user->getPlanAggregate();
+        $this->user->forceFill([
+            'plan_id' => $agg['plan_id'],
+            'group_id' => $agg['group_id'],
+            'transfer_enable' => $agg['quota'],
+            'u' => $agg['used_u'],
+            'd' => $agg['used_d'],
+            'expired_at' => $agg['expired_at'],
+            'speed_limit' => $agg['speed_limit'],
+            'device_limit' => $agg['device_limit'],
+            'next_reset_at' => UserPlan::query()->where('user_id', $this->user->id)
+                ->active()->orderBy('next_reset_at')->value('next_reset_at'),
+        ]);
+    }
+
+    /**
      * 实例 next_reset_at：锚定实例自身的 expired_at（各行独立周期）。
      */
     private function nextResetForPlan(Plan $plan, ?int $expiredAt): ?int
@@ -764,6 +753,35 @@ class OrderService
         $next = app(TrafficResetService::class)->calculateNextResetTimeForPlan($plan, $expiredAt);
 
         return $next?->timestamp;
+    }
+
+    /**
+     * 单套餐旧路径兜底：开通后实例表仍无行时，按主表快照补建 cycle 首行。
+     * （正常迁移后不会触发；防漏迁/脏数据导致实例表永久为空。）
+     */
+    private function seedInstanceFromMaster(Plan $plan): void
+    {
+        $exists = UserPlan::query()->where('user_id', $this->user->id)->exists();
+        if ($exists) {
+            return;
+        }
+        $row = new UserPlan();
+        $row->forceFill([
+            'user_id' => $this->user->id,
+            'plan_id' => $plan->id,
+            'kind' => UserPlan::KIND_CYCLE,
+            'group_id' => $this->user->group_id ?? $plan->group_id,
+            'order_ids' => [(int) $this->order->id],
+            'transfer_enable' => (int) $this->user->transfer_enable,
+            'u' => (int) $this->user->u,
+            'd' => (int) $this->user->d,
+            'expired_at' => $this->user->expired_at !== null ? (int) $this->user->expired_at : null,
+            'speed_limit' => $this->user->speed_limit,
+            'device_limit' => $this->user->device_limit,
+            'sort_order' => 0,
+        ]);
+        $row->next_reset_at = $this->nextResetForPlan($plan, $row->expired_at);
+        $row->save();
     }
 
     /**
@@ -799,11 +817,7 @@ class OrderService
             case 0:
                 break;
             case 1:
-                // 多套餐下主表 u/d 已冻结，实例用量由各自开通/重置路径维护，此处不再清主表。
-                if (UserPlan::isEnabled()) {
-                    break;
-                }
-                app(TrafficResetService::class)->performReset($this->user, TrafficResetLog::SOURCE_ORDER);
+                // 实例用量由各自开通/重置路径维护，此处不再清主表。
                 break;
         }
     }

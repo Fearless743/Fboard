@@ -144,22 +144,16 @@ class PlanService
 
     protected function validateResetTrafficPurchase(User $user): void
     {
-        if (UserPlan::isEnabled()) {
-            // 多套餐：只重置订单 plan 对应的 cycle 行；下单前须持有该 plan 的有效 cycle 行。
-            if ($user->banned) {
-                throw new ApiException(__('Subscription has expired or no active subscription, unable to purchase Data Reset Package'));
-            }
-            $hasCycle = UserPlan::query()
-                ->where('user_id', $user->id)
-                ->where('plan_id', $this->plan->id)
-                ->where('kind', UserPlan::KIND_CYCLE);
-            UserPlan::applyActive($hasCycle, time());
-            if (!$hasCycle->exists()) {
-                throw new ApiException(__('Subscription has expired or no active subscription, unable to purchase Data Reset Package'));
-            }
-            return;
+        // 只重置订单 plan 对应的 cycle 行；下单前须持有该 plan 的有效 cycle 行。
+        if ($user->banned) {
+            throw new ApiException(__('Subscription has expired or no active subscription, unable to purchase Data Reset Package'));
         }
-        if (!app(UserService::class)->isAvailable($user) || $this->plan->id !== $user->plan_id) {
+        $hasCycle = UserPlan::query()
+            ->where('user_id', $user->id)
+            ->where('plan_id', $this->plan->id)
+            ->where('kind', UserPlan::KIND_CYCLE);
+        UserPlan::applyActive($hasCycle, time());
+        if (!$hasCycle->exists()) {
             throw new ApiException(__('Subscription has expired or no active subscription, unable to purchase Data Reset Package'));
         }
     }

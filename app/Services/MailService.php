@@ -102,11 +102,9 @@ class MailService
                 $statistics['processed_users']++;
                 $emailsSent = 0;
 
-                if (UserPlan::isEnabled()) {
-                    // 同一聚合入口：legacy 字段名覆盖为计算值（仅内存，不落库）。
-                    foreach ($user->getComputedPlanFields() as $key => $value) {
-                        $user->setAttribute($key, $value);
-                    }
+                // 同一聚合入口：legacy 字段名覆盖为计算值（仅内存，不落库）。
+                foreach ($user->getComputedPlanFields() as $key => $value) {
+                    $user->setAttribute($key, $value);
                 }
 
                 // 检查并发送过期提醒

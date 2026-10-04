@@ -57,26 +57,22 @@ class ServerService
      */
     public static function getAvailableServers(User $user): array
     {
-        if (UserPlan::isEnabled()) {
-            // 多套餐：按有效分组并集逐组查询后合并，同节点多组命中只保留一份
-            // （订阅展示去重；节点侧同步才拆多份，见 NodeSyncService）。
-            $groupIds = $user->getPlanAggregate()['group_ids'];
-            if (empty($groupIds)) {
-                return [];
+        // 实例表是唯一数据源：按有效分组并集逐组查询后合并，
+        // 同节点多组命中只保留一份（订阅展示去重；节点侧同步才拆多份）。
+        $groupIds = $user->getPlanAggregate()['group_ids'];
+        if (empty($groupIds)) {
+            return [];
+        }
+        $servers = [];
+        foreach ($groupIds as $groupId) {
+            $scoped = clone $user;
+            $scoped->group_id = $groupId;
+            foreach (self::getAvailableServersForGroup($scoped) as $server) {
+                $servers[$server['id']] = $server;
             }
-            $servers = [];
-            foreach ($groupIds as $groupId) {
-                $scoped = clone $user;
-                $scoped->group_id = $groupId;
-                foreach (self::getAvailableServersForGroup($scoped) as $server) {
-                    $servers[$server['id']] = $server;
-                }
-            }
-
-            return array_values($servers);
         }
 
-        return self::getAvailableServersForGroup($user);
+        return array_values($servers);
     }
 
     /**
@@ -150,41 +146,8 @@ class ServerService
      */
     public static function getAvailableUsers(Server $node)
     {
-        if (UserPlan::isEnabled()) {
-            return self::getAvailableUsersMulti($node);
-        }
-        $groupIds = $node->group_ids ?? [];
-        if (empty($groupIds)) {
-            return collect();
-        }
-        $users = User::toBase()
-            ->whereIn('group_id', $groupIds)
-            ->whereRaw('u + d < transfer_enable')
-            ->where(function ($query) {
-                $query->where('expired_at', '>=', time())
-                    ->orWhere('expired_at', NULL);
-            })
-            ->where('banned', 0)
-            ->select([
-                'id',
-                'uuid',
-                'speed_limit',
-                'device_limit'
-            ])
-            ->get();
-
-        // 部分协议（如 Sudoku）要求节点用户列表的 uuid 字段为派生密钥而非原始 uuid
-        $definition = app(ProtocolDefinitionRegistry::class)->get((string) ($node->type ?? ''));
-        if ($definition?->transformNodeUserUuid) {
-            $users = $users->map(function ($user) use ($node) {
-                $userModel = new User();
-                $userModel->forceFill(['uuid' => $user->uuid]);
-                $user->uuid = $node->generateServerPassword($userModel);
-                return $user;
-            });
-        }
-
-        return HookManager::filter('server.users.get', $users, $node);
+        // 实例表是唯一数据源：无条件走实例路径。
+        return self::getAvailableUsersMulti($node);
     }
 
     /**

@@ -106,49 +106,8 @@ class ResetTraffic extends Command
 
   private function performReset(): array
   {
-    if (UserPlan::isEnabled()) {
-      return $this->performResetMulti();
-    }
-    $startTime = microtime(true);
-    $totalResetCount = 0;
-    $errors = [];
-
-    $users = $this->getResetQuery()->get();
-
-    if ($users->isEmpty()) {
-      $this->info("😴 当前没有需要重置的用户");
-      return [
-        'total_processed' => 0,
-        'total_reset' => 0,
-        'error_count' => 0,
-        'duration' => round(microtime(true) - $startTime, 2),
-      ];
-    }
-
-    $this->info("找到 {$users->count()} 个需要重置的用户");
-
-    foreach ($users as $user) {
-      try {
-        $totalResetCount += (int) $this->trafficResetService->checkAndReset($user, TrafficResetLog::SOURCE_CRON);
-      } catch (\Exception $e) {
-        $errors[] = [
-          'user_id' => $user->id,
-          'email' => $user->email,
-          'error' => $e->getMessage(),
-        ];
-        Log::error('用户流量重置失败', [
-          'user_id' => $user->id,
-          'error' => $e->getMessage(),
-        ]);
-      }
-    }
-
-    return [
-      'total_processed' => $users->count(),
-      'total_reset' => $totalResetCount,
-      'error_count' => count($errors),
-      'duration' => round(microtime(true) - $startTime, 2),
-    ];
+    // 实例表是唯一数据源：无条件扫描实例行。
+    return $this->performResetMulti();
   }
 
   private function performFix(): array
@@ -251,20 +210,8 @@ class ResetTraffic extends Command
 
 
 
-  private function getResetQuery()
-  {
-    return User::where('next_reset_at', '<=', time())
-      ->whereNotNull('next_reset_at')
-      ->where(function ($query) {
-        $query->where('expired_at', '>', time())
-          ->orWhereNull('expired_at');
-      })
-      ->where('banned', 0)
-      ->whereNotNull('plan_id');
-  }
-
   /**
-   * 多套餐：扫描到期的 cycle 实例行（各行独立 next_reset_at），
+   * 扫描到期的 cycle 实例行（各行独立 next_reset_at），
    * 调统一 resetInstance（force=false，事务内二次确认）。
    */
   private function performResetMulti(): array

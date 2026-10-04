@@ -116,15 +116,13 @@ class UserController extends Controller
             return $this->fail([400, __('The user does not exist')]);
         }
         $user['avatar_url'] = 'https://cdn.v2ex.com/gravatar/' . md5($user->email) . '?s=64&d=identicon';
-        if (UserPlan::isEnabled()) {
-            $model = User::find($request->user()->id);
-            if ($model) {
-                $model->loadMissing('userPlans');
-                foreach ($model->getComputedPlanFields() as $key => $value) {
-                    $user[$key] = $value;
-                }
-                $user['plan_list'] = $model->getPlanList();
+        $model = User::find($request->user()->id);
+        if ($model) {
+            $model->loadMissing('userPlans');
+            foreach ($model->getComputedPlanFields() as $key => $value) {
+                $user[$key] = $value;
             }
+            $user['plan_list'] = $model->getPlanList();
         }
         $user = HookManager::filter('user.info.response', $user, $request);
         return $this->success($user);
@@ -165,29 +163,22 @@ class UserController extends Controller
         if (!$user) {
             return $this->fail([400, __('The user does not exist')]);
         }
-        if (UserPlan::isEnabled()) {
-            $model = User::find($request->user()->id);
-            if ($model) {
-                $model->loadMissing('userPlans');
-                $computed = $model->getComputedPlanFields();
-                foreach ($computed as $key => $value) {
-                    $user[$key] = $value;
-                }
-                $user['plan_list'] = $model->getPlanList();
-                // 主 plan_id 已冻结：plan 对象按单实例直出，多实例时置空由 plan_list 承载
-                if (!empty($computed['plan_id'])) {
-                    $user['plan'] = Plan::find($computed['plan_id']);
-                    if (!$user['plan']) {
-                        return $this->fail([400, __('Subscription plan does not exist')]);
-                    }
-                } else {
-                    unset($user['plan']);
-                }
+        $model = User::find($request->user()->id);
+        if ($model) {
+            $model->loadMissing('userPlans');
+            $computed = $model->getComputedPlanFields();
+            foreach ($computed as $key => $value) {
+                $user[$key] = $value;
             }
-        } elseif ($user->plan_id) {
-            $user['plan'] = Plan::find($user->plan_id);
-            if (!$user['plan']) {
-                return $this->fail([400, __('Subscription plan does not exist')]);
+            $user['plan_list'] = $model->getPlanList();
+            // 主 plan_id 已冻结：plan 对象按单实例直出，多实例时置空由 plan_list 承载
+            if (!empty($computed['plan_id'])) {
+                $user['plan'] = Plan::find($computed['plan_id']);
+                if (!$user['plan']) {
+                    return $this->fail([400, __('Subscription plan does not exist')]);
+                }
+            } else {
+                unset($user['plan']);
             }
         }
         $user['subscribe_url'] = Helper::getSubscribeUrl($user['token']);
@@ -292,10 +283,6 @@ class UserController extends Controller
      */
     public function planSort(Request $request)
     {
-        if (!UserPlan::isEnabled()) {
-            return $this->fail([400, __('多套餐功能未开启')]);
-        }
-
         $ids = $request->input('ids');
         if (!is_array($ids)) {
             return $this->fail([400, __('参数错误')]);

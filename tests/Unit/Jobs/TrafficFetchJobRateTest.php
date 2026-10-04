@@ -4,6 +4,7 @@ namespace Tests\Unit\Jobs;
 
 use App\Jobs\TrafficFetchJob;
 use App\Models\User;
+use App\Models\UserPlan;
 use App\Utils\Helper;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Redis;
@@ -32,6 +33,22 @@ class TrafficFetchJobRateTest extends TestCase
             'updated_at' => time(),
         ]);
         $user->save();
+
+        // 实例表是唯一数据源：先给用户一行可用实例。
+        $row = new UserPlan();
+        $row->forceFill([
+            'user_id' => $user->id,
+            'plan_id' => 0,
+            'kind' => UserPlan::KIND_CYCLE,
+            'group_id' => 0,
+            'order_ids' => [],
+            'transfer_enable' => 10_000_000,
+            'u' => 0,
+            'd' => 0,
+            'expired_at' => null,
+            'sort_order' => 0,
+        ]);
+        $row->save();
 
         $job = new TrafficFetchJob(
             ['rate' => 1.5, 'id' => 1],

@@ -210,10 +210,8 @@ class UserController extends Controller
             ->select((new User())->getTable() . '.*')
             ->selectRaw('(u + d) as total_used');
 
-        if (UserPlan::isEnabled()) {
-            // 聚合列一次查完 + 实例明细预加载（transform 里拼 plan_list，禁 N+1）
-            $userModel->withPlanAggregate()->with('userPlans');
-        }
+        // 聚合列一次查完 + 实例明细预加载（transform 里拼 plan_list，禁 N+1）
+        $userModel->withPlanAggregate()->with('userPlans');
 
         $userModel = HookManager::filter('admin.user.fetch.query', $userModel, $request);
 
@@ -245,15 +243,13 @@ class UserController extends Controller
         $user['balance'] = $user['balance'] / 100;
         $user['commission_balance'] = $user['commission_balance'] / 100;
         $user['subscribe_url'] = Helper::getSubscribeUrl($user['token']);
-        if (UserPlan::isEnabled()) {
-            // legacy 字段名不变，值为实例聚合；另加 plan_list（含耗尽行）。
-            $computed = $model->getComputedPlanFields();
-            if (!empty($computed)) {
-                $user = array_merge($user, $computed);
-            }
-            $user['plan_list'] = $model->getPlanList();
-            unset($user['userPlans'], $user['user_plans']);
+        // legacy 字段名不变，值为实例聚合；另加 plan_list（含耗尽行）。
+        $computed = $model->getComputedPlanFields();
+        if (!empty($computed)) {
+            $user = array_merge($user, $computed);
         }
+        $user['plan_list'] = $model->getPlanList();
+        unset($user['userPlans'], $user['user_plans']);
         return HookManager::filter('admin.user.transform', $user, $model);
     }
 
@@ -265,13 +261,11 @@ class UserController extends Controller
             'id.required' => '用户ID不能为空'
         ]);
         $user = User::find($request->input('id'))->load('invite_user');
-        if (UserPlan::isEnabled()) {
-            $user->loadMissing('userPlans');
-            foreach ($user->getComputedPlanFields() as $key => $value) {
-                $user->setAttribute($key, $value);
-            }
-            $user->setAttribute('plan_list', $user->getPlanList());
+        $user->loadMissing('userPlans');
+        foreach ($user->getComputedPlanFields() as $key => $value) {
+            $user->setAttribute($key, $value);
         }
+        $user->setAttribute('plan_list', $user->getPlanList());
         $user = HookManager::filter('admin.user.detail', $user, $request);
         return $this->success($user);
     }
@@ -283,18 +277,6 @@ class UserController extends Controller
         $user = User::find($request->input('id'));
         if (!$user) {
             return $this->fail([400202, '用户不存在']);
-        }
-        if (!UserPlan::isEnabled() && ($request->exists('plans') || !empty($params['clear_plans']))) {
-            return $this->fail([400201, '多套餐功能未开启']);
-        }
-        if (UserPlan::isEnabled()) {
-            // 旧列冻结：主表 9 套餐列零读写，一律走 plans[] 实例 diff。
-            $frozen = ['plan_id', 'group_id', 'transfer_enable', 'u', 'd', 'expired_at', 'speed_limit', 'device_limit', 'next_reset_at'];
-            foreach ($frozen as $field) {
-                if (array_key_exists($field, $params) && $params[$field] !== null) {
-                    return $this->fail([400201, "多套餐模式下【{$field}】请通过套餐实例编辑"]);
-                }
-            }
         }
         if (isset($params['email'])) {
             if (User::byEmail($params['email'])->first() && $user->email !== $params['email']) {
@@ -381,20 +363,18 @@ class UserController extends Controller
 
                 $base = $params;
                 unset($base['plans'], $base['clear_plans']);
-                if (UserPlan::isEnabled()) {
-                    // 旧列冻结：null 值也不得落库（fill 会清空主表）。
-                    unset($base['plan_id'], $base['group_id'], $base['transfer_enable'], $base['u'], $base['d'], $base['expired_at'], $base['speed_limit'], $base['device_limit'], $base['next_reset_at']);
-                }
                 $locked->fill($base);
                 if (!$locked->save()) {
                     throw new \RuntimeException('保存失败');
                 }
 
                 $this->syncUserPlans($locked, $request, $params);
+                // 管理端实例 diff 后同步聚合回主表（兼容旧读法）。
+                app(\App\Services\TrafficResetService::class)->syncUserMasterAggregate($user->id);
             });
 
             // 管理端实例 diff 不走 observer（只改实例表），显式通知节点。
-            if (UserPlan::isEnabled() && ($request->exists('plans') || !empty($params['clear_plans']))) {
+            if ($request->exists('plans') || !empty($params['clear_plans'])) {
                 NodeUserSyncJob::dispatch($user->id, 'updated');
             }
         } catch (\Exception $e) {
@@ -421,9 +401,6 @@ class UserController extends Controller
     private function syncUserPlans(User $user, Request $request, array $params): void
     {
         $clear = (bool) ($params['clear_plans'] ?? false);
-        if (!UserPlan::isEnabled()) {
-            return;
-        }
 
         if ($clear) {
             if ($request->exists('plans') && !empty($params['plans'])) {
@@ -528,9 +505,7 @@ class UserController extends Controller
                 'plan_id'
             ]);
 
-        if (UserPlan::isEnabled()) {
-            $query->with('userPlans');
-        }
+        $query->with('userPlans');
 
         if ($scope === 'selected') {
             $query->whereIn('id', $userIds);
@@ -563,21 +538,13 @@ class UserController extends Controller
             $query->chunk(500, function ($users) use ($output) {
                 foreach ($users as $user) {
                     try {
-                        $quota = $user->transfer_enable;
-                        $used = $user->u + $user->d;
-                        $expiredAt = $user->expired_at;
-                        $planName = $user->plan ? $user->plan->name : '无订阅';
-                        if (UserPlan::isEnabled()) {
-                            // 与列表同一聚合入口；订阅计划列展示全部有效实例名
-                            $computed = $user->getComputedPlanFields();
-                            if (!empty($computed)) {
-                                $quota = $computed['transfer_enable'];
-                                $used = $computed['u'] + $computed['d'];
-                                $expiredAt = $computed['expired_at'];
-                            }
-                            $names = array_unique(array_column($user->getPlanList(), 'name'));
-                            $planName = !empty($names) ? implode(';', $names) : '无订阅';
-                        }
+                        // 与列表同一聚合入口；订阅计划列展示全部有效实例名
+                        $computed = $user->getComputedPlanFields();
+                        $quota = $computed['transfer_enable'] ?? $user->transfer_enable;
+                        $used = isset($computed['u']) ? $computed['u'] + $computed['d'] : $user->u + $user->d;
+                        $expiredAt = $computed['expired_at'] ?? $user->expired_at;
+                        $names = array_unique(array_column($user->getPlanList(), 'name'));
+                        $planName = !empty($names) ? implode(';', $names) : '无订阅';
                         $row = [
                             $user->email,
                             number_format($user->balance / 100, 2),
@@ -816,11 +783,8 @@ class UserController extends Controller
 
         $builder = User::query()
             ->with('plan:id,name')
+            ->with('userPlans')
             ->orderBy('id', 'desc');
-
-        if (UserPlan::isEnabled()) {
-            $builder->with('userPlans');
-        }
 
         if ($scope === 'filtered') {
             // filtered: apply filters/sort
@@ -839,22 +803,20 @@ class UserController extends Controller
 
         $builder->chunk($chunkSize, function ($users) use ($subject, $content, $appName, $appUrl) {
             foreach ($users as $user) {
+                // 与列表同一聚合入口；多实例时套餐名用分号拼接
                 $planName = $user->plan?->name ?? '';
                 $expiredAt = $user->expired_at;
                 $quota = (int) ($user->transfer_enable ?? 0);
                 $used = (int) (($user->u ?? 0) + ($user->d ?? 0));
-                if (UserPlan::isEnabled()) {
-                    // 与列表同一聚合入口；多实例时套餐名用分号拼接
-                    $computed = $user->getComputedPlanFields();
-                    if (!empty($computed)) {
-                        $quota = (int) $computed['transfer_enable'];
-                        $used = (int) $computed['u'] + (int) $computed['d'];
-                        $expiredAt = $computed['expired_at'];
-                    }
-                    $names = array_unique(array_column($user->getPlanList(), 'name'));
-                    if (!empty($names)) {
-                        $planName = implode(';', $names);
-                    }
+                $computed = $user->getComputedPlanFields();
+                if (!empty($computed)) {
+                    $quota = (int) $computed['transfer_enable'];
+                    $used = (int) $computed['u'] + (int) $computed['d'];
+                    $expiredAt = $computed['expired_at'];
+                }
+                $names = array_unique(array_column($user->getPlanList(), 'name'));
+                if (!empty($names)) {
+                    $planName = implode(';', $names);
                 }
                 $vars = [
                     'app.name' => $appName,

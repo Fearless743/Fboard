@@ -54,17 +54,6 @@ class PlanSortTest extends TestCase
         $this->assertSame(0, (int) $mine->refresh()->sort_order);
     }
 
-    public function test_plan_sort_rejected_when_switch_off(): void
-    {
-        admin_setting(['multi_plan_enable' => 0]);
-        [$user, $token] = $this->seedUser();
-        $row = $this->makeRow($user->id);
-
-        $this->postJson('/api/v1/user/planSort', ['ids' => [$row->id]], [
-            'Authorization' => 'Bearer ' . $token,
-        ])->assertStatus(400);
-    }
-
     public function test_plan_sort_requires_login(): void
     {
         $this->postJson('/api/v1/user/planSort', ['ids' => [1]])->assertStatus(403);

@@ -43,10 +43,10 @@ class UserPlanAllocateTest extends TestCase
         $this->assertSame(40, (int) $row1->d);
         $this->assertSame(0, (int) $row2->u);
         $this->assertSame(20, (int) $row2->d);
-        // 主表不动
+        // 主表是聚合投影：同步双写
         $user->refresh();
-        $this->assertSame(0, (int) $user->u);
-        $this->assertSame(0, (int) $user->d);
+        $this->assertSame(60, (int) $user->u);
+        $this->assertSame(60, (int) $user->d);
     }
 
     public function test_partial_fill_carry_over_without_overissue(): void

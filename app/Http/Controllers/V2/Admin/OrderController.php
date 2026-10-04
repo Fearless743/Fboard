@@ -401,8 +401,8 @@ class OrderController extends Controller
 
                 if (PlanService::getPeriodKey((string) $order->period) === Plan::PERIOD_RESET_TRAFFIC) {
                     $order->type = Order::TYPE_RESET_TRAFFIC;
-                } else if (UserPlan::isEnabled()) {
-                    // 多套餐：升级分支不可达，按实例判定（onetime 永远新购，同 plan 有
+                } else {
+                    // 升级分支不可达，按实例判定（onetime 永远新购，同 plan 有
                     // cycle 行即续费，否则一律新购），与 setOrderTypeMulti 对齐。
                     $periodKey = PlanService::getPeriodKey((string) $order->period);
                     if ($periodKey === Plan::PERIOD_ONETIME) {
@@ -415,12 +415,6 @@ class OrderController extends Controller
                             ->exists();
                         $order->type = $hasCycleRow ? Order::TYPE_RENEWAL : Order::TYPE_NEW_PURCHASE;
                     }
-                } else if ($lockedUser->plan_id !== NULL && $order->plan_id !== $lockedUser->plan_id) {
-                    $order->type = Order::TYPE_UPGRADE;
-                } else if ($lockedUser->expired_at > time() && $order->plan_id == $lockedUser->plan_id) {
-                    $order->type = Order::TYPE_RENEWAL;
-                } else {
-                    $order->type = Order::TYPE_NEW_PURCHASE;
                 }
 
                 $orderService->setInvite($lockedUser);

@@ -24,19 +24,8 @@ class TrafficResetService
    */
   public function checkAndReset(User $user, string $triggerSource = TrafficResetLog::SOURCE_AUTO): bool
   {
-    if (UserPlan::isEnabled()) {
-      return $this->checkAndResetUserInstances($user, $triggerSource);
-    }
-    if (!$user->shouldResetTraffic()) {
-      return false;
-    }
-
-    // force=false：事务内拿到行锁后会再确认一次 next_reset_at。
-    // cron（reset:traffic 每分钟）与用户访问面板（getUserTrafficInfo）
-    // 会并发触发同一个重置；没有这次二次确认时，后到者会把先到者
-    // 落地之后新产生的流量再清零一次（数据里表现为同 reset_time 的两条
-    // 记录、一条 old_total=0）。
-    return $this->performReset($user, $triggerSource, false);
+    // 实例表是唯一数据源：无条件走实例重置。
+    return $this->checkAndResetUserInstances($user, $triggerSource);
   }
 
   /**
@@ -141,10 +130,36 @@ class TrafficResetService
         $this->clearUserCache($user);
         HookManager::call('traffic.reset.after', $user);
       }
+      // 主表双写：实例清零后同步聚合回主表（兼容旧读法）。
+      $this->syncUserMasterAggregate($userId);
       NodeUserSyncJob::dispatch($userId, 'updated');
     }
 
     return $resetDone;
+  }
+
+  /**
+   * 实例聚合回写主表 9 列（兼容展示层/节点旧读法）。
+   */
+  public function syncUserMasterAggregate(int $userId): void
+  {
+    $user = User::query()->whereKey($userId)->first();
+    if (!$user) {
+      return;
+    }
+    $agg = $user->getPlanAggregate();
+    User::query()->whereKey($userId)->update([
+      'plan_id' => $agg['plan_id'],
+      'group_id' => $agg['group_id'],
+      'transfer_enable' => $agg['quota'],
+      'u' => $agg['used_u'],
+      'd' => $agg['used_d'],
+      'expired_at' => $agg['expired_at'],
+      'speed_limit' => $agg['speed_limit'],
+      'device_limit' => $agg['device_limit'],
+      'next_reset_at' => UserPlan::query()->where('user_id', $userId)
+        ->active()->orderBy('next_reset_at')->value('next_reset_at'),
+    ]);
   }
 
   /**
@@ -600,18 +615,15 @@ class TrafficResetService
    */
   public function canReset(User $user): bool
   {
-    if (UserPlan::isEnabled()) {
-      if ($user->banned) {
-        return false;
-      }
-      $query = UserPlan::query()
-        ->where('user_id', $user->id)
-        ->where('kind', UserPlan::KIND_CYCLE);
-      UserPlan::applyActive($query, time());
-
-      return $query->exists();
+    if ($user->banned) {
+      return false;
     }
-    return $user->isActive() && $user->plan !== null;
+    $query = UserPlan::query()
+      ->where('user_id', $user->id)
+      ->where('kind', UserPlan::KIND_CYCLE);
+    UserPlan::applyActive($query, time());
+
+    return $query->exists();
   }
 
   /**
@@ -619,33 +631,26 @@ class TrafficResetService
    */
   public function manualReset(User $user, array $metadata = []): bool
   {
-    if (UserPlan::isEnabled()) {
-      // 手动重置该用户全部有效 cycle 行（force=true，耗尽实例同样生效）；
-      // pack 行不清零。
-      if ($user->banned) {
-        return false;
-      }
-      $now = time();
-      $rows = UserPlan::query()
-        ->where('user_id', $user->id)
-        ->where('kind', UserPlan::KIND_CYCLE)
-        ->orderBy('id')
-        ->get()
-        ->filter(fn (UserPlan $row) => $row->isActive($now))
-        ->values();
-      $reset = false;
-      foreach ($rows as $row) {
-        if ($this->resetInstance($row, TrafficResetLog::SOURCE_MANUAL, true)) {
-          $reset = true;
-        }
-      }
-
-      return $reset;
-    }
-    if (!$this->canReset($user)) {
+    // 手动重置该用户全部有效 cycle 行（force=true，耗尽实例同样生效）；
+    // pack 行不清零。
+    if ($user->banned) {
       return false;
     }
+    $now = time();
+    $rows = UserPlan::query()
+      ->where('user_id', $user->id)
+      ->where('kind', UserPlan::KIND_CYCLE)
+      ->orderBy('id')
+      ->get()
+      ->filter(fn (UserPlan $row) => $row->isActive($now))
+      ->values();
+    $reset = false;
+    foreach ($rows as $row) {
+      if ($this->resetInstance($row, TrafficResetLog::SOURCE_MANUAL, true)) {
+        $reset = true;
+      }
+    }
 
-    return $this->performReset($user, TrafficResetLog::SOURCE_MANUAL);
+    return $reset;
   }
 }

@@ -5,7 +5,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * 多套餐 PR1：创建实例表 v2_user_plan（16 列）。
+ * 多套餐 PR1：创建实例表 v2_user_plan（16 列），并把存量单套餐用户迁入。
  *
  * 说明：
  * - created_at/updated_at 沿用项目惯例用 integer（配合 Model dateFormat=U），
@@ -13,6 +13,8 @@ use Illuminate\Support\Facades\Schema;
  * - order_ids 为 json NOT NULL；MySQL json 列不支持字面默认值，
  *   空数组默认值由 UserPlan::$attributes 在模型层保证，写入时必须显式带值。
  * - 本表不设业务唯一键，一行性靠订单流程三铁律 + 定时一致性检查保证。
+ * - 数据迁移与 artisan 命令共用 UserPlanMigrator 实现，可重跑可中断
+ *   （同 user+plan 已有 cycle 行跳过）。
  */
 return new class extends Migration
 {
@@ -37,6 +39,9 @@ return new class extends Migration
             $table->integer('created_at');
             $table->integer('updated_at');
         });
+
+        // 存量单套餐用户迁入实例表（幂等：已有 cycle 行跳过）。
+        \App\Services\UserPlanMigrator::run();
     }
 
     public function down(): void

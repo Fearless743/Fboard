@@ -2,9 +2,12 @@
 
 namespace App\Services;
 
+use App\Enums\UserPlanKind;
+use App\Jobs\NodeUserSyncJob;
 use App\Models\User;
 use App\Models\Plan;
 use App\Models\TrafficResetLog;
+use App\Models\UserPlan;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -21,6 +24,9 @@ class TrafficResetService
    */
   public function checkAndReset(User $user, string $triggerSource = TrafficResetLog::SOURCE_AUTO): bool
   {
+    if (UserPlan::isEnabled()) {
+      return $this->checkAndResetUserInstances($user, $triggerSource);
+    }
     if (!$user->shouldResetTraffic()) {
       return false;
     }
@@ -31,6 +37,128 @@ class TrafficResetService
     // 落地之后新产生的流量再清零一次（数据里表现为同 reset_time 的两条
     // 记录、一条 old_total=0）。
     return $this->performReset($user, $triggerSource, false);
+  }
+
+  /**
+   * 多套餐：逐个检查用户名下 cycle 行，各行按自己的 next_reset_at 重置。
+   */
+  public function checkAndResetUserInstances(User $user, string $triggerSource): bool
+  {
+    $reset = false;
+    $rows = UserPlan::query()
+      ->where('user_id', $user->id)
+      ->where('kind', UserPlan::KIND_CYCLE)
+      ->orderBy('id')
+      ->get();
+    foreach ($rows as $row) {
+      if ($this->resetInstance($row, $triggerSource, false)) {
+        $reset = true;
+      }
+    }
+
+    return $reset;
+  }
+
+  /**
+   * 多套餐统一实例重置：cron/手动/订单调同一函数。
+   * - 仅 cycle 行：按各自 next_reset_at 清 u/d 并推周期；
+   * - pack 行不清零（用完即止，到期退出聚合），直接返回 false；
+   * - force=false 时事务内二次确认（到期且有效才动）；
+   * - 手动（force=true）对耗尽实例同样生效。
+   */
+  public function resetInstance(UserPlan $instance, string $triggerSource = TrafficResetLog::SOURCE_MANUAL, bool $force = true): bool
+  {
+    $now = time();
+    $resetDone = false;
+    $userId = (int) $instance->user_id;
+
+    try {
+      $resetDone = DB::transaction(function () use ($instance, $triggerSource, $force, $now) {
+        // 必须在事务内重读并加行锁：用调用方传进来的模型做读改写会读到
+        // 事务外的陈旧快照。
+        $fresh = UserPlan::query()->whereKey($instance->getKey())->lockForUpdate()->first();
+        if (!$fresh) {
+          return false;
+        }
+        if ($fresh->kind !== UserPlanKind::Cycle) {
+          return false;
+        }
+        if (!$force && !$this->shouldResetInstance($fresh, $now)) {
+          return false;
+        }
+
+        $oldUpload = (int) $fresh->u;
+        $oldDownload = (int) $fresh->d;
+
+        $plan = Plan::query()->find($fresh->plan_id);
+        $nextResetTime = $this->calculateNextResetTimeForPlan($plan, $fresh->expired_at);
+
+        $fresh->forceFill([
+          'u' => 0,
+          'd' => 0,
+          'next_reset_at' => $nextResetTime ? $nextResetTime->timestamp : null,
+        ])->save();
+
+        // 实例重置同步刷新 user.last_reset_at：TrafficFetchJob 的 reportTs
+        // 防回拨依赖它丢弃重置前收到的 report。用 query 更新，不触发 User 事件。
+        User::query()->whereKey($fresh->user_id)->update(['last_reset_at' => $now]);
+
+        TrafficResetLog::create([
+          'user_id' => $fresh->user_id,
+          'reset_type' => $this->getResetTypeFromPlan($plan),
+          'reset_time' => now(),
+          'old_upload' => $oldUpload,
+          'old_download' => $oldDownload,
+          'old_total' => $oldUpload + $oldDownload,
+          'new_upload' => 0,
+          'new_download' => 0,
+          'new_total' => 0,
+          'trigger_source' => $triggerSource,
+          'metadata' => [
+            'user_plan_id' => $fresh->id,
+            'plan_id' => $fresh->plan_id,
+          ],
+        ]);
+
+        return true;
+      });
+    } catch (\Exception $e) {
+      Log::error(__('traffic_reset.reset_failed'), [
+        'user_plan_id' => $instance->id,
+        'user_id' => $userId,
+        'error' => $e->getMessage(),
+        'trigger_source' => $triggerSource,
+      ]);
+
+      return false;
+    }
+
+    if ($resetDone) {
+      // 事务外：清缓存、调钩子、通知节点把恢复可用的用户加回去。
+      // 传 User 模型给钩子/缓存清理，保持与单套餐一致的形态。
+      $user = User::query()->whereKey($userId)->first(['id', 'token']);
+      if ($user) {
+        $this->clearUserCache($user);
+        HookManager::call('traffic.reset.after', $user);
+      }
+      NodeUserSyncJob::dispatch($userId, 'updated');
+    }
+
+    return $resetDone;
+  }
+
+  /**
+   * 实例是否到重置点：有效（未到期）且 next_reset_at 已到。
+   * 过期行即使 next_reset_at 到期也不动（等续购按新周期复用）。
+   */
+  public function shouldResetInstance(UserPlan $instance, ?int $now = null): bool
+  {
+    $now ??= time();
+
+    return $instance->kind === UserPlanKind::Cycle
+      && $instance->isActive($now)
+      && $instance->next_reset_at !== null
+      && (int) $instance->next_reset_at <= $now;
   }
 
   /**
@@ -466,6 +594,17 @@ class TrafficResetService
    */
   public function canReset(User $user): bool
   {
+    if (UserPlan::isEnabled()) {
+      if ($user->banned) {
+        return false;
+      }
+      $query = UserPlan::query()
+        ->where('user_id', $user->id)
+        ->where('kind', UserPlan::KIND_CYCLE);
+      UserPlan::applyActive($query, time());
+
+      return $query->exists();
+    }
     return $user->isActive() && $user->plan !== null;
   }
 
@@ -474,6 +613,29 @@ class TrafficResetService
    */
   public function manualReset(User $user, array $metadata = []): bool
   {
+    if (UserPlan::isEnabled()) {
+      // 手动重置该用户全部有效 cycle 行（force=true，耗尽实例同样生效）；
+      // pack 行不清零。
+      if ($user->banned) {
+        return false;
+      }
+      $now = time();
+      $rows = UserPlan::query()
+        ->where('user_id', $user->id)
+        ->where('kind', UserPlan::KIND_CYCLE)
+        ->orderBy('id')
+        ->get()
+        ->filter(fn (UserPlan $row) => $row->isActive($now))
+        ->values();
+      $reset = false;
+      foreach ($rows as $row) {
+        if ($this->resetInstance($row, TrafficResetLog::SOURCE_MANUAL, true)) {
+          $reset = true;
+        }
+      }
+
+      return $reset;
+    }
     if (!$this->canReset($user)) {
       return false;
     }

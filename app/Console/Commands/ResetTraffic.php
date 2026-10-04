@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\User;
+use App\Models\UserPlan;
 use App\Models\TrafficResetLog;
 use App\Services\TrafficResetService;
 use Illuminate\Console\Command;
@@ -105,6 +106,9 @@ class ResetTraffic extends Command
 
   private function performReset(): array
   {
+    if (UserPlan::isEnabled()) {
+      return $this->performResetMulti();
+    }
     $startTime = microtime(true);
     $totalResetCount = 0;
     $errors = [];
@@ -257,6 +261,73 @@ class ResetTraffic extends Command
       })
       ->where('banned', 0)
       ->whereNotNull('plan_id');
+  }
+
+  /**
+   * 多套餐：扫描到期的 cycle 实例行（各行独立 next_reset_at），
+   * 调统一 resetInstance（force=false，事务内二次确认）。
+   */
+  private function performResetMulti(): array
+  {
+    $startTime = microtime(true);
+    $totalResetCount = 0;
+    $totalProcessed = 0;
+    $errors = [];
+    $lastId = 0;
+    $now = time();
+
+    $this->info('多套餐模式：扫描实例行...');
+
+    do {
+      $rows = UserPlan::query()
+        ->where('kind', UserPlan::KIND_CYCLE)
+        ->whereNotNull('next_reset_at')
+        ->where('next_reset_at', '<=', $now)
+        ->where('id', '>', $lastId)
+        ->where(function ($query) use ($now) {
+          $query->whereNull('expired_at')->orWhere('expired_at', '>', $now);
+        })
+        ->whereHas('user', fn ($q) => $q->where('banned', 0))
+        ->orderBy('id')
+        ->limit(500)
+        ->get();
+
+      if ($rows->isEmpty()) {
+        break;
+      }
+
+      $this->info("找到 {$rows->count()} 个待重置的实例行");
+
+      foreach ($rows as $row) {
+        $lastId = (int) $row->id;
+        $totalProcessed++;
+        try {
+          $totalResetCount += (int) $this->trafficResetService->resetInstance($row, TrafficResetLog::SOURCE_CRON, false);
+        } catch (\Exception $e) {
+          $errors[] = [
+            'user_plan_id' => $row->id,
+            'user_id' => $row->user_id,
+            'error' => $e->getMessage(),
+          ];
+          Log::error('套餐实例流量重置失败', [
+            'user_plan_id' => $row->id,
+            'user_id' => $row->user_id,
+            'error' => $e->getMessage(),
+          ]);
+        }
+      }
+    } while (true);
+
+    if ($totalProcessed === 0) {
+      $this->info("😴 当前没有需要重置的实例行");
+    }
+
+    return [
+      'total_processed' => $totalProcessed,
+      'total_reset' => $totalResetCount,
+      'error_count' => count($errors),
+      'duration' => round(microtime(true) - $startTime, 2),
+    ];
   }
 
 

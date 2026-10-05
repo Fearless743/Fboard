@@ -13,6 +13,7 @@ use App\Models\UserPlan;
 use App\Services\GiftCardService;
 use App\Services\OrderService;
 use App\Services\TrafficResetService;
+use App\Services\UserPlanMigrator;
 use App\Services\UserService;
 use App\Utils\Helper;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -160,6 +161,51 @@ class UserPlanMigrationTest extends TestCase
         (new GiftCardService($code->code))->setUser($user->refresh())->redeem();
 
         $this->assertSame(1500, (int) $row->refresh()->transfer_enable);
+    }
+
+    public function test_migrator_reads_raw_columns_not_accessor(): void
+    {
+        [$group, $plan] = $this->seedPlan();
+
+        // 模拟迁移时刻：v2_user 仍有 9 列（平时已删除）。
+        \Illuminate\Support\Facades\Schema::table('v2_user', function ($table) {
+            $table->integer('plan_id')->nullable();
+            $table->integer('group_id')->nullable();
+            $table->bigInteger('transfer_enable')->default(0);
+            $table->bigInteger('u')->default(0);
+            $table->bigInteger('d')->default(0);
+            $table->bigInteger('expired_at')->nullable();
+            $table->integer('next_reset_at')->nullable();
+            $table->integer('speed_limit')->nullable();
+            $table->integer('device_limit')->nullable();
+        });
+        $user = $this->makeUser();
+        $now = time();
+        \Illuminate\Support\Facades\DB::table('v2_user')->where('id', $user->id)->update([
+            'plan_id' => $plan->id,
+            'group_id' => $group->id,
+            'transfer_enable' => 12345,
+            'u' => 100,
+            'd' => 200,
+            'expired_at' => $now + 86400,
+            'next_reset_at' => $now + 1000,
+            'speed_limit' => 77,
+            'device_limit' => 3,
+        ]);
+
+        $stats = UserPlanMigrator::run();
+        $this->assertSame(1, $stats['created']);
+
+        $row = UserPlan::where('user_id', $user->id)->sole();
+        $this->assertSame($plan->id, (int) $row->plan_id);
+        $this->assertSame($group->id, (int) $row->group_id);
+        $this->assertSame(12345, (int) $row->transfer_enable);
+        $this->assertSame(100, (int) $row->u);
+        $this->assertSame(200, (int) $row->d);
+        $this->assertSame($now + 86400, (int) $row->expired_at);
+        $this->assertSame($now + 1000, (int) $row->next_reset_at);
+        $this->assertSame(77, (int) $row->speed_limit);
+        $this->assertSame(3, (int) $row->device_limit);
     }
 
     public function test_registration_seeds_first_row(): void

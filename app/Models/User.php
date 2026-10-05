@@ -523,10 +523,27 @@ class User extends Authenticatable
         $now ??= time();
         $rows = $this->relationLoaded('userPlans')
             ? $this->userPlans
-            : $this->activeUserPlans($now)->get();
+            : UserPlan::query()->where('user_id', $this->id)->orderBy('id')->get();
         $active = $rows->filter(fn (UserPlan $p) => $p->isActive($now))->values();
+
+        // 无有效实例时回退到最近一行（几乎都是已过期），保证 legacy 字段/管理端
+        // 不丢历史套餐信息；运行时不读这些字段（走 getPlanAggregate/scope）。
         if ($active->isEmpty()) {
-            return [];
+            $latest = self::latestInstance($rows);
+            if ($latest === null) {
+                return [];
+            }
+
+            return [
+                'transfer_enable' => (int) $latest->transfer_enable,
+                'u' => (int) $latest->u,
+                'd' => (int) $latest->d,
+                'expired_at' => $latest->expired_at !== null ? (int) $latest->expired_at : null,
+                'speed_limit' => $latest->speed_limit !== null ? (int) $latest->speed_limit : null,
+                'device_limit' => $latest->device_limit !== null ? (int) $latest->device_limit : null,
+                'plan_id' => (int) $latest->plan_id,
+                'group_id' => (int) $latest->group_id,
+            ];
         }
 
         $agg = self::summarizeInstances($active, $now);
@@ -547,8 +564,33 @@ class User extends Authenticatable
     }
 
     /**
-     * plan_list：所有未到期行（不管剩没剩流量），耗尽行带 exhausted=true 前端置灰；
-     * 消失的只有到期行。expired_at 直接 int。
+     * 最近一行实例：到期时间最晚者优先（永久视为最晚），并列时取 id 最大。
+     *
+     * @param \Illuminate\Support\Collection<int, UserPlan> $rows
+     */
+    private static function latestInstance($rows): ?UserPlan
+    {
+        $latest = null;
+        foreach ($rows as $row) {
+            if ($latest === null) {
+                $latest = $row;
+                continue;
+            }
+            $rowExpired = $row->expired_at ?? PHP_INT_MAX;
+            $latestExpired = $latest->expired_at ?? PHP_INT_MAX;
+            if ($rowExpired > $latestExpired
+                || ($rowExpired === $latestExpired && (int) $row->id > (int) $latest->id)) {
+                $latest = $row;
+            }
+        }
+
+        return $latest;
+    }
+
+    /**
+     * plan_list：所有实例（含已过期，不再裁掉），耗尽行带 exhausted=true、
+     * 过期行带 is_active=false，前端据此置灰/标记；expired_at 直接 int。
+     * 仅展示用，运行时不读（走 getPlanAggregate/scope，只看有效实例）。
      *
      * @return list<array<string, mixed>>
      */
@@ -567,9 +609,6 @@ class User extends Authenticatable
         $planNames = $this->planNameMap($rows);
         $list = [];
         foreach ($rows as $row) {
-            if (!$row->isActive($now)) {
-                continue;
-            }
             $used = (int) $row->u + (int) $row->d;
             $quota = (int) $row->transfer_enable;
             $list[] = [
@@ -587,6 +626,7 @@ class User extends Authenticatable
                 'group_id' => (int) $row->group_id,
                 'sort_order' => (int) $row->sort_order,
                 'exhausted' => $used >= $quota,
+                'is_active' => $row->isActive($now),
             ];
         }
 

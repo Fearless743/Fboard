@@ -45,6 +45,13 @@ php artisan migrate:rollback   # 回滚删列 migration
 - 反填口径 = 实例聚合（配额/用量求和、到期取最晚、限速/设备取 max、
   分组/套餐单值才回填，`next_reset_at` 取最早已有效实例），与 `getPlanAggregate()` 一致。
 
+## 展示口径（已过期套餐）
+
+- `plan_list` 返回用户**全部实例行**（含已过期），过期行带 `is_active=false`，
+  前端置灰并标注「已过期」；无有效实例时 legacy 字段回退到最近一行供展示。
+- **过期只影响展示**：`getPlanAggregate()`/scope/流量分摊/节点下发/限速检查
+  一律只看有效实例（未到期），不受展示口径影响。
+
 ## 清理
 
 ```bash

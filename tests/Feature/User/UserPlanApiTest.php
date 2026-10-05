@@ -11,7 +11,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * 多套餐 PR6：V1 info/subscribe 聚合字段 + plan_list（含耗尽行）。
+ * 多套餐 PR6：V1 info/subscribe 聚合字段 + plan_list（含耗尽/过期行）。
  */
 class UserPlanApiTest extends TestCase
 {
@@ -84,15 +84,36 @@ class UserPlanApiTest extends TestCase
         $this->assertCount(2, $data['plan_list']);
     }
 
-    public function test_expired_rows_absent_from_plan_list(): void
+    public function test_expired_rows_present_and_marked_inactive(): void
     {
         [$user, $token, $plan] = $this->seedUserWithRows();
         $now = time();
-        $this->makeRow($user->id, $plan->id, ['transfer_enable' => 100, 'expired_at' => $now - 10]);
+        $this->makeRow($user->id, $plan->id, ['transfer_enable' => 100, 'u' => 10, 'expired_at' => $now - 10]);
 
         $data = $this->getJson('/api/v1/user/getSubscribe', $this->auth($token))->assertOk()->json('data');
 
-        $this->assertSame([], $data['plan_list']);
+        // 过期行保留展示并标记 is_active=false（旧行为是整行裁掉，导致信息丢失）。
+        $this->assertCount(1, $data['plan_list']);
+        $this->assertFalse($data['plan_list'][0]['is_active']);
+        $this->assertSame($now - 10, $data['plan_list'][0]['expired_at']);
+        // legacy 字段回退到最近（已过期）实例，历史信息不丢。
+        $this->assertSame($plan->id, $data['plan_id']);
+        $this->assertSame(100, $data['transfer_enable']);
+        $this->assertSame($now - 10, $data['expired_at']);
+    }
+
+    public function test_mixed_active_and_expired_rows_all_listed(): void
+    {
+        [$user, $token, $plan] = $this->seedUserWithRows();
+        $now = time();
+        $this->makeRow($user->id, $plan->id, ['transfer_enable' => 100, 'expired_at' => $now + 86400]);
+        $this->makeRow($user->id, $plan->id, ['transfer_enable' => 50, 'expired_at' => $now - 10]);
+
+        $list = $this->getJson('/api/v1/user/info', $this->auth($token))->assertOk()->json('data.plan_list');
+
+        $this->assertCount(2, $list);
+        $this->assertTrue(collect($list)->contains(fn ($p) => $p['is_active'] === true));
+        $this->assertTrue(collect($list)->contains(fn ($p) => $p['is_active'] === false));
     }
 
     /**

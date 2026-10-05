@@ -411,7 +411,9 @@ class UserController extends Controller
      * 多套餐实例 diff（与基字段同事务）。
      * - plans 缺席 = 不碰实例；空数组 = 不操作（清空必须 clear_plans=true 二次确认）；
      * - 非空 plans = 全量期望集合：更新列出的行、新增无 id 的行、删除未列出的旧行；
-     * - 可编辑：plan_id/expired_at/限速/设备数；sort_order 与剩余额度（transfer/u/d）只读不动；
+     * - 可编辑：plan_id/expired_at/限速/设备数/总配额/已用上行/已用下行
+     *   （transfer_enable/u/d 缺席=不碰）；sort_order 只读；
+     *   保存后按新值重算耗尽（u+d>=quota 打 exhausted_at，否则清除）；
      * - 新增行配额默认取 plan 快照，可用 transfer_enable 覆盖。
      */
     private function syncUserPlans(User $user, Request $request, array $params): void
@@ -449,6 +451,7 @@ class UserController extends Controller
 
         $existing = UserPlan::query()->where('user_id', $user->id)->get()->keyBy('id');
         $keepIds = [];
+        $now = time();
         foreach ($plans as $item) {
             $rowId = isset($item['id']) ? (int) $item['id'] : 0;
             $plan = $existingPlans->get((int) $item['plan_id']);
@@ -464,6 +467,18 @@ class UserController extends Controller
                     'speed_limit' => $item['speed_limit'] ?? null,
                     'device_limit' => $item['device_limit'] ?? null,
                 ]);
+                if (array_key_exists('transfer_enable', $item) && $item['transfer_enable'] !== null) {
+                    $row->transfer_enable = (int) $item['transfer_enable'];
+                }
+                if (array_key_exists('u', $item) && $item['u'] !== null) {
+                    $row->u = (int) $item['u'];
+                }
+                if (array_key_exists('d', $item) && $item['d'] !== null) {
+                    $row->d = (int) $item['d'];
+                }
+                // 管理端覆盖写入后按新值重算耗尽：u+d>=quota 打点，否则清除。
+                $used = (int) $row->u + (int) $row->d;
+                $row->exhausted_at = $used >= (int) $row->transfer_enable ? $now : null;
                 $row->save();
                 $keepIds[] = $row->id;
             } else {
@@ -493,12 +508,12 @@ class UserController extends Controller
     }
 
     /**
-     * 单套餐模式的 legacy 单字段编辑：把 plan_id/expired_at/transfer_enable/
+     * 单套餐模式的 legacy 单字段编辑：把 plan_id/expired_at/transfer_enable/u/d/
      * speed_limit/device_limit 映射到该用户唯一 cycle 行（主表已无这些列）。
      */
     private function applyLegacyPlanFields(User $user, array $params): void
     {
-        $planFields = ['plan_id', 'expired_at', 'transfer_enable', 'speed_limit', 'device_limit'];
+        $planFields = ['plan_id', 'expired_at', 'transfer_enable', 'u', 'd', 'speed_limit', 'device_limit'];
         $hasPlanField = false;
         foreach ($planFields as $field) {
             if (array_key_exists($field, $params)) {
@@ -510,11 +525,14 @@ class UserController extends Controller
             return;
         }
 
-        $row = UserPlan::query()
+        $rows = UserPlan::query()
             ->where('user_id', $user->id)
             ->where('kind', UserPlan::KIND_CYCLE)
             ->orderByDesc('id')
-            ->first();
+            ->get();
+        // 无有效实例时允许回退到最近一行（含已过期）：管理员可给过期套餐
+        // 续期/改配额，超期行照样可编辑；返回 null 时沿用旧行为（无行则建行）。
+        $row = User::latestCycleRowForEdit($rows);
 
         if (isset($params['plan_id'])) {
             $plan = Plan::find((int) $params['plan_id']);
@@ -550,12 +568,21 @@ class UserController extends Controller
         if (array_key_exists('transfer_enable', $params)) {
             $row->transfer_enable = (int) $params['transfer_enable'];
         }
+        if (array_key_exists('u', $params)) {
+            $row->u = (int) $params['u'];
+        }
+        if (array_key_exists('d', $params)) {
+            $row->d = (int) $params['d'];
+        }
         if (array_key_exists('speed_limit', $params)) {
             $row->speed_limit = $params['speed_limit'] !== null ? (int) $params['speed_limit'] : null;
         }
         if (array_key_exists('device_limit', $params)) {
             $row->device_limit = $params['device_limit'] !== null ? (int) $params['device_limit'] : null;
         }
+        // 管理端覆盖写入后按新值重算耗尽：u+d>=quota 打点，否则清除。
+        $used = (int) $row->u + (int) $row->d;
+        $row->exhausted_at = $used >= (int) $row->transfer_enable ? time() : null;
         $row->save();
 
         // 单套餐：退役其它有效行。

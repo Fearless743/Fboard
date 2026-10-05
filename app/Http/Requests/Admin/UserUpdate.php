@@ -44,6 +44,8 @@ class UserUpdate extends FormRequest
             'plans.*.speed_limit' => 'nullable|integer',
             'plans.*.device_limit' => 'nullable|integer',
             'plans.*.transfer_enable' => 'nullable|integer|min:0',
+            'plans.*.u' => 'nullable|integer|min:0',
+            'plans.*.d' => 'nullable|integer|min:0',
             'clear_plans' => 'boolean',
         ];
 

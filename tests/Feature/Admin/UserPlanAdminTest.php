@@ -196,6 +196,96 @@ class UserPlanAdminTest extends TestCase
         $this->assertSame(200, $detail['transfer_enable']);
     }
 
+    public function test_update_plans_can_edit_quota_and_usage(): void
+    {
+        [$user, $planA] = $this->seedBasics();
+        $now = time();
+        $row = $this->makeRow($user->id, $planA->id, [
+            'transfer_enable' => 100, 'u' => 10, 'd' => 5,
+            'expired_at' => $now + 86400,
+        ]);
+
+        $this->postJson($this->adminUrl('/user/update'), [
+            'id' => $user->id,
+            'plans' => [[
+                'id' => $row->id, 'plan_id' => $planA->id,
+                'expired_at' => $now + 86400,
+                'transfer_enable' => 1000, 'u' => 111, 'd' => 222,
+            ]],
+        ], $this->auth())->assertOk();
+
+        $row->refresh();
+        $this->assertSame(1000, (int) $row->transfer_enable);
+        $this->assertSame(111, (int) $row->u);
+        $this->assertSame(222, (int) $row->d);
+        $this->assertNull($row->exhausted_at, '未耗尽不打点');
+    }
+
+    public function test_update_plans_recalc_exhausted_both_ways(): void
+    {
+        [$user, $planA] = $this->seedBasics();
+        $now = time();
+        // 已耗尽行：改大配额后标记应清除
+        $full = $this->makeRow($user->id, $planA->id, [
+            'transfer_enable' => 100, 'u' => 60, 'd' => 40,
+            'expired_at' => $now + 86400, 'exhausted_at' => $now - 100,
+        ]);
+        // 未耗尽行：改小配额到用完后应打点
+        $open = $this->makeRow($user->id, $planA->id, [
+            'transfer_enable' => 100, 'u' => 10, 'd' => 5,
+            'expired_at' => $now + 86400,
+        ]);
+
+        $this->postJson($this->adminUrl('/user/update'), [
+            'id' => $user->id,
+            'plans' => [
+                ['id' => $full->id, 'plan_id' => $planA->id, 'expired_at' => $now + 86400, 'transfer_enable' => 1000],
+                ['id' => $open->id, 'plan_id' => $planA->id, 'expired_at' => $now + 86400, 'transfer_enable' => 10],
+            ],
+        ], $this->auth())->assertOk();
+
+        $this->assertNull($full->refresh()->exhausted_at, '改大配额后耗尽标记清除');
+        $this->assertNotNull($open->refresh()->exhausted_at, '改小配额到耗尽后打点');
+    }
+
+    public function test_update_plans_rejects_negative_usage(): void
+    {
+        [$user, $planA] = $this->seedBasics();
+        $row = $this->makeRow($user->id, $planA->id, ['expired_at' => time() + 86400]);
+
+        $this->postJson($this->adminUrl('/user/update'), [
+            'id' => $user->id,
+            'plans' => [['id' => $row->id, 'plan_id' => $planA->id, 'u' => -1]],
+        ], $this->auth())->assertStatus(422);
+
+        $this->assertSame(0, (int) $row->refresh()->u);
+    }
+
+    public function test_legacy_single_mode_edits_quota_and_usage_on_latest_row(): void
+    {
+        admin_setting(['multi_plan_enable' => 0]);
+        [$user, $planA] = $this->seedBasics();
+        $now = time();
+        // 仅有过期行：也应能回退编辑（续期场景）
+        $row = $this->makeRow($user->id, $planA->id, [
+            'transfer_enable' => 100, 'u' => 10, 'd' => 5,
+            'expired_at' => $now - 10,
+        ]);
+
+        $this->postJson($this->adminUrl('/user/update'), [
+            'id' => $user->id,
+            'transfer_enable' => 500, 'u' => 1, 'd' => 2,
+            'expired_at' => $now + 86400,
+        ], $this->auth())->assertOk();
+
+        $row->refresh();
+        $this->assertSame(500, (int) $row->transfer_enable);
+        $this->assertSame(1, (int) $row->u);
+        $this->assertSame(2, (int) $row->d);
+        $this->assertSame($now + 86400, (int) $row->expired_at);
+        admin_setting(['multi_plan_enable' => 1]);
+    }
+
     /**
      * @return array{User, Plan, Plan}
      */

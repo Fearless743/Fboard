@@ -565,6 +565,7 @@ class User extends Authenticatable
 
     /**
      * 最近一行实例：到期时间最晚者优先（永久视为最晚），并列时取 id 最大。
+     * 无有效实例时的展示回退/编辑目标都用它。
      *
      * @param \Illuminate\Support\Collection<int, UserPlan> $rows
      */
@@ -585,6 +586,23 @@ class User extends Authenticatable
         }
 
         return $latest;
+    }
+
+    /**
+     * 管理端编辑目标行：有效实例优先（同 getComputedPlanFields 的展示口径），
+     * 无有效实例时回退到最近一行（含已过期），保证过期套餐可编辑续期。
+     *
+     * @param \Illuminate\Support\Collection<int, UserPlan> $rows
+     */
+    public static function latestCycleRowForEdit($rows, ?int $now = null): ?UserPlan
+    {
+        $now ??= time();
+        $active = $rows->filter(fn (UserPlan $p) => $p->isActive($now))->values();
+        if ($active->isNotEmpty()) {
+            return $active->sortByDesc('id')->first();
+        }
+
+        return self::latestInstance($rows);
     }
 
     /**

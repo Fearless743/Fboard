@@ -150,14 +150,14 @@ class CouponController extends Controller
                 'request' => $request,
             ]);
 
-            $this->multiGenerate($request);
+            $response = $this->multiGenerate($request);
 
             HookManager::call('admin.coupon.generate.after', [
                 'count' => $request->input('generate_count'),
                 'request' => $request,
             ]);
 
-            return;
+            return $response;
         }
 
         $params = $request->validated();
@@ -241,7 +241,15 @@ class CouponController extends Controller
             $limitPlanIds = isset($coupon['limit_plan_ids']) ? implode("/", $coupon['limit_plan_ids']) : '不限制';
             $data .= "{$coupon['name']},{$type},{$value},{$startTime},{$endTime},{$limitUse},{$limitPlanIds},{$coupon['code']},{$createTime}\r\n";
         }
-        echo $data;
+
+        $filename = 'coupons-'.date('Ymd-His').'.csv';
+
+        return response("\xEF\xBB\xBF".$data, 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
+            'Cache-Control' => 'no-cache, no-store, must-revalidate',
+            'Pragma' => 'no-cache',
+        ]);
     }
 
     public function drop(Request $request)

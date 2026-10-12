@@ -256,15 +256,38 @@ class ResetTraffic extends Command
           ->orWhereNull('expired_at');
       })
       ->where('banned', 0)
-      ->whereNotNull('plan_id');
+      ->where(function (\$q) {
+              \$q->whereNotNull('plan_id')
+                ->orWhereExists(function (\$sq) {
+                    \$sq->from('v2_user_plan')
+                      ->join('v2_plan', 'v2_plan.id', '=', 'v2_user_plan.plan_id')
+                      ->whereColumn('v2_user_plan.user_id', 'v2_user.id')
+                      ->where(function (\$ssub) {
+                          \$ssub->whereNull('v2_user_plan.expired_at')
+                                ->orWhere('v2_user_plan.expired_at', '>', time());
+                      })
+                      ->selectRaw(1)
+                      ->limit(1);
+              });
+        });
   }
-
-
 
   private function getNullResetTimeUsers()
   {
     return User::whereNull('next_reset_at')
-      ->whereNotNull('plan_id')
+      ->where(function ($query) {
+        $query->whereNotNull('plan_id')
+              ->orWhereExists(function ($q) {
+                  $q->from('v2_user_plan')
+                    ->whereColumn('v2_user_plan.user_id', 'v2_user.id')
+                    ->where(function ($sub) {
+                        $sub->whereNull('v2_user_plan.expired_at')
+                            ->orWhere('v2_user_plan.expired_at', '>', time());
+                    })
+                    ->selectRaw(1)
+                    ->limit(1);
+              });
+      })
       ->where(function ($query) {
         $query->where('expired_at', '>', time())
           ->orWhereNull('expired_at');
@@ -276,7 +299,19 @@ class ResetTraffic extends Command
 
   private function getAllUsers()
   {
-    return User::whereNotNull('plan_id')
+    return User::where(function ($query) {
+        $query->whereNotNull('plan_id')
+              ->orWhereExists(function ($q) {
+                  $q->from('v2_user_plan')
+                    ->whereColumn('v2_user_plan.user_id', 'v2_user.id')
+                    ->where(function ($sub) {
+                        $sub->whereNull('v2_user_plan.expired_at')
+                            ->orWhere('v2_user_plan.expired_at', '>', time());
+                    })
+                    ->selectRaw(1)
+                    ->limit(1);
+              });
+      })
       ->where(function ($query) {
         $query->where('expired_at', '>', time())
           ->orWhereNull('expired_at');

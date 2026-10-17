@@ -554,12 +554,15 @@ class OrderService
     private function buyByPeriod(Order $order, Plan $plan)
     {
         // change plan process
+        // 是否原为一次性订阅必须在改写 expired_at 之前取：升级会先把 expired_at 置为 time()，
+        // 之后再判断 NULL 永远为假，「从一次性转换到循环时重置流量」就失效了。
+        $wasOneTime = $this->user->expired_at === NULL;
         if ((int) $order->type === Order::TYPE_UPGRADE) {
             $this->user->expired_at = time();
         }
         $this->user->transfer_enable = $plan->transfer_enable * 1073741824;
         // 从一次性转换到循环或者新购的时候，重置流量
-        if ($this->user->expired_at === NULL || $order->type === Order::TYPE_NEW_PURCHASE)
+        if ($wasOneTime || $order->type === Order::TYPE_NEW_PURCHASE)
             app(TrafficResetService::class)->performReset($this->user, TrafficResetLog::SOURCE_ORDER);
         $this->user->plan_id = $plan->id;
         $this->user->group_id = $plan->group_id;

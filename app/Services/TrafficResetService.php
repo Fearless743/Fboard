@@ -60,6 +60,9 @@ class TrafficResetService
 
         $nextResetTime = $this->calculateNextResetTime($fresh);
         $resetAt = time();
+        // 必须在 setAttribute 之前取旧值：DB::raw 表达式随后会进入 original，
+        // 事后再 getRawOriginal 拿到的是 Expression 对象，(int) 强转直接抛异常。
+        $previousResetCount = (int) $fresh->getRawOriginal('reset_count');
 
         // 一次 UPDATE 完成清零 + 计数自增，reset_count 用 SQL 表达式避免读改写。
         // 直接调用方模型的 update() 会把模型上其它脏字段一并写库，
@@ -78,7 +81,7 @@ class TrafficResetService
         $user->d = 0;
         $user->last_reset_at = $resetAt;
         $user->next_reset_at = $nextResetTime ? $nextResetTime->timestamp : null;
-        $user->reset_count = ((int) $fresh->getRawOriginal('reset_count')) + 1;
+        $user->reset_count = $previousResetCount + 1;
 
         $this->recordResetLog($fresh, [
           'reset_type' => $this->getResetTypeFromPlan($fresh->plan),

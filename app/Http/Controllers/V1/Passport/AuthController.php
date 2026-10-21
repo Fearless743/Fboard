@@ -154,7 +154,8 @@ class AuthController extends Controller
     {
         $authorization = $request->input('auth_data') ?? $request->header('authorization');
 
-        if (!$authorization) {
+        // auth_data 仅接受字符串；数组输入（如 ?auth_data[is_staff]=1）直接拒绝
+        if (!$authorization || !is_string($authorization)) {
             return response()->json([
                 'message' => ResponseEnum::CLIENT_HTTP_UNAUTHORIZED
             ], 401);

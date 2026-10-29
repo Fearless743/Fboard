@@ -766,6 +766,10 @@ class ClashMeta extends AbstractProtocol
             }
         }
         if ($mux = data_get($protocol_settings, 'multiplex')) {
+            // 兼容旧对象式 multiplex（历史表单 bug 存过 {enabled,...}）：sudoku 语义为 off/auto/on 三态字符串
+            if (is_array($mux)) {
+                $mux = !empty($mux['enabled']) ? 'on' : 'off';
+            }
             $array['multiplex'] = $mux;
         }
 

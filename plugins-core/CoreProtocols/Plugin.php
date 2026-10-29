@@ -436,58 +436,57 @@ class Plugin extends AbstractPlugin
                 'aes-128-gcm' => 'AES-128-GCM',
                 'none' => 'None（不推荐）',
             ]],
-            'padding_min' => ['type' => 'integer', 'default' => 5, 'label' => '最小填充率(%)'],
-            'padding_max' => ['type' => 'integer', 'default' => 15, 'label' => '最大填充率(%)'],
-            'table_type' => ['type' => 'string', 'default' => 'prefer_entropy', 'label' => '表类型', 'options' => [
-                'prefer_entropy' => 'prefer_entropy',
-                'prefer_ascii' => 'prefer_ascii',
-                'up_ascii_down_entropy' => 'up_ascii_down_entropy',
-                'up_entropy_down_ascii' => 'up_entropy_down_ascii',
-            ]],
-            'enable_pure_downlink' => ['type' => 'boolean', 'default' => true, 'label' => '纯 Sudoku 下行'],
-            'custom_table' => ['type' => 'string', 'default' => null, 'label' => '自定义表布局'],
-            'custom_tables' => ['type' => 'array', 'default' => [], 'label' => '自定义表布局列表'],
-            'handshake_timeout' => ['type' => 'integer', 'default' => 5, 'label' => '握手超时(秒)'],
-            'fallback' => ['type' => 'string', 'default' => null, 'label' => '可疑回落地址 host:port'],
             'multiplex' => ['type' => 'string', 'default' => 'off', 'label' => '多路复用', 'options' => [
                 'off' => 'off', 'auto' => 'auto', 'on' => 'on',
             ]],
+            'fallback' => ['type' => 'string', 'default' => null, 'label' => '可疑回落地址 host:port'],
             'httpmask' => ['type' => 'object', 'fields' => [
                 'disable' => ['type' => 'boolean', 'default' => false, 'label' => '禁用 HTTPMask'],
-                'mode' => ['type' => 'string', 'default' => 'legacy', 'label' => 'HTTPMask 模式', 'options' => [
-                    'legacy' => 'legacy', 'stream' => 'stream', 'poll' => 'poll', 'auto' => 'auto', 'ws' => 'ws',
+                'mode' => ['type' => 'string', 'default' => 'auto', 'label' => 'HTTPMask 模式', 'options' => [
+                    'auto' => 'auto（推荐，兼容裸 TCP）', 'legacy' => 'legacy', 'stream' => 'stream', 'poll' => 'poll', 'ws' => 'ws',
                 ]],
                 // mihomo: 单段路径，仅 [A-Za-z0-9_-]；可用 "/aabbcc/" 形式，保存/下发时会规范化
                 'path_root' => [
                     'type' => 'string',
                     'default' => null,
                     'label' => '路径前缀 (path-root)',
-                    'description' => 'HTTP 隧道一级路径前缀，双方需一致。仅允许单段 [A-Za-z0-9_-]，例如 aabbcc；不可含点号 "." 或多级路径。',
+                    'description' => 'HTTP 隧道一级路径前缀，双方需一致。仅允许单段 [A-Za-z0-9_-]，例如 aabbcc；不可含点号 "." 或多级路径。新建节点时自动生成，可留空。',
                     'placeholder' => 'aabbcc',
                 ],
             ], 'label' => 'HTTPMask'],
-            ...self::getMultiplexFields(),
-        ], array_merge(
-            [
-                'master_public_key' => 'required|string',
-                'master_private_key' => 'required|string',
-                'aead_method' => 'nullable|string|in:chacha20-poly1305,aes-128-gcm,none',
-                'padding_min' => 'nullable|integer|min:0|max:100',
-                'padding_max' => 'nullable|integer|min:0|max:100',
-                'table_type' => 'nullable|string|in:prefer_entropy,prefer_ascii,up_ascii_down_entropy,up_entropy_down_ascii',
-                'enable_pure_downlink' => 'nullable|boolean',
-                'custom_table' => 'nullable|string',
-                'custom_tables' => 'nullable|array',
-                'handshake_timeout' => 'nullable|integer|min:0',
-                'fallback' => 'nullable|string',
-                'httpmask' => 'nullable|array',
-                'httpmask.disable' => 'nullable|boolean',
-                'httpmask.mode' => 'nullable|string|in:legacy,stream,poll,auto,ws',
-                // 允许可选首尾斜杠；多级路径 / 非法字符由 regex 拒绝（与 mihomo Validate 一致）
-                'httpmask.path_root' => ['nullable', 'string', 'regex:/^\/?[A-Za-z0-9_-]+\/?$/'],
-            ],
-            self::getMultiplexValidationRules(),
-        ), '[sudoku]', self::builder('sudoku'), self::password('sudoku'), [], true);
+            'advanced' => ['type' => 'boolean', 'default' => false, 'label' => '高级选项'],
+            'padding_min' => ['type' => 'integer', 'default' => 5, 'label' => '最小填充率(%)', 'show_when' => ['advanced' => 'true']],
+            'padding_max' => ['type' => 'integer', 'default' => 15, 'label' => '最大填充率(%)', 'show_when' => ['advanced' => 'true']],
+            'table_type' => ['type' => 'string', 'default' => 'prefer_entropy', 'label' => '表类型', 'show_when' => ['advanced' => 'true'], 'options' => [
+                'prefer_entropy' => 'prefer_entropy',
+                'prefer_ascii' => 'prefer_ascii',
+                'up_ascii_down_entropy' => 'up_ascii_down_entropy',
+                'up_entropy_down_ascii' => 'up_entropy_down_ascii',
+            ]],
+            'enable_pure_downlink' => ['type' => 'boolean', 'default' => true, 'label' => '纯 Sudoku 下行', 'show_when' => ['advanced' => 'true']],
+            'custom_table' => ['type' => 'string', 'default' => null, 'label' => '自定义表布局', 'show_when' => ['advanced' => 'true']],
+            'custom_tables' => ['type' => 'array', 'default' => [], 'label' => '自定义表布局列表', 'show_when' => ['advanced' => 'true']],
+            'handshake_timeout' => ['type' => 'integer', 'default' => 5, 'label' => '握手超时(秒)', 'show_when' => ['advanced' => 'true']],
+        ], [
+            'master_public_key' => 'required|string',
+            'master_private_key' => 'required|string',
+            'aead_method' => 'nullable|string|in:chacha20-poly1305,aes-128-gcm,none',
+            'multiplex' => 'nullable',
+            'fallback' => 'nullable|string',
+            'httpmask' => 'nullable|array',
+            'httpmask.disable' => 'nullable|boolean',
+            'httpmask.mode' => 'nullable|string|in:legacy,stream,poll,auto,ws',
+            // 允许可选首尾斜杠；多级路径 / 非法字符由 regex 拒绝（与 mihomo Validate 一致）
+            'httpmask.path_root' => ['nullable', 'string', 'regex:/^\/?[A-Za-z0-9_-]+\/?$/'],
+            'advanced' => 'nullable|boolean',
+            'padding_min' => 'nullable|integer|min:0|max:100',
+            'padding_max' => 'nullable|integer|min:0|max:100',
+            'table_type' => 'nullable|string|in:prefer_entropy,prefer_ascii,up_ascii_down_entropy,up_entropy_down_ascii',
+            'enable_pure_downlink' => 'nullable|boolean',
+            'custom_table' => 'nullable|string',
+            'custom_tables' => 'nullable|array',
+            'handshake_timeout' => 'nullable|integer|min:0',
+        ], '[sudoku]', self::builder('sudoku'), self::password('sudoku'), [], true);
     }
 
     private static function getRealityFields(): array

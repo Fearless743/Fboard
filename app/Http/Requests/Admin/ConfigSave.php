@@ -112,6 +112,7 @@ class ConfigSave extends FormRequest
         'password_limit_enable' => 'boolean',
         'password_limit_count' => 'integer',
         'password_limit_expire' => 'integer',
+        'email_verify_cooldown' => 'integer|min:10',
         'default_remind_expire' => 'boolean',
         'default_remind_traffic' => 'boolean',
         'subscribe_template_singbox' => 'nullable',

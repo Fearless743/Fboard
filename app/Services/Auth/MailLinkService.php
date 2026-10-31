@@ -23,7 +23,10 @@ class MailLinkService
             return [false, [404, null]];
         }
 
-        if (Cache::get(CacheKey::get('LAST_SEND_LOGIN_WITH_MAIL_LINK_TIMESTAMP', $email))) {
+        // 冷却时间（可配置，默认 60 秒）
+        $cooldown = max(10, (int) admin_setting('email_verify_cooldown', 60));
+        $cooldownKey = CacheKey::get('LAST_SEND_LOGIN_WITH_MAIL_LINK_TIMESTAMP', $email);
+        if (Cache::get($cooldownKey)) {
             return [false, [429, __('Sending frequently, please try again later')]];
         }
 
@@ -32,10 +35,13 @@ class MailLinkService
             return [true, true]; // 成功但用户不存在，保护用户隐私
         }
 
+        // 安全检查：用 DB 中存储的邮箱作为收件人，防止 IDN 变体邮箱攻击
+        $recipientEmail = $user->email;
+
         $code = Helper::guid();
         $key = CacheKey::get('TEMP_TOKEN', $code);
         Cache::put($key, $user->id, 300);
-        Cache::put(CacheKey::get('LAST_SEND_LOGIN_WITH_MAIL_LINK_TIMESTAMP', $email), time(), 60);
+        Cache::put($cooldownKey, time(), $cooldown);
 
         $redirectUrl = '/#/login?verify=' . $code . '&redirect=' . ($redirect ? $redirect : 'dashboard');
         if (admin_setting('app_url')) {
@@ -44,7 +50,7 @@ class MailLinkService
             $link = url($redirectUrl);
         }
 
-        $this->sendMailLinkEmail($user, $link);
+        $this->sendMailLinkEmail($recipientEmail, $link);
 
         return [true, true];
     }
@@ -52,14 +58,14 @@ class MailLinkService
     /**
      * 发送邮件链接登录邮件
      *
-     * @param User $user 用户对象
+     * @param string $recipientEmail 收件人邮箱
      * @param string $link 登录链接
      * @return void
      */
-    private function sendMailLinkEmail(User $user, string $link): void
+    private function sendMailLinkEmail(string $recipientEmail, string $link): void
     {
         SendEmailJob::dispatch([
-            'email' => $user->email,
+            'email' => $recipientEmail,
             'subject' => __('Login to :name', [
                 'name' => admin_setting('app_name', 'Fboard')
             ]),

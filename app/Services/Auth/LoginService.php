@@ -130,17 +130,25 @@ class LoginService
             return [false, [429, __('Reset failed, Please try again later')]];
         }
 
-        // 验证邮箱验证码
-        $cachedEmailCode = Cache::get(CacheKey::get('EMAIL_VERIFY_CODE', $email));
-        if ($cachedEmailCode === null || !hash_equals((string) $cachedEmailCode, $emailCode)) {
-            Cache::put($forgetRequestLimitKey, $forgetRequestLimit ? $forgetRequestLimit + 1 : 1, 300);
-            return [false, [400, __('Incorrect email verification code')]];
-        }
-
         // 查找用户
         $user = User::byEmail($email)->first();
         if (!$user) {
             return [false, [400, __('This email is not registered in the system')]];
+        }
+
+        // 安全检查：用 DB 中存储的邮箱作为校验 key，并严格比对（PHP 逐字节比较），
+        // 防止 IDN 变体邮箱绕过 collation 匹配
+        if (!$user->strictEmailMatches($email)) {
+            return [false, [400, __('Incorrect email verification code')]];
+        }
+
+        $storedEmail = $user->email;
+
+        // 验证邮箱验证码（key 使用 DB 存储邮箱）
+        $cachedEmailCode = Cache::get(CacheKey::get('EMAIL_VERIFY_CODE', $storedEmail));
+        if ($cachedEmailCode === null || !hash_equals((string) $cachedEmailCode, $emailCode)) {
+            Cache::put($forgetRequestLimitKey, $forgetRequestLimit ? $forgetRequestLimit + 1 : 1, 300);
+            return [false, [400, __('Incorrect email verification code')]];
         }
 
         // 更新密码

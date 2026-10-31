@@ -101,6 +101,14 @@ class User extends Authenticatable
         return $query->where('email', strtolower(trim($email)));
     }
 
+    /**
+     * 严格邮箱比较：逐字节比对，防止 IDN 变体邮箱绕过 collation 匹配
+     */
+    public function strictEmailMatches(string $email): bool
+    {
+        return $this->email === strtolower(trim($email));
+    }
+
     // 获取邀请人信息
     public function invite_user(): BelongsTo
     {

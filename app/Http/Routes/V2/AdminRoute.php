@@ -224,6 +224,8 @@ class AdminRoute
             ], function ($router) {
                 $router->any('/fetch', [TicketController::class, 'fetch']);
                 $router->post('/reply', [TicketController::class, 'reply']);
+                $router->post('/message/update', [TicketController::class, 'updateMessage']);
+                $router->post('/message/recall', [TicketController::class, 'recallMessage']);
                 $router->post('/close', [TicketController::class, 'close']);
                 $router->post('/bulk-close', [TicketController::class, 'bulkClose']);
             });

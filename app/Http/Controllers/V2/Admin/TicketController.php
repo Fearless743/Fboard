@@ -70,7 +70,16 @@ class TicketController extends Controller
         if (!$ticket) {
             return $this->fail([400202, '工单不存在']);
         }
-        $ticket->messages->each(fn($msg) => $msg->setRelation('ticket', $ticket));
+        $ticketService = new TicketService();
+        $adminId = (int) $request->user()->id;
+        $ticket->messages->each(function ($msg) use ($ticket, $ticketService, $adminId) {
+            $msg->setRelation('ticket', $ticket);
+            $msg->setAttribute('can_modify', $ticketService->canModifyMessage($msg, $adminId));
+            // 已撤回的消息不再回传原文，仅保留占位
+            if ($msg->recalled_at !== null) {
+                $msg->setAttribute('message', null);
+            }
+        });
         $result = $ticket->toArray();
         $result['user'] = UserController::transformUserData($ticket->user);
 
@@ -133,6 +142,58 @@ class TicketController extends Controller
             $request->input('message'),
             $request->user()->id
         );
+        return $this->success(true);
+    }
+
+    public function updateMessage(Request $request)
+    {
+        $request->validate([
+            'id' => 'required|integer',
+            'message' => 'required|string|max:10000',
+        ], [
+            'id.required' => '消息ID不能为空',
+            'id.integer' => '消息ID格式不正确',
+            'message.required' => '消息不能为空',
+            'message.max' => '消息不能超过10000字符',
+        ]);
+
+        $ticketService = new TicketService();
+        $message = $ticketService->updateMessage(
+            (int) $request->input('id'),
+            (int) $request->user()->id,
+            (string) $request->input('message')
+        );
+
+        HookManager::call('admin.ticket.message.update.after', [
+            'message' => $message,
+            'ticket' => $message->ticket,
+            'request' => $request,
+        ]);
+
+        return $this->success(true);
+    }
+
+    public function recallMessage(Request $request)
+    {
+        $request->validate([
+            'id' => 'required|integer',
+        ], [
+            'id.required' => '消息ID不能为空',
+            'id.integer' => '消息ID格式不正确',
+        ]);
+
+        $ticketService = new TicketService();
+        $message = $ticketService->recallMessage(
+            (int) $request->input('id'),
+            (int) $request->user()->id
+        );
+
+        HookManager::call('admin.ticket.message.recall.after', [
+            'message' => $message,
+            'ticket' => $message->ticket,
+            'request' => $request,
+        ]);
+
         return $this->success(true);
     }
 

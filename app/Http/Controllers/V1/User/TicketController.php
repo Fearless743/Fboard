@@ -43,7 +43,9 @@ class TicketController extends Controller
             if (!$ticket) {
                 return $this->fail([400, __('Ticket does not exist')]);
             }
-            $ticket['message'] = TicketMessage::where('ticket_id', $ticket->id)->get();
+            $ticket['message'] = TicketMessage::where('ticket_id', $ticket->id)
+                ->whereNull('recalled_at')
+                ->get();
             $ticket['message']->each(function ($message) use ($ticket) {
                 $message['is_me'] = ($message['user_id'] == $ticket->user_id);
             });
@@ -207,6 +209,7 @@ class TicketController extends Controller
     private function getLastMessage($ticketId)
     {
         return TicketMessage::where('ticket_id', $ticketId)
+            ->whereNull('recalled_at')
             ->orderBy('id', 'DESC')
             ->first();
     }

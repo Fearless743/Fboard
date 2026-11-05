@@ -306,17 +306,6 @@ class AdminRoute
                 $router->post('/sort', [PaymentController::class, 'sort']);
             });
 
-            // Passkey 自助管理（已登录管理员）
-            $router->group([
-                'prefix' => 'passkey'
-            ], function ($router) {
-                $router->get('/status', [\App\Http\Controllers\V1\Passport\PasskeyController::class, 'status']);
-                $router->get('/list', [\App\Http\Controllers\V1\Passport\PasskeyController::class, 'list']);
-                $router->post('/register-options', [\App\Http\Controllers\V1\Passport\PasskeyController::class, 'registerOptions']);
-                $router->post('/register-verify', [\App\Http\Controllers\V1\Passport\PasskeyController::class, 'registerVerify']);
-                $router->post('/delete', [\App\Http\Controllers\V1\Passport\PasskeyController::class, 'delete']);
-            });
-
             // System
             $router->group([
                 'prefix' => 'system'

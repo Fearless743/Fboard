@@ -173,14 +173,6 @@ class User extends Authenticatable
     }
 
     /**
-     * 关联 Passkey 凭证（仅管理员使用）
-     */
-    public function passkeys(): HasMany
-    {
-        return $this->hasMany(UserPasskey::class, 'user_id', 'id');
-    }
-
-    /**
      * 检查用户是否处于活跃状态
      */
     public function isActive(): bool

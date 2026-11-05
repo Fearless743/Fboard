@@ -56,18 +56,6 @@ class BannedAdminAccessTest extends TestCase
             'updated_at' => time(),
         ]);
         $admin->save();
-        \App\Models\UserPasskey::create([
-            'user_id' => $admin->id,
-            'name' => 'test',
-            'credential_id' => 'dGVzdC1iYW5uZWQtYWRtaW4tdGVzdA',
-            'type' => 'public-key',
-            'attestation_type' => 'none',
-            'aaguid' => '00000000-0000-0000-0000-000000000000',
-            'credential_public_key' => base64_encode('fake'),
-            'counter' => 0,
-            'created_at' => time(),
-            'updated_at' => time(),
-        ]);
 
         Auth::guard('sanctum')->setUser($admin);
 
@@ -77,38 +65,5 @@ class BannedAdminAccessTest extends TestCase
         $response = $mw->handle($request, fn () => response()->json(['ok' => true]));
 
         $this->assertSame(200, $response->getStatusCode());
-    }
-
-    public function test_admin_middleware_requires_passkey(): void
-    {
-        $admin = new User();
-        $admin->forceFill([
-            'email' => 'admin-nopk-' . Helper::guid() . '@example.com',
-            'password' => password_hash('p', PASSWORD_DEFAULT),
-            'uuid' => Helper::guid(true),
-            'token' => Helper::guid(),
-            'is_admin' => 1,
-            'banned' => 0,
-            'created_at' => time(),
-            'updated_at' => time(),
-        ]);
-        $admin->save();
-
-        Auth::guard('sanctum')->setUser($admin);
-
-        $mw = new Admin();
-        $blocked = $mw->handle(
-            Request::create('/api/v2/secure/user/fetch', 'GET'),
-            fn () => response()->json(['ok' => true])
-        );
-        $this->assertSame(403, $blocked->getStatusCode());
-        $this->assertStringContainsString('Passkey', (string) $blocked->getContent());
-
-        // Passkey 自助接口放行（用于绑定）
-        $allowed = $mw->handle(
-            Request::create('/api/v2/secure/passkey/status', 'GET'),
-            fn () => response()->json(['ok' => true])
-        );
-        $this->assertSame(200, $allowed->getStatusCode());
     }
 }

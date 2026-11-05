@@ -16,7 +16,10 @@ class CacheKey
         'PASSWORD_ERROR_LIMIT' => '密码错误次数限制',
         'PASSWORD_ERROR_LIMIT_IP' => '按IP的密码错误次数限制',
         'USER_SESSIONS' => '用户session',
-        'FORGET_REQUEST_LIMIT' => '找回密码次数限制'
+        'FORGET_REQUEST_LIMIT' => '找回密码次数限制',
+        'PASSKEY_REG_CHALLENGE' => 'Passkey 注册 challenge',
+        'PASSKEY_AUTH_CHALLENGE' => 'Passkey 登录 challenge',
+        'PASSKEY_LOGIN_TICKET' => 'Passkey 登录一次性票据',
     ];
 
     // 允许的缓存键模式（支持通配符）

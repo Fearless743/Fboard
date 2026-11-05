@@ -90,6 +90,26 @@ class AuthController extends Controller
             return $this->fail($result);
         }
 
+        /** @var \App\Models\User $user */
+        $user = $result;
+
+        // 管理员强制 Passkey 二步：密码通过后只发一次性 ticket，不直接发 token
+        if ($user->is_admin) {
+            $passkeyService = app(\App\Services\Auth\PasskeyService::class);
+            $ticket = $passkeyService->issueLoginTicket($user);
+            if ($passkeyService->hasPasskey($user)) {
+                return $this->success([
+                    'passkey_required' => true,
+                    'ticket' => $ticket,
+                ]);
+            }
+            return $this->success([
+                'passkey_required' => true,
+                'passkey_setup_required' => true,
+                'ticket' => $ticket,
+            ]);
+        }
+
         $authService = new AuthService($result);
         return $this->success($authService->generateAuthData());
     }

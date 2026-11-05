@@ -27,7 +27,7 @@ class AdminUiExtensionEndpointTest extends TestCase
 
     private function adminUser(): User
     {
-        return User::create([
+        $user = User::create([
             'email' => 'admin@test.local',
             'password' => bcrypt('secret'),
             'uuid' => (string) \Illuminate\Support\Str::uuid(),
@@ -35,6 +35,20 @@ class AdminUiExtensionEndpointTest extends TestCase
             'is_admin' => true,
             'banned' => false,
         ]);
+        // 管理员强制 Passkey：测试账号预置凭证以通过 Admin 中间件
+        \App\Models\UserPasskey::create([
+            'user_id' => $user->id,
+            'name' => 'test',
+            'credential_id' => 'dGVzdC1leHRlbnNpb24tZGVtby1jcmVk',
+            'type' => 'public-key',
+            'attestation_type' => 'none',
+            'aaguid' => '00000000-0000-0000-0000-000000000000',
+            'credential_public_key' => base64_encode('fake'),
+            'counter' => 0,
+            'created_at' => time(),
+            'updated_at' => time(),
+        ]);
+        return $user;
     }
 
     private function securePrefix(): string

@@ -23,16 +23,17 @@ class MachineController extends Controller
      *
      * 可选参数：
      *   - search: 在 name / notes 上做大小写不敏感的模糊匹配
-     *   - status: all / online / offline / inactive / high_load（仅做 SQL 粗筛，
-     *     在线/高负载的精确判断由前端二次过滤兜底，见 index.tsx）
+     *   - status: all / online / offline / inactive / high_load（分页前已在
+     *     服务端精确过滤，total 与当页数据一致）
      *
      * 响应额外字段 summary（全局概览，不受 search 影响）：
      *   total / online / offline / high_load / nodes
      */
     public function fetch(Request $request)
     {
-        $current = (int) $request->input('current', 1);
+        $current = max(1, (int) $request->input('current', 1));
         $pageSize = (int) $request->input('pageSize', 10);
+        $pageSize = max(1, min(200, $pageSize));
 
         $query = ServerMachine::withCount('servers');
 
@@ -41,32 +42,22 @@ class MachineController extends Controller
             $query->pinyinSearch($search, ['name', 'notes']);
         }
 
-        // 状态粗筛：inactive 可直接用 DB 字段；在线/离线/高负载只约束
-        // 可用子集，精确判断交给前端二次过滤
+        // 状态过滤必须在分页前精确完成，否则前端按页二次过滤会导致
+        // total 与当页条数对不上（空页 / 每页不满 / 翻页丢数据）。
+        // 在线判断依赖 Redis 活跃缓存（见 ServerMachine::isOnline），高负载
+        // 依赖 load_status JSON 阈值，都无法只用 SQL 精确表达，因此先用 SQL
+        // 做最小粗筛（仅约束 is_active 缩小集合），再在 PHP 里精确过滤，
+        // 最后手动分页。
         $status = (string) $request->input('status', 'all');
         if ($status === 'inactive') {
             $query->where('is_active', false);
-        } elseif ($status === 'online') {
-            $query->where('is_active', true)
-                  ->where(function ($q) {
-                      $q->whereNotNull('last_seen_at')
-                        ->where('last_seen_at', '>=', time() - Server::CHECK_INTERVAL);
-                  });
-        } elseif ($status === 'offline') {
-            $query->where('is_active', true)
-                  ->where(function ($q) {
-                      $q->whereNull('last_seen_at')
-                        ->orWhere('last_seen_at', '<', time() - Server::CHECK_INTERVAL);
-                  });
-        } elseif ($status === 'high_load') {
-            $query->where('is_active', true)
-                  ->whereNotNull('last_seen_at')
-                  ->where('last_seen_at', '>=', time() - Server::CHECK_INTERVAL);
+        } elseif (in_array($status, ['online', 'offline', 'high_load'], true)) {
+            $query->where('is_active', true);
         }
 
-        $machines = $query->orderBy('id')->paginate(perPage: $pageSize, page: $current);
+        $rows = $query->orderBy('id')->get();
 
-        $machines->getCollection()->transform(function (ServerMachine $machine) {
+        $mapped = $rows->map(function (ServerMachine $machine) {
             return [
                 'id' => $machine->id,
                 'name' => $machine->name,
@@ -81,15 +72,40 @@ class MachineController extends Controller
             ];
         });
 
+        $filtered = $mapped->filter(fn (array $item) => $this->matchesMachineStatus($item, $status))->values();
+
+        $total = $filtered->count();
+        $lastPage = max(1, (int) ceil($total / $pageSize));
+        $items = $filtered->slice(($current - 1) * $pageSize, $pageSize)->values()->all();
+
         return response()->json([
-            'total' => $machines->total(),
-            'current_page' => $machines->currentPage(),
-            'per_page' => $machines->perPage(),
-            'last_page' => $machines->lastPage(),
-            'data' => $machines->items(),
+            'total' => $total,
+            'current_page' => $current,
+            'per_page' => $pageSize,
+            'last_page' => $lastPage,
+            'data' => $items,
             // 顶部概览：全局统计，与当前搜索/分页无关
             'summary' => $this->buildMachineSummary(),
         ]);
+    }
+
+    private function matchesMachineStatus(array $item, string $status): bool
+    {
+        switch ($status) {
+            case 'inactive':
+                return $item['is_active'] === false;
+            case 'online':
+                return $item['is_active'] === true && $item['is_online'] === true;
+            case 'offline':
+                return $item['is_active'] === true && $item['is_online'] !== true;
+            case 'high_load':
+                return $item['is_active'] === true
+                    && $item['is_online'] === true
+                    && $this->isHighLoad(is_array($item['load_status'] ?? null) ? $item['load_status'] : null);
+            case 'all':
+            default:
+                return true;
+        }
     }
 
     /**

@@ -10,7 +10,6 @@ use App\Services\NodeSyncService;
 use App\Services\Plugin\HookManager;
 use App\Services\ProtocolDefinitionRegistry;
 use App\Services\TelegramService;
-use App\Services\ThemeService;
 use App\Utils\Dict;
 use App\Utils\Helper;
 use Illuminate\Http\Request;
@@ -22,15 +21,6 @@ class ConfigController extends Controller
     public function getEmailTemplate()
     {
         $path = resource_path('views/mail/');
-        $files = array_map(function ($item) use ($path) {
-            return str_replace($path, '', $item);
-        }, glob($path . '*'));
-        return $this->success($files);
-    }
-
-    public function getThemeTemplate()
-    {
-        $path = public_path('theme/');
         $files = array_map(function ($item) use ($path) {
             return str_replace($path, '', $item);
         }, glob($path . '*'));
@@ -288,10 +278,6 @@ class ConfigController extends Controller
             if (isset(self::SUBSCRIBE_TEMPLATE_KEYS[$k])) {
                 SubscribeTemplate::setContent(self::SUBSCRIBE_TEMPLATE_KEYS[$k], $v);
                 continue;
-            }
-            if ($k == 'frontend_theme') {
-                $themeService = app(ThemeService::class);
-                $themeService->switch($v);
             }
             // 规范化指纹列表：trim + 小写 + 去重；剔除 random/randomized 元选项
             if ($k === 'utls_fingerprints' && is_array($v)) {

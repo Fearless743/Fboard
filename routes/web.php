@@ -1,10 +1,7 @@
 <?php
 
-use App\Services\ThemeService;
 use App\Services\UpdateService;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\File;
 
 /*
@@ -18,64 +15,6 @@ use Illuminate\Support\Facades\File;
 |
 */
 
-
-Route::get('/', function (Request $request) {
-    if (admin_setting('app_url') && admin_setting('safe_mode_enable', 0)) {
-        $requestHost = $request->getHost();
-        $configHost = parse_url(admin_setting('app_url'), PHP_URL_HOST);
-        
-        if ($requestHost !== $configHost) {
-            abort(403);
-        }
-    }
-
-    $themeService = new ThemeService();
-    $requestedTheme = admin_setting('frontend_theme', 'Fboard');
-    $theme = $themeService->resolveTheme($requestedTheme);
-
-    try {
-        if ($theme !== $requestedTheme) {
-            Log::warning('Theme not found, switching to default theme', [
-                'theme' => $requestedTheme,
-                'resolved' => $theme,
-            ]);
-            admin_setting(['frontend_theme' => $theme]);
-        }
-
-        if (!$themeService->exists($theme)) {
-            $themeService->switch($theme);
-        }
-
-        if (!$themeService->getThemeViewPath($theme)) {
-            throw new Exception('主题视图文件不存在');
-        }
-
-        $publicThemePath = public_path('theme/' . $theme);
-        if (!File::exists($publicThemePath)) {
-            $themePath = $themeService->getThemePath($theme);
-            if (!$themePath || !File::copyDirectory($themePath, $publicThemePath)) {
-                throw new Exception('主题初始化失败');
-            }
-            Log::info('Theme initialized in public directory', ['theme' => $theme]);
-        }
-
-        $renderParams = [
-            'title' => admin_setting('app_name', 'Fboard'),
-            'theme' => $theme,
-            'version' => app(UpdateService::class)->getCurrentVersion(),
-            'description' => admin_setting('app_description', 'Fboard is best'),
-            'logo' => admin_setting('logo'),
-            'theme_config' => $themeService->getConfig($theme)
-        ];
-        return view('theme::' . $theme . '.dashboard', $renderParams);
-    } catch (Exception $e) {
-        Log::error('Theme rendering failed', [
-            'theme' => $theme,
-            'error' => $e->getMessage()
-        ]);
-        abort(500, '主题加载失败');
-    }
-});
 
 //TODO:: 兼容
 Route::get('/' . admin_setting('secure_path', admin_setting('frontend_admin_path', hash('crc32b', config('app.key')))), function () {

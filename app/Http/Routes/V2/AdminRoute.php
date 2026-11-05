@@ -22,7 +22,6 @@ use App\Http\Controllers\V2\Admin\KnowledgeController;
 use App\Http\Controllers\V2\Admin\PaymentController;
 use App\Http\Controllers\V2\Admin\PluginController;
 use App\Http\Controllers\V2\Admin\SystemController;
-use App\Http\Controllers\V2\Admin\ThemeController;
 use App\Http\Controllers\V2\Admin\TrafficResetController;
 use App\Http\Controllers\V2\Admin\WithdrawalController;
 use Illuminate\Contracts\Routing\Registrar;
@@ -42,7 +41,6 @@ class AdminRoute
                 $router->get('/fetch', [ConfigController::class, 'fetch']);
                 $router->post('/save', [ConfigController::class, 'save']);
                 $router->get('/getEmailTemplate', [ConfigController::class, 'getEmailTemplate']);
-                $router->get('/getThemeTemplate', [ConfigController::class, 'getThemeTemplate']);
                 $router->post('/setTelegramWebhook', [ConfigController::class, 'setTelegramWebhook']);
                 $router->post('/testSendMail', [ConfigController::class, 'testSendMail']);
             });
@@ -338,17 +336,6 @@ class AdminRoute
             //     $router->get('/check', [UpdateController::class, 'checkUpdate']);
             //     $router->post('/execute', [UpdateController::class, 'executeUpdate']);
             // });
-
-            // Theme
-            $router->group([
-                'prefix' => 'theme'
-            ], function ($router) {
-                $router->get('/getThemes', [ThemeController::class, 'getThemes']);
-                $router->post('/upload', [ThemeController::class, 'upload']);
-                $router->post('/delete', [ThemeController::class, 'delete']);
-                $router->post('/saveThemeConfig', [ThemeController::class, 'saveThemeConfig']);
-                $router->post('/getThemeConfig', [ThemeController::class, 'getThemeConfig']);
-            });
 
             // Plugin
             $router->group([

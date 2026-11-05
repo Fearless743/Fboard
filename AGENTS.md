@@ -20,8 +20,7 @@ This is **Fboard**, a Laravel 12 + Octane (Swoole) proxy protocol management pan
 - **Octane (Swoole)** replaces FPM — uses `config/octane.php`, runs on port 7001. Swoole-specific config under `OCTANE_*` env vars.
 - **Dual API versions**: `app/Http/Routes/V1/` (legacy) and `app/Http/Routes/V2/` (current). Controllers mirror this split.
 - **Plugin system**: plugins live in `plugins/` (user) and `plugins-core/` (built-in), PHP namespace `Plugin\`. Plugin manager is a scoped singleton via `PluginServiceProvider`. Hook system uses `HookManager`.
-- **Theme system**: `theme/` directory with frontend Vue3 views. Default theme is `Fboard`. Theme assets are copied to `public/theme/{name}` at runtime.
-- **Admin panel**: React app at `public/assets/admin/` (compiled, no source in this repo).
+- **Admin panel**: React app at `public/assets/admin/` (compiled, no source in this repo). No user-facing frontend: `GET /` returns 404, only admin SPA + `/api/*` + subscribe + plugin static routes are served.
 - **WebSocket server**: `app/WebSocket/NodeWorker.php` — separate workerman process for node communication.
 - **Settings**: stored in DB (`v2_settings` table), accessed via `admin_setting('key')` helper (see `app/Helpers/Functions.php`).
 - **Protocol definitions**: `plugins-core/CoreProtocols/` registers schemas via hooks; subscription clients (`Clash`, `SingBox`, …) extend `App\Support\AbstractProtocol`. Protocol plugins may also use `ProtocolPluginInterface` / `AbstractProtocolPlugin`.
@@ -35,7 +34,6 @@ This is **Fboard**, a Laravel 12 + Octane (Swoole) proxy protocol management pan
 | `app/Http/Routes/V2/` | Current API routes |
 | `plugins-core/` | Built-in protocol/plugin implementations |
 | `plugins/` | Third-party/user plugins (initially empty) |
-| `theme/Fboard/` | Default user frontend (Vue3) |
 | `public/assets/admin/` | Admin panel built assets (React SPA) |
 
 ## Conventions

@@ -274,12 +274,9 @@ class OrderService
             $order->type = Order::TYPE_UPGRADE;
             if ((int) admin_setting('surplus_enable', 1))
                 $this->getSurplusValue($user, $order);
-            if ($order->surplus_amount >= $order->total_amount) {
-                $order->surplus_credit = (int) ($order->surplus_amount - $order->total_amount);
-                $order->total_amount = 0;
-            } else {
-                $order->total_amount = (int) ($order->total_amount - $order->surplus_amount);
-            }
+            // 折抵只抵到 0，余下的差额（含历史折抵溢出）不得倒贴成用户余额，
+            // 否则每轮同价/更贵升级都会通过 surplus_credit 累积余额。
+            $order->total_amount = max(0, (int) $order->total_amount - (int) $order->surplus_amount);
         } else if (($user->expired_at === null || $user->expired_at > time()) && $order->plan_id == $user->plan_id) { // 用户订阅未过期或按流量订阅 且购买订阅与当前订阅相同 === 续费
             $order->type = Order::TYPE_RENEWAL;
         } else { // 新购
@@ -370,12 +367,16 @@ class OrderService
             $nowUserTraffic = Helper::transferToGB($user->transfer_enable);
             if (!$nowUserTraffic)
                 return;
-            $paidTotalAmount = ($lastOneTimeOrder->total_amount + $lastOneTimeOrder->balance_amount);
-            if (!$paidTotalAmount)
+            // 实付（原 total + 余额抵扣）减去该单已转余额的 surplus_credit（历史数据兼容）
+            $paidTotalAmount = max(0, $lastOneTimeOrder->total_amount + $lastOneTimeOrder->balance_amount - (int) $lastOneTimeOrder->surplus_credit);
+            if ($paidTotalAmount <= 0)
                 return;
             $trafficUnitPrice = $paidTotalAmount / $nowUserTraffic;
             $notUsedTraffic = $nowUserTraffic - Helper::transferToGB($user->u + $user->d);
             $result = $trafficUnitPrice * $notUsedTraffic;
+            // 截断到本单折抵前应付（total_amount 此时已含券/VIP 折扣，是折抵的实际可用上限）：
+            // 防止同价/更贵升级把 surplus 溢出成余额
+            $result = min($result, (int) $order->total_amount);
             $order->surplus_amount = (int) ($result > 0 ? $result : 0);
             $order->surplus_order_ids = Order::where('user_id', $user->id)
                 ->whereNotIn('period', [Plan::PERIOD_RESET_TRAFFIC, Order::PERIOD_DEPOSIT])
@@ -397,10 +398,16 @@ class OrderService
                 return;
             }
 
-            // 只计用户实付（总价+余额抵扣），不计历史折抵字段，避免 surplus 互相叠加放大。
+            // 实付（原 total + 余额抵扣）减去已转余额的 surplus_credit 部分
+            // （历史数据兼容：setOrderType 已不再产生 surplus_credit，此处对存量订单仍有效）
             $orderAmountSum = $orders->sum(
                 fn($item) => (int) $item->total_amount + (int) $item->balance_amount
-            );
+            ) - (int) $orders->sum(fn($item) => (int) $item->surplus_credit);
+            if ($orderAmountSum <= 0) {
+                $order->surplus_amount = 0;
+                $order->surplus_order_ids = $orders->pluck('id')->all();
+                return;
+            }
             $orderMonthSum = $orders->sum(fn($item) => self::STR_TO_TIME[PlanService::getPeriodKey($item->period)] ?? 0);
             $firstOrderAt = (int) $orders->min('created_at');
 
@@ -426,10 +433,9 @@ class OrderService
             }
 
             $surplus = (int) max(0, $orderAmountSum * $ratio);
-            // 折抵不得超过本单原价：同价/更贵升级不产生 surplus_credit 余额倒贴；
-            // 降级时仍可在 setOrderType 中用 (surplus - total) 形成 credit。
-            // 这里不截断到 total（尚未知本单最终价），但禁止因日历误差使 ratio 推高到 > 实付总额。
-            $surplus = min($surplus, (int) $orderAmountSum);
+            // 截断到「历史实付（不含已转余额）」与「本单折抵前应付」的较小者，
+            // 防止同价/更贵升级把 surplus 溢出成余额
+            $surplus = min($surplus, (int) $orderAmountSum, (int) $order->total_amount);
 
             $order->surplus_amount = $surplus;
             $order->surplus_order_ids = $orders->pluck('id')->all();

@@ -34,9 +34,16 @@ class PasskeyService
 
     /**
      * 从 app_url 解析 Rp ID（host 部分），解析失败时回退到 app.url。
+     *
+     * 注意：WebAuthn 要求 rpId 必须等于当前页面 origin 的 host（或其父域）。
+     * 因此优先使用本次请求的真实 Origin/Host，app_url 仅作兜底。
      */
-    public function rpId(): string
+    public function rpId(?string $requestOrigin = null): string
     {
+        $host = $this->requestHost($requestOrigin);
+        if ($host !== null) {
+            return $host;
+        }
         $appUrl = (string) admin_setting('app_url', '');
         if ($appUrl !== '') {
             $host = parse_url($appUrl, PHP_URL_HOST);
@@ -51,6 +58,61 @@ class PasskeyService
         return 'localhost';
     }
 
+    /**
+     * 取本次请求的 host：优先 Origin 头，其次 Host 头。
+     */
+    private function requestHost(?string $requestOrigin = null): ?string
+    {
+        if ($requestOrigin) {
+            $host = parse_url($requestOrigin, PHP_URL_HOST);
+            if (is_string($host) && $host !== '') {
+                return strtolower($host);
+            }
+        }
+        try {
+            $host = request()->getHost();
+        } catch (\Throwable) {
+            return null;
+        }
+        return $host !== '' ? strtolower($host) : null;
+    }
+
+    /**
+     * WebAuthn 是否可用：仅 HTTPS 或 localhost（浏览器硬性要求）。
+     */
+    public function isWebAuthnAvailable(?string $requestOrigin = null): bool
+    {
+        $origin = $requestOrigin ?: '';
+        $scheme = $origin !== '' ? (string) parse_url($origin, PHP_URL_SCHEME) : '';
+        if ($scheme === '') {
+            try {
+                $scheme = request()->getScheme();
+            } catch (\Throwable) {
+                $scheme = 'http';
+            }
+        }
+        $host = $this->requestHost($requestOrigin) ?? '';
+        if ($scheme === 'https') {
+            return true;
+        }
+        // HTTP 仅 localhost 系被视为安全上下文
+        return in_array($host, ['localhost', '127.0.0.1', '::1', '[::1]'], true);
+    }
+
+    /**
+     * 是否应当强制管理员使用 Passkey。
+     *
+     * 非安全上下文（HTTP + 非 localhost）下浏览器根本不允许 WebAuthn，
+     * 此时强制会导致后台被锁死，因此自动降级为不强制。
+     */
+    public function isEnforced(?string $requestOrigin = null): bool
+    {
+        if (!(int) admin_setting('passkey_enforce', 1)) {
+            return false;
+        }
+        return $this->isWebAuthnAvailable($requestOrigin);
+    }
+
     public function rpName(): string
     {
         $name = (string) admin_setting('app_name', 'Fboard');
@@ -58,26 +120,31 @@ class PasskeyService
     }
 
     /**
-     * 计算合法 origin 列表：app_url origin + 当前请求 origin（host 与 rpId 一致时）。
+     * 计算合法 origin 列表：本次请求 origin 优先，app_url origin 兜底。
      */
     public function allowedOrigins(?string $requestOrigin = null): array
     {
         $origins = [];
-        $appUrl = (string) admin_setting('app_url', '');
-        if ($appUrl !== '') {
-            $origins[] = $this->normalizeOrigin($appUrl);
-        }
         if ($requestOrigin) {
             $normalized = $this->normalizeOrigin($requestOrigin);
-            if ($normalized && !in_array($normalized, $origins, true)) {
-                $host = parse_url($normalized, PHP_URL_HOST);
-                $rpId = $this->rpId();
-                if (is_string($host) && ($host === $rpId || str_ends_with($host, '.' . $rpId) || $this->isLocalHost($host))) {
-                    $origins[] = $normalized;
+            if ($normalized) {
+                $origins[] = $normalized;
+            }
+        }
+        $appUrl = (string) admin_setting('app_url', '');
+        if ($appUrl !== '') {
+            $normalizedApp = $this->normalizeOrigin($appUrl);
+            if ($normalizedApp && !in_array($normalizedApp, $origins, true)) {
+                // 仅当 app_url 与当前 host 同源（同 host 或其子域）时才纳入
+                $host = parse_url($normalizedApp, PHP_URL_HOST);
+                $currentHost = $this->requestHost($requestOrigin);
+                if (is_string($host) && $currentHost !== null
+                    && ($host === $currentHost || str_ends_with($host, '.' . $currentHost) || str_ends_with($currentHost, '.' . $host))) {
+                    $origins[] = $normalizedApp;
                 }
             }
         }
-        return array_values(array_filter($origins));
+        return $origins;
     }
 
     private function normalizeOrigin(string $urlOrOrigin): ?string
@@ -93,11 +160,6 @@ class PasskeyService
             $port = null;
         }
         return $scheme . '://' . $host . ($port ? ':' . $port : '');
-    }
-
-    private function isLocalHost(string $host): bool
-    {
-        return in_array($host, ['localhost', '127.0.0.1', '[::1]', '::1'], true);
     }
 
     private function ceremonyFactory(array $origins): CeremonyStepManagerFactory
@@ -145,7 +207,7 @@ class PasskeyService
      */
     public function registrationOptions(User $user, ?string $requestOrigin = null): array
     {
-        $rpId = $this->rpId();
+        $rpId = $this->rpId($requestOrigin);
         $origins = $this->allowedOrigins($requestOrigin);
         $challenge = random_bytes(32);
 
@@ -307,7 +369,7 @@ class PasskeyService
 
     public function authenticationOptions(User $user, ?string $ticket = null, ?string $requestOrigin = null): array
     {
-        $rpId = $this->rpId();
+        $rpId = $this->rpId($requestOrigin);
         $origins = $this->allowedOrigins($requestOrigin);
         $challenge = random_bytes(32);
         $challengeB64 = Base64UrlSafe::encodeUnpadded($challenge);

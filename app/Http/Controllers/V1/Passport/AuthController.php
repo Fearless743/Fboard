@@ -93,21 +93,25 @@ class AuthController extends Controller
         /** @var \App\Models\User $user */
         $user = $result;
 
-        // 管理员强制 Passkey 二步：密码通过后只发一次性 ticket，不直接发 token
+        // 管理员强制 Passkey 二步：密码通过后只发一次性 ticket，不直接发 token。
+        // 非安全上下文（HTTP + 非 localhost）浏览器无法使用 WebAuthn，此时自动降级，避免后台被锁死。
         if ($user->is_admin) {
             $passkeyService = app(\App\Services\Auth\PasskeyService::class);
-            $ticket = $passkeyService->issueLoginTicket($user);
-            if ($passkeyService->hasPasskey($user)) {
+            $origin = (string) ($request->header('Origin') ?? '');
+            if ($passkeyService->isEnforced($origin)) {
+                $ticket = $passkeyService->issueLoginTicket($user);
+                if ($passkeyService->hasPasskey($user)) {
+                    return $this->success([
+                        'passkey_required' => true,
+                        'ticket' => $ticket,
+                    ]);
+                }
                 return $this->success([
                     'passkey_required' => true,
+                    'passkey_setup_required' => true,
                     'ticket' => $ticket,
                 ]);
             }
-            return $this->success([
-                'passkey_required' => true,
-                'passkey_setup_required' => true,
-                'ticket' => $ticket,
-            ]);
         }
 
         $authService = new AuthService($result);

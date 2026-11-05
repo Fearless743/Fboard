@@ -23,6 +23,7 @@ class UserLoginLog extends Model
     public const METHOD_PASSWORD = 'password';
     public const METHOD_REGISTER = 'register';
     public const METHOD_MAIL_LINK = 'mail_link';
+    public const METHOD_PASSKEY = 'passkey';
 
     /** 每用户保留的最大历史条数 */
     public const MAX_PER_USER = 20;

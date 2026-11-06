@@ -3,6 +3,7 @@
 namespace App\Utils;
 
 use App\Services\Plugin\HookManager;
+use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 
 class Helper
@@ -29,6 +30,31 @@ class Helper
             return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4));
         }
         return md5(vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4)) . '-' . time());
+    }
+
+    /**
+     * 校验订阅 token：只接受 32 位 hex 字符串。
+     *
+     * 传入 Request 时优先取 route token，其次取 query token，不读取 body；
+     * 传入其它值时直接校验该值本身。非字符串（如 JSON 数字）一律拒绝，
+     * 防止 MySQL 对 CHAR 字段的隐式数字转换导致前缀匹配绕过。
+     */
+    public static function validateSubscriptionToken(mixed $token): ?string
+    {
+        if ($token instanceof Request) {
+            $token = $token->route('token') ?? $token->query('token');
+        }
+
+        if (!is_string($token)) {
+            return null;
+        }
+
+        $token = trim($token);
+        if (!preg_match('/^[a-fA-F0-9]{32}$/', $token)) {
+            return null;
+        }
+
+        return strtolower($token);
     }
 
     public static function generateOrderNo(): string

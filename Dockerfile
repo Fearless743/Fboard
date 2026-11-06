@@ -74,7 +74,8 @@ COPY . /www/
 # 注意：不要在这里对 /www 做 chown/chmod -R。
 # 这类递归元数据变更会把 vendor/ + 全部源码重新打包成一个与 /www
 # 同样大小的新层（~数百 MB），导致每次更新都重新下载整层。
-# 运行时 entrypoint 会在启动时执行 chown -R www:www /www，权限由运行时保证。
+# 运行时 entrypoint 会在启动时对可写目录执行 chown（narrow），
+# 权限由运行时保证。非可写目录保持 root 所有（644/755 默认权限）。
 RUN composer dump-autoload --optimize --no-dev --no-scripts \
     && php artisan package:discover --ansi \
     && php artisan storage:link \

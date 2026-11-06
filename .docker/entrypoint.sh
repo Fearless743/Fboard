@@ -175,9 +175,13 @@ _timing_log_start "rm -f stale state files"
 rm -f /www/storage/logs/octane-server-state.json /www/storage/logs/fboard-ws-server.pid /www/storage/logs/xboard-ws-server.pid 2>/dev/null || true
 _timing_log_end "rm -f stale state files"
 
-_timing_log_start "chown -R www:www /www"
-chown -R www:www /www 2>/dev/null || true
-_timing_log_end "chown -R www:www /www"
+_timing_log_start "chown writable dirs (narrow)"
+# Only chown the directories that actually need write access at runtime.
+# /www/vendor, /www/app, /www/public, etc. are read-only for www (644/755
+# default from COPY) and do not need ownership change.  Chowning the entire
+# /www tree (including vendor/ 79M + admin/ 23M) takes 9s+ on bind mounts.
+chown -R www:www /www/storage /www/bootstrap/cache /www/plugins /www/.docker/.data 2>/dev/null || true
+_timing_log_end "chown writable dirs (narrow)"
 
 _timing_log_start "chown redis:redis /data"
 chown redis:redis /data 2>/dev/null || true

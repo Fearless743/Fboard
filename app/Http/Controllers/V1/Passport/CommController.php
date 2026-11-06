@@ -74,7 +74,11 @@ class CommController extends Controller
 
     public function pv(Request $request)
     {
-        $inviteCode = InviteCode::where('code', $request->input('invite_code'))->first();
+        $inviteCodeInput = $request->input('invite_code');
+        if (!is_string($inviteCodeInput) || $inviteCodeInput === '') {
+            return $this->success(true);
+        }
+        $inviteCode = InviteCode::where('code', $inviteCodeInput)->first();
         if ($inviteCode) {
             $inviteCode->pv = $inviteCode->pv + 1;
             $inviteCode->save();

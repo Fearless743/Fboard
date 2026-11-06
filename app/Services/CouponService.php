@@ -16,8 +16,10 @@ class CouponService
     public $userId;
     public $period;
 
-    public function __construct($code)
+    public function __construct(string $code)
     {
+        // 防止 JSON 数字 code 被 PDO 作为 int 绑定，在 MySQL 中对字符串列
+        // 触发隐式类型转换（数字前缀匹配）导致优惠券绕过。
         $this->coupon = Coupon::where('code', $code)
             ->lockForUpdate()
             ->first();

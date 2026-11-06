@@ -382,10 +382,10 @@ class ServerService
                 $query->where('type', Server::normalizeType($serverType));
             })
             ->where(function ($query) use ($serverId) {
-                $query->where('code', $serverId)
+                $query->where('code', (string) $serverId)
                     ->orWhere('id', $serverId);
             })
-            ->orderByRaw('CASE WHEN code = ? THEN 0 ELSE 1 END', [$serverId])
+            ->orderByRaw('CASE WHEN code = ? THEN 0 ELSE 1 END', [(string) $serverId])
             ->first();
     }
 

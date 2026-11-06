@@ -63,6 +63,7 @@ jobs:
         with:
           name: admin-assets
           path: public/assets/admin
+          include-hidden-files: true
           if-no-files-found: error
 
   # 预构建 vendor 镜像（php 依赖），供 amd64/arm64 两个 job 共享
@@ -123,11 +124,15 @@ jobs:
         id: lower
         run: echo "image=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
+      - name: Ensure assets directory exists
+        run: mkdir -p public/assets/admin
+
       - name: Download admin assets
         uses: actions/download-artifact@v4
         with:
           name: admin-assets
           path: public/assets/admin
+          include-hidden-files: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -210,11 +215,15 @@ jobs:
         id: lower
         run: echo "image=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
+      - name: Ensure assets directory exists
+        run: mkdir -p public/assets/admin
+
       - name: Download admin assets
         uses: actions/download-artifact@v4
         with:
           name: admin-assets
           path: public/assets/admin
+          include-hidden-files: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

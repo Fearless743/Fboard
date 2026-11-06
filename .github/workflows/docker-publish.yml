@@ -5,10 +5,66 @@ on:
     branches: ["master", "new-dev"]
   workflow_dispatch:
 
+# 同一分支的新 push 取消未完成的旧构建，避免 amd64/arm64 缓存与
+# GHCR tag 在并发 run 间互相覆盖。
+concurrency:
+  group: docker-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   REGISTRY: ghcr.io
 
 jobs:
+  # 前端只构建一次：产物为平台无关的静态文件，在 amd64 上构建后
+  # 经 artifact 分发给 arm64 job 复用，避免在 ARM runner 上重复
+  # bun install + vite build（原先两个 job 各做一次，耗时 ~20s 且
+  # 两份产物可能不一致）。
+  frontend:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Checkout admin SPA
+        uses: actions/checkout@v4
+        with:
+          repository: Fearless743/Fboard-admin
+          ref: main
+          path: admin
+          fetch-depth: 1
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # bun 全局安装缓存：第二次 bun install 不重复下载依赖。
+      - name: Cache Bun deps
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('admin/bun.lock') }}
+          restore-keys: |
+            bun-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Build admin SPA
+        working-directory: admin
+        env:
+          FBOARD_PUBLIC_ASSETS_DIR: ../public/assets/admin
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+
+      - name: Upload admin assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-assets
+          path: public/assets/admin
+          if-no-files-found: error
+
   # 预构建 vendor 镜像（php 依赖），供 amd64/arm64 两个 job 共享
   vendor:
     runs-on: ubuntu-latest
@@ -35,21 +91,23 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push shared vendor image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           platforms: linux/amd64
           target: vendor
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # scope=vendor 隔离该 job 的缓存，避免与
+          # build-amd64 / build-arm64 互相驱逐。
+          cache-from: type=gha,scope=vendor
+          cache-to: type=gha,mode=max,scope=vendor
           tags: ${{ env.REGISTRY }}/${{ steps.lower.outputs.image }}:vendor-cache
           provenance: false
           outputs: type=registry,push=true
 
   # amd64 原生构建
   build-amd64:
-    needs: vendor
+    needs: [vendor, frontend]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -65,22 +123,11 @@ jobs:
         id: lower
         run: echo "image=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
-      - name: Checkout admin SPA
-        uses: actions/checkout@v4
+      - name: Download admin assets
+        uses: actions/download-artifact@v4
         with:
-          repository: Fearless743/Fboard-admin
-          ref: main
-          path: admin
-          fetch-depth: 1
-
-      - name: Build admin SPA
-        working-directory: admin
-        env:
-          FBOARD_PUBLIC_ASSETS_DIR: ../public/assets/admin
-        run: |
-          npm install -g bun
-          bun install --frozen-lockfile
-          bun run build
+          name: admin-assets
+          path: public/assets/admin
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -128,13 +175,15 @@ jobs:
 
       - name: Build and push amd64
         id: build-and-push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           platforms: linux/amd64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # 按架构隔离缓存 scope：amd64/arm64 的扩展编译层互不驱逐，
+          # arm64 命中率因此显著提高（原先共用无 scope 的 gha 缓存）。
+          cache-from: type=gha,scope=fboard-amd64
+          cache-to: type=gha,mode=max,scope=fboard-amd64
           build-contexts: vendor=docker-image://${{ env.REGISTRY }}/${{ steps.lower.outputs.image }}:vendor-cache
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -145,7 +194,7 @@ jobs:
 
   # arm64 原生构建（GitHub ARM runner，无需 QEMU）
   build-arm64:
-    needs: vendor
+    needs: [vendor, frontend]
     runs-on: ubuntu-24.04-arm
     permissions:
       contents: read
@@ -161,25 +210,25 @@ jobs:
         id: lower
         run: echo "image=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
-      - name: Checkout admin SPA
-        uses: actions/checkout@v4
+      - name: Download admin assets
+        uses: actions/download-artifact@v4
         with:
-          repository: Fearless743/Fboard-admin
-          ref: main
-          path: admin
-          fetch-depth: 1
-
-      - name: Build admin SPA
-        working-directory: admin
-        env:
-          FBOARD_PUBLIC_ASSETS_DIR: ../public/assets/admin
-        run: |
-          npm install -g bun
-          bun install --frozen-lockfile
-          bun run build
+          name: admin-assets
+          path: public/assets/admin
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      # ARM runner 镜像同样预装了大量工具链，构建前先腾空间，
+      # 避免 C 扩展编译时磁盘不足（原先仅 amd64 job 有此步骤）。
+      - name: Free Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet &
+          sudo rm -rf /usr/local/lib/android &
+          sudo rm -rf /opt/ghc &
+          sudo rm -rf /opt/hostedtoolcache/CodeQL &
+          sudo docker image prune -af &
+          wait
 
       - name: Login to registry
         uses: docker/login-action@v3
@@ -215,13 +264,13 @@ jobs:
 
       - name: Build and push arm64
         id: build-and-push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           platforms: linux/arm64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=fboard-arm64
+          cache-to: type=gha,mode=max,scope=fboard-arm64
           build-contexts: vendor=docker-image://${{ env.REGISTRY }}/${{ steps.lower.outputs.image }}:vendor-cache
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -239,9 +288,16 @@ jobs:
       contents: read
       packages: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
       - name: Compute lowercase image name
         id: lower
         run: echo "image=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Login to registry
         uses: docker/login-action@v3

@@ -24,3 +24,22 @@ storage/laravels.pid
 storage/laravels-timer-process.pid
 /frontend
 .git/
+/.github/
+/docs
+/tests
+.phpunit.cache
+.phpunit.result.cache
+
+# 构建时生成的缓存文件不能打进镜像，否则会导致 package:discover
+# 读到宿主机的开发态缓存（如 debugbar 等 dev 依赖）而构建失败。
+/bootstrap/cache/*.php
+
+# 本地数据库 / 缓存文件体积巨大，绝不能打进镜像。
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+/database/*.sqlite
+/storage/*.sqlite
+/storage/logs/*
+!/storage/logs/.gitignore

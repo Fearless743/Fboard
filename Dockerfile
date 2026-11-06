@@ -39,14 +39,13 @@ RUN --mount=type=cache,id=composer,target=/root/.composer/cache \
 # ---- runtime stage ----
 FROM phpswoole/swoole:php8.5-alpine
 
+# 基础镜像已内置 redis/pdo_mysql/pdo_sqlite/swoole 等扩展；
+# 仅补充 bcmath/pcntl/zip（base 未带），减少安装体积与构建时间。
 COPY --from=mlocati/php-extension-installer /usr/bin/install-php-extensions /usr/local/bin/
-
-# Install PHP extensions one by one with lower optimization level for ARM64 compatibility
-RUN CFLAGS="-O0" install-php-extensions pcntl && \
-    CFLAGS="-O0 -g0" install-php-extensions bcmath && \
+RUN CFLAGS="-O0" install-php-extensions bcmath && \
+    CFLAGS="-O0" install-php-extensions pcntl && \
     install-php-extensions zip && \
-    install-php-extensions redis && \
-    apk --no-cache add shadow sqlite mysql-client mysql-dev mariadb-connector-c git patch supervisor redis caddy && \
+    apk --no-cache add sqlite mysql-client mariadb-connector-c supervisor redis caddy && \
     addgroup -S -g 1000 www && adduser -S -G www -u 1000 www && \
     (getent group redis || addgroup -S redis) && \
     (getent passwd redis || adduser -S -G redis -H -h /data redis)

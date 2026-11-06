@@ -79,13 +79,14 @@
       <script type="module" crossorigin src="/assets/admin/{{ $js }}"></script>
     @endforeach
   @else
-    {{-- Fallback: hardcoded paths for backward compatibility --}}
-    <script type="module" crossorigin src="/assets/admin/assets/index.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/admin/assets/index.css" />
-    <link rel="stylesheet" crossorigin href="/assets/admin/assets/vendor.css">
-    <script src="/assets/admin/locales/en-US.js"></script>
-    <script src="/assets/admin/locales/zh-CN.js"></script>
-    <script src="/assets/admin/locales/ko-KR.js"></script>
+    {{-- Manifest missing: admin assets not built or .vite/manifest.json not found.
+         This usually means the Docker image was built without admin assets.
+         Rebuild the image with admin assets included. --}}
+    <div style="padding:2rem;text-align:center;font-family:sans-serif;">
+      <h2>Admin panel assets not found</h2>
+      <p>The Vite manifest (<code>.vite/manifest.json</code>) is missing.<br/>
+         Please rebuild the Docker image with admin assets included.</p>
+    </div>
   @endif
 </head>
 

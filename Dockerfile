@@ -71,11 +71,13 @@ COPY . /www/
 # Layer 4: Refresh classmap / package discovery (now that full app source exists)
 # + storage link & permissions
 # --no-scripts 装依赖时跳过了 post-autoload-dump；此处补回 classmap 与 package:discover
+# 注意：不要在这里对 /www 做 chown/chmod -R。
+# 这类递归元数据变更会把 vendor/ + 全部源码重新打包成一个与 /www
+# 同样大小的新层（~数百 MB），导致每次更新都重新下载整层。
+# 运行时 entrypoint 会在启动时执行 chown -R www:www /www，权限由运行时保证。
 RUN composer dump-autoload --optimize --no-dev --no-scripts \
     && php artisan package:discover --ansi \
     && php artisan storage:link \
-    && chown -R www:www /www \
-    && chmod -R 775 /www \
     && mkdir -p /data \
     && chown redis:redis /data
 

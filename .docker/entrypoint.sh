@@ -1,6 +1,29 @@
 #!/bin/sh
 set -e
 
+# Startup timing helpers (BusyBox date lacks %N, use /proc/uptime for 10ms precision)
+TIMING_BOOT_START=$(awk '{print $1}' /proc/uptime 2>/dev/null || date +%s)
+TIMING_STEP_START=""
+
+_timing_now() {
+    awk '{print $1}' /proc/uptime 2>/dev/null || date +%s
+}
+
+_timing_log_start() {
+    _desc="$1"
+    TIMING_STEP_START=$(_timing_now)
+    echo "[timing] START $(date '+%T') ${_desc}..."
+}
+
+_timing_log_end() {
+    _desc="$1"
+    _now=$(_timing_now)
+    _dur=$(awk -v s="$TIMING_STEP_START" -v e="$_now" 'BEGIN{printf "%.2f", e-s}' 2>/dev/null || echo "?")
+    _total=$(awk -v s="$TIMING_BOOT_START" -v e="$_now" 'BEGIN{printf "%.2f", e-s}' 2>/dev/null || echo "?")
+    echo "[timing] DONE $(date '+%T') ${_desc} in ${_dur}s (boot total ${_total}s)"
+}
+
+
 # Resolve the binding scheme based on whether the embedded Caddy is enabled.
 #
 # When ENABLE_CADDY=true (default), Caddy owns the public port (7001) and
@@ -144,9 +167,81 @@ else
 fi
 
 echo "[entrypoint] Starting services (caddy=${ENABLE_CADDY} web=${ENABLE_WEB} horizon=${ENABLE_HORIZON} ws=${ENABLE_WS_SERVER})..."
+
+# --- Startup timing: each step after this line logs its own elapsed time ---
+_timing_log_start "rm -f stale state files"
 # Drop stale Octane/WorkerMan state files so the new master does not signal
 # PIDs left over from a previous container run (causes Swoole kill EPERM).
 rm -f /www/storage/logs/octane-server-state.json /www/storage/logs/fboard-ws-server.pid /www/storage/logs/xboard-ws-server.pid 2>/dev/null || true
+_timing_log_end "rm -f stale state files"
+
+_timing_log_start "chown -R www:www /www"
 chown -R www:www /www 2>/dev/null || true
+_timing_log_end "chown -R www:www /www"
+
+_timing_log_start "chown redis:redis /data"
 chown redis:redis /data 2>/dev/null || true
-exec "$@"
+_timing_log_end "chown redis:redis /data"
+
+# supervisord is started in background so we can log each program's
+# spawn -> RUNNING transition. After monitoring completes we wait on it.
+# Original behaviour was `exec "$@"` (supervisord becomes PID 1). The
+# background + trap + wait replacement keeps the same lifetime: PID 1 is
+# still this shell, SIGTERM/SIGINT are forwarded to supervisord.
+# Set STARTUP_MONITOR=0 to skip polling and exec immediately (old path).
+if [ "${STARTUP_MONITOR:-1}" = "0" ]; then
+    _timing_log_start "exec supervisord (monitor disabled, direct exec)"
+    exec "$@"
+fi
+
+_timing_log_start "supervisord boot (spawn -> RUNNING per program)"
+echo "[timing] starting supervisord in background (monitor mode)..."
+SUP_PID=""
+trap 'echo "[timing] forwarding signal to supervisord pid ${SUP_PID:-none}..."; [ -n "$SUP_PID" ] && kill -TERM "$SUP_PID" 2>/dev/null; wait "$SUP_PID" 2>/dev/null; exit 0' INT TERM
+
+/usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf &
+SUP_PID=$!
+echo "[timing] supervisord pid ${SUP_PID}"
+
+_wait_sock=0
+while [ ! -S /tmp/supervisor.sock ] && [ "$_wait_sock" -lt 50 ]; do
+    sleep 0.1 2>/dev/null || sleep 1
+    _wait_sock=$(( _wait_sock + 1 ))
+    kill -0 "$SUP_PID" 2>/dev/null || break
+done
+
+if [ -S /tmp/supervisor.sock ]; then
+    echo "[timing] supervisor socket ready, polling supervisorctl status..."
+    _seen_octane=0; _seen_horizon=0; _seen_redis=0; _seen_ws=0; _seen_caddy=0
+    _poll_n=0
+    while [ "$_poll_n" -lt 300 ]; do
+        _status=$(supervisorctl -c /etc/supervisor/conf.d/supervisord.conf status 2>/dev/null || echo "")
+        if [ -n "$_status" ]; then
+            echo "$_status" | grep -q "octane.*RUNNING" && [ "$_seen_octane" = "0" ] && { _seen_octane=1; _now=$(_timing_now); _dur=$(awk -v s="$TIMING_STEP_START" -v e="$_now" 'BEGIN{printf "%.2f", e-s}'); _total=$(awk -v s="$TIMING_BOOT_START" -v e="$_now" 'BEGIN{printf "%.2f", e-s}'); echo "[timing] supervisord program octane RUNNING in ${_dur}s (boot total ${_total}s)"; } || true
+            echo "$_status" | grep -q "horizon.*RUNNING" && [ "$_seen_horizon" = "0" ] && { _seen_horizon=1; _now=$(_timing_now); _dur=$(awk -v s="$TIMING_STEP_START" -v e="$_now" 'BEGIN{printf "%.2f", e-s}'); _total=$(awk -v s="$TIMING_BOOT_START" -v e="$_now" 'BEGIN{printf "%.2f", e-s}'); echo "[timing] supervisord program horizon RUNNING in ${_dur}s (boot total ${_total}s)"; } || true
+            echo "$_status" | grep -q "redis.*RUNNING" && [ "$_seen_redis" = "0" ] && { _seen_redis=1; _now=$(_timing_now); _dur=$(awk -v s="$TIMING_STEP_START" -v e="$_now" 'BEGIN{printf "%.2f", e-s}'); _total=$(awk -v s="$TIMING_BOOT_START" -v e="$_now" 'BEGIN{printf "%.2f", e-s}'); echo "[timing] supervisord program redis RUNNING in ${_dur}s (boot total ${_total}s)"; } || true
+            echo "$_status" | grep -q "ws-server.*RUNNING" && [ "$_seen_ws" = "0" ] && { _seen_ws=1; _now=$(_timing_now); _dur=$(awk -v s="$TIMING_STEP_START" -v e="$_now" 'BEGIN{printf "%.2f", e-s}'); _total=$(awk -v s="$TIMING_BOOT_START" -v e="$_now" 'BEGIN{printf "%.2f", e-s}'); echo "[timing] supervisord program ws-server RUNNING in ${_dur}s (boot total ${_total}s)"; } || true
+            echo "$_status" | grep -q "caddy.*RUNNING" && [ "$_seen_caddy" = "0" ] && { _seen_caddy=1; _now=$(_timing_now); _dur=$(awk -v s="$TIMING_STEP_START" -v e="$_now" 'BEGIN{printf "%.2f", e-s}'); _total=$(awk -v s="$TIMING_BOOT_START" -v e="$_now" 'BEGIN{printf "%.2f", e-s}'); echo "[timing] supervisord program caddy RUNNING in ${_dur}s (boot total ${_total}s)"; } || true
+            _done=1
+            [ "${ENABLE_WEB:-true}" = "true" ] && [ "$_seen_octane" = "0" ] && _done=0
+            [ "${ENABLE_HORIZON:-true}" = "true" ] && [ "$_seen_horizon" = "0" ] && _done=0
+            [ "${ENABLE_REDIS:-true}" = "true" ] && [ "$_seen_redis" = "0" ] && _done=0
+            [ "${ENABLE_WS_SERVER:-true}" = "true" ] && [ "$_seen_ws" = "0" ] && _done=0
+            [ "${ENABLE_CADDY:-true}" = "true" ] && [ "$_seen_caddy" = "0" ] && _done=0
+            [ "$_done" = "1" ] && break
+        fi
+        kill -0 "$SUP_PID" 2>/dev/null || { echo "[timing] supervisord exited early"; break; }
+        sleep 0.2 2>/dev/null || sleep 1
+        _poll_n=$(( _poll_n + 1 ))
+    done
+    if [ "$_poll_n" -ge 300 ]; then
+        echo "[timing] supervisorctl poll timeout (60s), continuing to wait on supervisord"
+    fi
+else
+    echo "[timing] WARNING: /tmp/supervisor.sock not found, supervisorctl unavailable; falling back to supervisor log timestamps (use podman logs -t)"
+fi
+
+trap - INT TERM
+_timing_log_end "supervisord boot (spawn -> RUNNING per program)"
+echo "[timing] waiting on supervisord pid ${SUP_PID} as main process..."
+wait "$SUP_PID"

@@ -117,6 +117,9 @@ class OrderController extends Controller
 
     public function checkout(Request $request)
     {
+        $request->validate([
+            'trade_no' => 'required|string',
+        ]);
         $tradeNo = $request->input('trade_no');
         $method = $request->input('method');
         $order = Order::where('trade_no', $tradeNo)
@@ -162,6 +165,9 @@ class OrderController extends Controller
 
     public function check(Request $request)
     {
+        $request->validate([
+            'trade_no' => 'required|string',
+        ]);
         $tradeNo = $request->input('trade_no');
         $order = Order::where('trade_no', $tradeNo)
             ->where('user_id', $request->user()->id)
@@ -191,6 +197,9 @@ class OrderController extends Controller
 
     public function cancel(Request $request)
     {
+        $request->validate([
+            'trade_no' => 'required|string',
+        ]);
         if (empty($request->input('trade_no'))) {
             return $this->fail([422, __('Invalid parameter')]);
         }

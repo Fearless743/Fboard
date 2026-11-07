@@ -348,7 +348,7 @@ class ClashMeta extends AbstractProtocol
             $array['tls'] = (bool) data_get($protocol_settings, 'tls');
             $array['skip-cert-verify'] = (bool) data_get($protocol_settings, 'tls_settings.allow_insecure', false);
             $array['servername'] = data_get($protocol_settings, 'tls_settings.server_name');
-            if ($alpn = data_get($protocol_settings, 'tls_settings.alpn')) {
+            if ($alpn = data_get($protocol_settings, 'tls_settings.client_alpn', data_get($protocol_settings, 'tls_settings.alpn'))) {
                 $array['alpn'] = is_array($alpn) ? array_values($alpn) : [$alpn];
             }
             self::appendEch($array, data_get($protocol_settings, 'tls_settings.ech'));
@@ -434,7 +434,7 @@ class ClashMeta extends AbstractProtocol
                 if ($serverName = data_get($protocol_settings, 'tls_settings.server_name')) {
                     $array['servername'] = $serverName;
                 }
-                if ($alpn = data_get($protocol_settings, 'tls_settings.alpn')) {
+                if ($alpn = data_get($protocol_settings, 'tls_settings.client_alpn', data_get($protocol_settings, 'tls_settings.alpn'))) {
                     $array['alpn'] = is_array($alpn) ? array_values($alpn) : [$alpn];
                 }
                 self::appendEch($array, data_get($protocol_settings, 'tls_settings.ech'));
@@ -555,7 +555,7 @@ class ClashMeta extends AbstractProtocol
                 if ($serverName = data_get($protocol_settings, 'tls_settings.server_name')) {
                     $array['sni'] = $serverName;
                 }
-                if ($alpn = data_get($protocol_settings, 'tls_settings.alpn')) {
+                if ($alpn = data_get($protocol_settings, 'tls_settings.client_alpn', data_get($protocol_settings, 'tls_settings.alpn'))) {
                     $array['alpn'] = is_array($alpn) ? array_values($alpn) : [$alpn];
                 }
                 self::appendEch($array, data_get($protocol_settings, 'tls_settings.ech'));

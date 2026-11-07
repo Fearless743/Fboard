@@ -569,7 +569,7 @@ class SingBox extends AbstractProtocol
             if ($serverName = data_get($protocol_settings, 'tls_settings.server_name')) {
                 $array['tls']['server_name'] = $serverName;
             }
-            if ($alpn = data_get($protocol_settings, 'tls_settings.alpn')) {
+            if ($alpn = data_get($protocol_settings, 'tls_settings.client_alpn', data_get($protocol_settings, 'tls_settings.alpn'))) {
                 $array['tls']['alpn'] = is_array($alpn) ? array_values($alpn) : [$alpn];
             }
         }
@@ -614,7 +614,7 @@ class SingBox extends AbstractProtocol
                     if ($serverName = data_get($protocol_settings, 'tls_settings.server_name')) {
                         $tlsConfig['server_name'] = $serverName;
                     }
-                    if ($alpn = data_get($protocol_settings, 'tls_settings.alpn')) {
+                    if ($alpn = data_get($protocol_settings, 'tls_settings.client_alpn', data_get($protocol_settings, 'tls_settings.alpn'))) {
                         $tlsConfig['alpn'] = is_array($alpn) ? array_values($alpn) : [$alpn];
                     }
                     break;
@@ -670,7 +670,7 @@ class SingBox extends AbstractProtocol
                 if ($serverName = data_get($protocol_settings, 'tls_settings.server_name')) {
                     $tlsConfig['server_name'] = $serverName;
                 }
-                if ($alpn = data_get($protocol_settings, 'tls_settings.alpn')) {
+                if ($alpn = data_get($protocol_settings, 'tls_settings.client_alpn', data_get($protocol_settings, 'tls_settings.alpn'))) {
                     $tlsConfig['alpn'] = is_array($alpn) ? array_values($alpn) : [$alpn];
                 }
                 break;

@@ -95,7 +95,7 @@ class General extends AbstractProtocol
         if ($serverName = data_get($protocol_settings, 'tls_settings.server_name')) {
             $config['sni'] = $serverName;
         }
-        if ($alpn = data_get($protocol_settings, 'tls_settings.alpn')) {
+        if ($alpn = data_get($protocol_settings, 'tls_settings.client_alpn', data_get($protocol_settings, 'tls_settings.alpn'))) {
             $config['alpn'] = is_array($alpn) ? implode(',', $alpn) : $alpn;
         }
         if ($fp = Helper::getTlsFingerprint(data_get($protocol_settings, 'utls'))) {
@@ -193,7 +193,7 @@ class General extends AbstractProtocol
                 if (data_get($protocol_settings, 'tls_settings.allow_insecure')) {
                     $config['allowInsecure'] = '1';
                 }
-                if ($alpn = data_get($protocol_settings, 'tls_settings.alpn')) {
+                if ($alpn = data_get($protocol_settings, 'tls_settings.client_alpn', data_get($protocol_settings, 'tls_settings.alpn'))) {
                     $config['alpn'] = is_array($alpn) ? implode(',', $alpn) : $alpn;
                 }
                 break;
@@ -287,7 +287,7 @@ class General extends AbstractProtocol
                     $array['peer'] = $serverName;
                     $array['sni'] = $serverName;
                 }
-                if ($alpn = data_get($protocol_settings, 'tls_settings.alpn')) {
+                if ($alpn = data_get($protocol_settings, 'tls_settings.client_alpn', data_get($protocol_settings, 'tls_settings.alpn'))) {
                     $array['alpn'] = is_array($alpn) ? implode(',', $alpn) : $alpn;
                 }
                 if ($fp = Helper::getTlsFingerprint(data_get($protocol_settings, 'utls'))) {

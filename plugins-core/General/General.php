@@ -95,6 +95,9 @@ class General extends AbstractProtocol
         if ($serverName = data_get($protocol_settings, 'tls_settings.server_name')) {
             $config['sni'] = $serverName;
         }
+        if ($alpn = data_get($protocol_settings, 'tls_settings.alpn')) {
+            $config['alpn'] = is_array($alpn) ? implode(',', $alpn) : $alpn;
+        }
         if ($fp = Helper::getTlsFingerprint(data_get($protocol_settings, 'utls'))) {
             $config['fp'] = $fp;
         }
@@ -145,8 +148,15 @@ class General extends AbstractProtocol
                 $config['host'] = data_get($protocol_settings, 'network_settings.host', $server['host']);
                 if ($mode = data_get($protocol_settings, 'network_settings.mode', 'auto'))
                     $config['mode'] = $mode;
-                if ($extra = data_get($protocol_settings, 'network_settings.extra'))
-                    $config['extra'] = is_array($extra) && !empty($extra) ? json_encode($extra) : null;
+                $extra = data_get($protocol_settings, 'network_settings.extra');
+                if (!is_array($extra)) $extra = [];
+                $downloadSettings = data_get($protocol_settings, 'network_settings.downloadSettings');
+                if (is_array($downloadSettings) && !empty($downloadSettings)) {
+                    $extra['downloadSettings'] = $downloadSettings;
+                }
+                if (!empty($extra)) {
+                    $config['extra'] = json_encode($extra);
+                }
                 break;
             default:
                 break;
@@ -182,6 +192,9 @@ class General extends AbstractProtocol
                 }
                 if (data_get($protocol_settings, 'tls_settings.allow_insecure')) {
                     $config['allowInsecure'] = '1';
+                }
+                if ($alpn = data_get($protocol_settings, 'tls_settings.alpn')) {
+                    $config['alpn'] = is_array($alpn) ? implode(',', $alpn) : $alpn;
                 }
                 break;
             case 2:
@@ -232,8 +245,15 @@ class General extends AbstractProtocol
                 $config['host'] = data_get($protocol_settings, 'network_settings.host', $server['host']);
                 if ($mode = data_get($protocol_settings, 'network_settings.mode', 'auto'))
                     $config['mode'] = $mode;
-                if ($extra = data_get($protocol_settings, 'network_settings.extra'))
-                    $config['extra'] = is_array($extra) && !empty($extra) ? json_encode($extra) : null;
+                $extra = data_get($protocol_settings, 'network_settings.extra');
+                if (!is_array($extra)) $extra = [];
+                $downloadSettings = data_get($protocol_settings, 'network_settings.downloadSettings');
+                if (is_array($downloadSettings) && !empty($downloadSettings)) {
+                    $extra['downloadSettings'] = $downloadSettings;
+                }
+                if (!empty($extra)) {
+                    $config['extra'] = json_encode($extra);
+                }
                 break;
         }
 
@@ -266,6 +286,9 @@ class General extends AbstractProtocol
                 if ($serverName = data_get($protocol_settings, 'tls_settings.server_name')) {
                     $array['peer'] = $serverName;
                     $array['sni'] = $serverName;
+                }
+                if ($alpn = data_get($protocol_settings, 'tls_settings.alpn')) {
+                    $array['alpn'] = is_array($alpn) ? implode(',', $alpn) : $alpn;
                 }
                 if ($fp = Helper::getTlsFingerprint(data_get($protocol_settings, 'utls'))) {
                     $array['fp'] = $fp;
@@ -306,8 +329,15 @@ class General extends AbstractProtocol
                 $array['host'] = data_get($protocol_settings, 'network_settings.host', $server['host']);
                 if ($mode = data_get($protocol_settings, 'network_settings.mode', 'auto'))
                     $array['mode'] = $mode;
-                if ($extra = data_get($protocol_settings, 'network_settings.extra'))
-                    $array['extra'] = is_array($extra) && !empty($extra) ? json_encode($extra) : null;
+                $extra = data_get($protocol_settings, 'network_settings.extra');
+                if (!is_array($extra)) $extra = [];
+                $downloadSettings = data_get($protocol_settings, 'network_settings.downloadSettings');
+                if (is_array($downloadSettings) && !empty($downloadSettings)) {
+                    $extra['downloadSettings'] = $downloadSettings;
+                }
+                if (!empty($extra)) {
+                    $array['extra'] = json_encode($extra);
+                }
                 break;
             default:
                 break;

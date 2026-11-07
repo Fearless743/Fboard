@@ -195,6 +195,9 @@ class Clash extends AbstractProtocol
             if ($serverName = data_get($protocol_settings, 'tls_settings.server_name')) {
                 $array['servername'] = $serverName;
             }
+            if ($alpn = data_get($protocol_settings, 'tls_settings.alpn')) {
+                $array['alpn'] = is_array($alpn) ? array_values($alpn) : [$alpn];
+            }
         }
 
         switch (data_get($protocol_settings, 'network')) {
@@ -247,6 +250,9 @@ class Clash extends AbstractProtocol
         $array['udp'] = true;
         if ($serverName = data_get($protocol_settings, 'tls_settings.server_name')) {
             $array['sni'] = $serverName;
+        }
+        if ($alpn = data_get($protocol_settings, 'tls_settings.alpn')) {
+            $array['alpn'] = is_array($alpn) ? array_values($alpn) : [$alpn];
         }
         $array['skip-cert-verify'] = (bool) data_get($protocol_settings, 'tls_settings.allow_insecure', false);
 

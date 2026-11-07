@@ -255,6 +255,9 @@ class Stash extends AbstractProtocol
         if ($serverName = data_get($protocol_settings, 'tls_settings.server_name')) {
             $array['servername'] = $serverName;
         }
+        if ($alpn = data_get($protocol_settings, 'tls_settings.alpn')) {
+            $array['alpn'] = is_array($alpn) ? array_values($alpn) : [$alpn];
+        }
 
         switch (data_get($protocol_settings, 'network')) {
             case 'tcp':
@@ -315,6 +318,9 @@ class Stash extends AbstractProtocol
                 $array['skip-cert-verify'] = data_get($protocol_settings, 'tls_settings.allow_insecure');
                 if ($serverName = data_get($protocol_settings, 'tls_settings.server_name')) {
                     $array['servername'] = $serverName;
+                }
+                if ($alpn = data_get($protocol_settings, 'tls_settings.alpn')) {
+                    $array['alpn'] = is_array($alpn) ? array_values($alpn) : [$alpn];
                 }
                 break;
             case 2:
@@ -399,6 +405,9 @@ class Stash extends AbstractProtocol
             default: // Standard TLS
                 if ($serverName = data_get($protocol_settings, 'tls_settings.server_name')) {
                     $array['sni'] = $serverName;
+                }
+                if ($alpn = data_get($protocol_settings, 'tls_settings.alpn')) {
+                    $array['alpn'] = is_array($alpn) ? array_values($alpn) : [$alpn];
                 }
                 $array['skip-cert-verify'] = (bool) data_get($protocol_settings, 'tls_settings.allow_insecure', false);
                 break;
@@ -551,6 +560,9 @@ class Stash extends AbstractProtocol
             if ($serverName = data_get($protocol_settings, 'tls_settings.server_name')) {
                 $array['sni'] = $serverName;
             }
+            if ($alpn = data_get($protocol_settings, 'tls_settings.alpn')) {
+                $array['alpn'] = is_array($alpn) ? array_values($alpn) : [$alpn];
+            }
         }
 
         return $array;
@@ -573,6 +585,9 @@ class Stash extends AbstractProtocol
             $array['skip-cert-verify'] = (bool) data_get($protocol_settings, 'tls_settings.allow_insecure', false);
             if ($serverName = data_get($protocol_settings, 'tls_settings.server_name')) {
                 $array['sni'] = $serverName;
+            }
+            if ($alpn = data_get($protocol_settings, 'tls_settings.alpn')) {
+                $array['alpn'] = is_array($alpn) ? array_values($alpn) : [$alpn];
             }
         }
 

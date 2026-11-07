@@ -569,6 +569,9 @@ class SingBox extends AbstractProtocol
             if ($serverName = data_get($protocol_settings, 'tls_settings.server_name')) {
                 $array['tls']['server_name'] = $serverName;
             }
+            if ($alpn = data_get($protocol_settings, 'tls_settings.alpn')) {
+                $array['tls']['alpn'] = is_array($alpn) ? array_values($alpn) : [$alpn];
+            }
         }
 
         $this->appendMultiplex($array, $protocol_settings);
@@ -610,6 +613,9 @@ class SingBox extends AbstractProtocol
                     $this->appendEch($tlsConfig, data_get($protocol_settings, 'tls_settings.ech'));
                     if ($serverName = data_get($protocol_settings, 'tls_settings.server_name')) {
                         $tlsConfig['server_name'] = $serverName;
+                    }
+                    if ($alpn = data_get($protocol_settings, 'tls_settings.alpn')) {
+                        $tlsConfig['alpn'] = is_array($alpn) ? array_values($alpn) : [$alpn];
                     }
                     break;
                 case 2:
@@ -663,6 +669,9 @@ class SingBox extends AbstractProtocol
                 $this->appendEch($tlsConfig, data_get($protocol_settings, 'tls_settings.ech'));
                 if ($serverName = data_get($protocol_settings, 'tls_settings.server_name')) {
                     $tlsConfig['server_name'] = $serverName;
+                }
+                if ($alpn = data_get($protocol_settings, 'tls_settings.alpn')) {
+                    $tlsConfig['alpn'] = is_array($alpn) ? array_values($alpn) : [$alpn];
                 }
                 break;
         }

@@ -88,6 +88,7 @@ class Plugin extends AbstractPlugin
             'tls_settings' => ['type' => 'object', 'show_when' => ['tls' => '1'], 'fields' => [
                 'server_name' => ['type' => 'string', 'default' => null, 'label' => '服务器名称'],
                 'allow_insecure' => ['type' => 'boolean', 'default' => false, 'label' => '允许不安全连接'],
+                'alpn' => ['type' => 'array', 'default' => null, 'label' => 'ALPN', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
                 'ech' => ['type' => 'object', 'fields' => [
                     'enabled' => ['type' => 'boolean', 'default' => false, 'label' => 'ECH'],
                     'config' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置', 'show_when' => ['enabled' => 'true']],
@@ -114,6 +115,7 @@ class Plugin extends AbstractPlugin
             'tls_settings' => ['type' => 'object', 'show_when' => ['tls' => '1'], 'fields' => [
                 'server_name' => ['type' => 'string', 'default' => null, 'label' => '服务器名称'],
                 'allow_insecure' => ['type' => 'boolean', 'default' => false, 'label' => '允许不安全连接'],
+                'alpn' => ['type' => 'array', 'default' => null, 'label' => 'ALPN', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
                 'ech' => ['type' => 'object', 'fields' => [
                     'enabled' => ['type' => 'boolean', 'default' => false, 'label' => 'ECH'],
                     'config' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置', 'show_when' => ['enabled' => 'true']],
@@ -161,6 +163,7 @@ class Plugin extends AbstractPlugin
             'tls_settings' => ['type' => 'object', 'show_when' => ['tls' => '1'], 'fields' => [
                 'server_name' => ['type' => 'string', 'default' => null, 'label' => '服务器名称'],
                 'allow_insecure' => ['type' => 'boolean', 'default' => false, 'label' => '允许不安全连接'],
+                'alpn' => ['type' => 'array', 'default' => null, 'label' => 'ALPN', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
                 'ech' => ['type' => 'object', 'fields' => [
                     'enabled' => ['type' => 'boolean', 'default' => false, 'label' => 'ECH'],
                     'config' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置', 'show_when' => ['enabled' => 'true']],
@@ -199,6 +202,7 @@ class Plugin extends AbstractPlugin
             'tls' => ['type' => 'object', 'fields' => [
                 'server_name' => ['type' => 'string', 'default' => null, 'label' => '服务器名称'],
                 'allow_insecure' => ['type' => 'boolean', 'default' => false, 'label' => '允许不安全连接'],
+                'alpn' => ['type' => 'array', 'default' => null, 'label' => 'ALPN', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
                 'ech' => ['type' => 'object', 'fields' => [
                     'enabled' => ['type' => 'boolean', 'default' => false, 'label' => 'ECH'],
                     'config' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置', 'show_when' => ['enabled' => 'true']],
@@ -242,6 +246,7 @@ class Plugin extends AbstractPlugin
             'tls' => ['type' => 'object', 'fields' => [
                 'server_name' => ['type' => 'string', 'default' => null, 'label' => '服务器名称'],
                 'allow_insecure' => ['type' => 'boolean', 'default' => false, 'label' => '允许不安全连接'],
+                'alpn' => ['type' => 'array', 'default' => null, 'label' => 'ALPN', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
                 'ech' => ['type' => 'object', 'fields' => [
                     'enabled' => ['type' => 'boolean', 'default' => false, 'label' => 'ECH'],
                     'config' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置', 'show_when' => ['enabled' => 'true']],
@@ -283,6 +288,7 @@ class Plugin extends AbstractPlugin
             'tls' => ['type' => 'object', 'fields' => [
                 'server_name' => ['type' => 'string', 'default' => null, 'label' => '服务器名称'],
                 'allow_insecure' => ['type' => 'boolean', 'default' => false, 'label' => '允许不安全连接'],
+                'alpn' => ['type' => 'array', 'default' => null, 'label' => 'ALPN', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
                 'ech' => ['type' => 'object', 'fields' => [
                     'enabled' => ['type' => 'boolean', 'default' => false, 'label' => 'ECH'],
                     'config' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置', 'show_when' => ['enabled' => 'true']],
@@ -305,6 +311,7 @@ class Plugin extends AbstractPlugin
             'tls_settings' => ['type' => 'object', 'show_when' => ['tls' => '1'], 'fields' => [
                 'server_name' => ['type' => 'string', 'default' => null, 'label' => '服务器名称'],
                 'allow_insecure' => ['type' => 'boolean', 'default' => false, 'label' => '允许不安全连接'],
+                'alpn' => ['type' => 'array', 'default' => null, 'label' => 'ALPN', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
                 'ech' => ['type' => 'object', 'fields' => [
                     'enabled' => ['type' => 'boolean', 'default' => false, 'label' => 'ECH'],
                     'config' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置', 'show_when' => ['enabled' => 'true']],
@@ -324,6 +331,7 @@ class Plugin extends AbstractPlugin
             'tls_settings' => ['type' => 'object', 'show_when' => ['tls' => '1'], 'fields' => [
                 'server_name' => ['type' => 'string', 'default' => null, 'label' => '服务器名称'],
                 'allow_insecure' => ['type' => 'boolean', 'default' => false, 'label' => '允许不安全连接'],
+                'alpn' => ['type' => 'array', 'default' => null, 'label' => 'ALPN', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
                 'ech' => ['type' => 'object', 'fields' => [
                     'enabled' => ['type' => 'boolean', 'default' => false, 'label' => 'ECH'],
                     'config' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置', 'show_when' => ['enabled' => 'true']],
@@ -343,6 +351,7 @@ class Plugin extends AbstractPlugin
             'tls_settings' => ['type' => 'object', 'show_when' => ['tls' => '1'], 'fields' => [
                 'server_name' => ['type' => 'string', 'default' => null, 'label' => '服务器名称'],
                 'allow_insecure' => ['type' => 'boolean', 'default' => false, 'label' => '允许不安全连接'],
+                'alpn' => ['type' => 'array', 'default' => null, 'label' => 'ALPN', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
                 'ech' => ['type' => 'object', 'fields' => [
                     'enabled' => ['type' => 'boolean', 'default' => false, 'label' => 'ECH'],
                     'config' => ['type' => 'string', 'default' => null, 'label' => 'ECH配置', 'show_when' => ['enabled' => 'true']],
@@ -590,6 +599,7 @@ class Plugin extends AbstractPlugin
         $rules = [
             'tls_settings.server_name' => 'required_if:protocol_settings.tls,1|nullable|string',
             'tls_settings.allow_insecure' => 'nullable|boolean',
+            'tls_settings.alpn' => 'nullable|array',
             'tls_settings.ech' => 'nullable|array',
         ];
         $echRules = [];
@@ -608,6 +618,7 @@ class Plugin extends AbstractPlugin
         $rules = [
             'tls.server_name' => 'nullable|string',
             'tls.allow_insecure' => 'nullable|boolean',
+            'tls.alpn' => 'nullable|array',
             'tls.ech' => 'nullable|array',
         ];
         $echRules = [];

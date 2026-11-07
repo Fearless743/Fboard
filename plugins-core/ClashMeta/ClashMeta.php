@@ -348,6 +348,9 @@ class ClashMeta extends AbstractProtocol
             $array['tls'] = (bool) data_get($protocol_settings, 'tls');
             $array['skip-cert-verify'] = (bool) data_get($protocol_settings, 'tls_settings.allow_insecure', false);
             $array['servername'] = data_get($protocol_settings, 'tls_settings.server_name');
+            if ($alpn = data_get($protocol_settings, 'tls_settings.alpn')) {
+                $array['alpn'] = is_array($alpn) ? array_values($alpn) : [$alpn];
+            }
             self::appendEch($array, data_get($protocol_settings, 'tls_settings.ech'));
         }
 
@@ -431,6 +434,9 @@ class ClashMeta extends AbstractProtocol
                 if ($serverName = data_get($protocol_settings, 'tls_settings.server_name')) {
                     $array['servername'] = $serverName;
                 }
+                if ($alpn = data_get($protocol_settings, 'tls_settings.alpn')) {
+                    $array['alpn'] = is_array($alpn) ? array_values($alpn) : [$alpn];
+                }
                 self::appendEch($array, data_get($protocol_settings, 'tls_settings.ech'));
                 self::appendUtls($array, $protocol_settings);
                 break;
@@ -501,6 +507,13 @@ class ClashMeta extends AbstractProtocol
                     $xhttpOpts['host'] = $host;
                 if ($mode = data_get($protocol_settings, 'network_settings.mode'))
                     $xhttpOpts['mode'] = $mode;
+                foreach (['downloadSettings', 'download-settings', 'download_settings'] as $dsKey) {
+                    $ds = data_get($protocol_settings, 'network_settings.' . $dsKey);
+                    if (is_array($ds) && !empty($ds)) {
+                        $xhttpOpts['download-settings'] = $ds;
+                        break;
+                    }
+                }
                 if (!empty($xhttpOpts))
                     $array['xhttp-opts'] = $xhttpOpts;
                 break;
@@ -541,6 +554,9 @@ class ClashMeta extends AbstractProtocol
                 $array['skip-cert-verify'] = (bool) data_get($protocol_settings, 'tls_settings.allow_insecure', false);
                 if ($serverName = data_get($protocol_settings, 'tls_settings.server_name')) {
                     $array['sni'] = $serverName;
+                }
+                if ($alpn = data_get($protocol_settings, 'tls_settings.alpn')) {
+                    $array['alpn'] = is_array($alpn) ? array_values($alpn) : [$alpn];
                 }
                 self::appendEch($array, data_get($protocol_settings, 'tls_settings.ech'));
                 break;

@@ -1,9 +1,7 @@
 <?php
 
-use App\Utils\Helper;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -15,40 +13,46 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('v2_user', function (Blueprint $table) {
-            $table->text('usque_device_private')->nullable()->after('password')
-                ->comment('usque 设备私钥 base64(SEC1 DER)');
-            $table->text('usque_device_public')->nullable()->after('usque_device_private')
-                ->comment('usque 设备公钥 base64(PKIX DER)');
-        });
+        if (!Schema::hasTable('v2_user')) {
+            return;
+        }
 
-        DB::table('v2_user')
-            ->whereNull('usque_device_private')
-            ->orWhereNull('usque_device_public')
-            ->orderBy('id')
-            ->chunkById(200, function ($users) {
-                foreach ($users as $user) {
-                    if (!empty($user->usque_device_private) && !empty($user->usque_device_public)) {
-                        continue;
-                    }
-                    try {
-                        $kp = Helper::generateUsqueDeviceKeypair();
-                    } catch (\Throwable $e) {
-                        report($e);
-                        continue;
-                    }
-                    DB::table('v2_user')->where('id', $user->id)->update([
-                        'usque_device_private' => $kp['private'],
-                        'usque_device_public' => $kp['public'],
-                    ]);
-                }
+        // 幂等：容器启动时 migrate 可能被中断重跑，列已存在时不再重复添加。
+        if (!Schema::hasColumn('v2_user', 'usque_device_private')) {
+            Schema::table('v2_user', function (Blueprint $table) {
+                $table->text('usque_device_private')->nullable()
+                    ->comment('usque 设备私钥 base64(SEC1 DER)');
             });
+        }
+        if (!Schema::hasColumn('v2_user', 'usque_device_public')) {
+            Schema::table('v2_user', function (Blueprint $table) {
+                $table->text('usque_device_public')->nullable()->after('usque_device_private')
+                    ->comment('usque 设备公钥 base64(PKIX DER)');
+            });
+        }
+
+        // 注意：不在此回填全表密钥。PasswordGenerators::masque() 缺失时
+        // 自愈生成并持久化（User::creating 覆盖新用户），逐用户
+        // openssl_pkey_new + 逐行 UPDATE 在大库上会导致容器启动时
+        // migrate 卡死（每次重启从头再来）。保持列可空即可。
     }
 
     public function down(): void
     {
+        if (!Schema::hasTable('v2_user')) {
+            return;
+        }
         Schema::table('v2_user', function (Blueprint $table) {
-            $table->dropColumn(['usque_device_private', 'usque_device_public']);
+            $columns = [];
+            if (Schema::hasColumn('v2_user', 'usque_device_private')) {
+                $columns[] = 'usque_device_private';
+            }
+            if (Schema::hasColumn('v2_user', 'usque_device_public')) {
+                $columns[] = 'usque_device_public';
+            }
+            if ($columns !== []) {
+                $table->dropColumn($columns);
+            }
         });
     }
 };

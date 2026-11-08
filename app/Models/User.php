@@ -86,6 +86,22 @@ class User extends Authenticatable
     public const COMMISSION_TYPE_SYSTEM = 0;
     public const COMMISSION_TYPE_PERIOD = 1;
     public const COMMISSION_TYPE_ONETIME = 2;
+
+    protected static function booted(): void
+    {
+        // 新用户自动生成 usque/mihomo MASQUE 设备密钥对（ECDSA P-256）。
+        static::creating(function (User $user) {
+            if (empty($user->usque_device_private) || empty($user->usque_device_public)) {
+                try {
+                    $kp = Helper::generateUsqueDeviceKeypair();
+                    $user->usque_device_private = $kp['private'];
+                    $user->usque_device_public = $kp['public'];
+                } catch (\Throwable $e) {
+                    report($e);
+                }
+            }
+        });
+    }
     protected function email(): Attribute
     {
         return Attribute::make(

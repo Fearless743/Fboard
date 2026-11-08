@@ -18,6 +18,288 @@ class Helper
         return base64_encode(substr(md5($timestamp), 0, $length));
     }
 
+    /**
+     * 生成 usque/mihomo MASQUE 用的 ECDSA P-256 设备密钥对。
+     *
+     * @return array{private: string, public: string} base64(DER) 格式，
+     *         private 为 SEC1 DER（mihomo private-key），public 为 PKIX DER（mihomo public-key）。
+     */
+    public static function generateUsqueDeviceKeypair(): array
+    {
+        $res = openssl_pkey_new([
+            'private_key_type' => OPENSSL_KEYTYPE_EC,
+            'curve_name' => 'prime256v1',
+        ]);
+        if ($res === false) {
+            throw new \RuntimeException('usque keygen failed: ' . (string) openssl_error_string());
+        }
+        if (!openssl_pkey_export($res, $privPem)) {
+            throw new \RuntimeException('usque key export failed');
+        }
+        $details = openssl_pkey_get_details($res);
+        if (!is_array($details) || empty($details['key'])) {
+            throw new \RuntimeException('usque public key read failed');
+        }
+        $privDer = self::pemToDerBase64($privPem);
+        $pubDer = self::pemToDerBase64($details['key']);
+        if ($privDer === null || $pubDer === null) {
+            throw new \RuntimeException('usque DER convert failed');
+        }
+        // openssl_pkey_export 给出 PKCS#8；mihomo 要求 SEC1，这里直接组装。
+        $privRaw = base64_decode($privDer, true);
+        $scalar = $privRaw !== false ? self::pkcs8Scalar($privRaw) : null;
+        $pub65 = self::pkixRawPublicKey($pubDer);
+        if ($scalar === null || $pub65 === null) {
+            throw new \RuntimeException('usque SEC1 assemble failed');
+        }
+
+        return ['private' => base64_encode(self::assembleSec1($scalar, $pub65)), 'public' => $pubDer];
+    }
+
+    /**
+     * PEM 文本转 base64(DER)（去头尾去换行）。非 PEM 的纯 base64 输入
+     * 若能严格解码则原样返回（容错管理员直接粘贴 DER base64）。
+     */
+    public static function pemToDerBase64(?string $input): ?string
+    {
+        if ($input === null) {
+            return null;
+        }
+        $input = trim($input);
+        if ($input === '') {
+            return null;
+        }
+        if (str_contains($input, '-----BEGIN')) {
+            $lines = preg_split('/\r?\n/', $input);
+            $body = '';
+            foreach ($lines as $line) {
+                $line = trim($line);
+                if ($line === '' || str_starts_with($line, '-----')) {
+                    continue;
+                }
+                $body .= $line;
+            }
+        } else {
+            $body = preg_replace('/\s+/', '', $input);
+        }
+        if ($body === '' || base64_decode($body, true) === false) {
+            return null;
+        }
+
+        return $body;
+    }
+
+    /**
+     * 确保私钥为 SEC1 DER (base64)，mihomo private-key 要求 SEC1。
+     * 已是合格 SEC1（含 prime256v1 OID）则原样返回；若为 PKCS#8，则用
+     * 公钥（PKIX DER b64）组装出完整 SEC1；都不是则返回 null。
+     */
+    public static function ensureSec1DerBase64(?string $privB64, ?string $pubB64): ?string
+    {
+        $priv = is_string($privB64) ? base64_decode($privB64, true) : false;
+        if ($priv === false || $priv === '' || $priv[0] !== "\x30") {
+            return null;
+        }
+        $oidP256 = "\x06\x08\x2A\x86\x48\xCE\x3D\x03\x01\x07";
+        if (str_contains($priv, $oidP256)) {
+            return $privB64;
+        }
+        // 尝试按 PKCS#8 解析出 32 字节 scalar
+        $scalar = self::pkcs8Scalar($priv);
+        if ($scalar === null) {
+            return null;
+        }
+        $pub65 = self::pkixRawPublicKey($pubB64);
+        if ($pub65 === null) {
+            return null;
+        }
+
+        return base64_encode(self::assembleSec1($scalar, $pub65));
+    }
+
+    /**
+     * 从 PKCS#8 DER 提取 EC 私钥标量（32 字节）。非预期结构返回 null。
+     */
+    public static function pkcs8Scalar(string $der): ?string
+    {
+        // 顶层 SEQ 载荷中定位 "04 20" 后 32 字节（EC 私钥标量 OCTET STRING）
+        $pos = 0;
+        if (strlen($der) < 2 || $der[0] !== "\x30") {
+            return null;
+        }
+        $lb = ord($der[1]);
+        if ($lb < 0x80) {
+            $payload = substr($der, 2, $lb);
+        } elseif ($lb === 0x81) {
+            if (strlen($der) < 3) {
+                return null;
+            }
+            $payload = substr($der, 3, ord($der[2]));
+        } elseif ($lb === 0x82) {
+            if (strlen($der) < 4) {
+                return null;
+            }
+            $payload = substr($der, 4, (ord($der[2]) << 8) | ord($der[3]));
+        } else {
+            return null;
+        }
+        $needle = "\x04\x20";
+        $at = strpos($payload, $needle);
+        if ($at === false || $at + 34 > strlen($payload)) {
+            return null;
+        }
+
+        return substr($payload, $at + 2, 32);
+    }
+
+    /**
+     * 从 PKIX DER 公钥提取 65 字节 uncompressed point（04||X||Y）。
+     */
+    public static function pkixRawPublicKey(?string $b64): ?string
+    {
+        $der = is_string($b64) ? base64_decode($b64, true) : false;
+        if ($der === false || $der === '' || $der[0] !== "\x30") {
+            return null;
+        }
+        // BIT STRING 段：03 <len> 00 04 <X:32> <Y:32>
+        $needle = "\x03\x42\x00\x04";
+        $at = strpos($der, $needle);
+        if ($at === false) {
+            return null;
+        }
+        $point = substr($der, $at + 3, 65);
+        if (strlen($point) !== 65 || $point[0] !== "\x04") {
+            return null;
+        }
+
+        return $point;
+    }
+
+    /**
+     * 组装 SEC1 ECPrivateKey DER：
+     * SEQ{ INTEGER 1, OCTET STRING scalar, [0] OID prime256v1, [1] BIT STRING pub }。
+     */
+    public static function assembleSec1(string $scalar32, string $pub65): string
+    {
+        $oid = "\x06\x08\x2A\x86\x48\xCE\x3D\x03\x01\x07";
+        $inner = "\x02\x01\x01"
+            ."\x04\x20".$scalar32
+            ."\xA0\x0A".$oid
+            ."\xA1\x44\x03\x42\x00".$pub65;
+
+        return "\x30".chr(strlen($inner)).$inner;
+    }
+
+    /**
+     * 为 usque 静态 IP 分配：userId 在隧道前缀内确定性取偏移。
+     * IPv4 跳过网络地址与服务端地址（前缀本身地址）；IPv6 取低 64 位偏移。
+     *
+     * @param list<string> $prefixes 如 ["10.99.0.1/24", "fd00::1/64"]
+     * @return array{ip: ?string, ipv6: ?string} 始终带 /32 //128 后缀，取不到返回 null
+     */
+    public static function usqueStaticIPs(array $prefixes, int $userId): array
+    {
+        $out = ['ip' => null, 'ipv6' => null];
+        foreach ($prefixes as $prefix) {
+            $parts = explode('/', (string) $prefix, 2);
+            if (count($parts) !== 2) {
+                continue;
+            }
+            [$addrStr, $bitsStr] = $parts;
+            $bits = (int) $bitsStr;
+            if (filter_var($addrStr, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+                if ($bits < 0 || $bits > 32) {
+                    continue;
+                }
+                $size = 2 ** (32 - $bits);
+                if ($size < 4) {
+                    continue; // /31//32 无可分配主机位
+                }
+                $mask = $bits === 0 ? 0 : ((~((1 << (32 - $bits)) - 1)) & 0xFFFFFFFF);
+                $base = ((int) ip2long($addrStr) & $mask) & 0xFFFFFFFF;
+                $server = (int) ip2long($addrStr) & 0xFFFFFFFF;
+                // 主机偏移落在 [2, size-2]（天然跳过 .0 网络地址；
+                // 若服务端地址恰为 .1 也一并跳过，其它位置的服务端地址见下）。
+                // 再跳过服务端地址（至多绕一圈）。
+                $hostMax = $size - 2;
+                $o = 2 + (($userId - 1) % ($hostMax - 1));
+                for ($tries = 0; $tries <= $hostMax; $tries++) {
+                    $candidate = ($base + $o) & 0xFFFFFFFF;
+                    if ($candidate !== $server) {
+                        break;
+                    }
+                    $o++;
+                    if ($o > $hostMax) {
+                        $o = 2;
+                    }
+                }
+                $out['ip'] = long2ip($candidate).'/32';
+            } elseif (filter_var($addrStr, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
+                if ($bits < 0 || $bits > 128) {
+                    continue;
+                }
+                $baseBin = inet_pton($addrStr);
+                if ($baseBin === false || strlen($baseBin) !== 16) {
+                    continue;
+                }
+                // 低 64 位偏移（userId 量级下唯一；前缀小于 /64 时仍落在前缀内需校验）
+                $off = (($userId - 1) % 9007199254740991) + 2;
+                $candidate = self::addIntToIP16($baseBin, $off);
+                // 偏移不得越出前缀（比较网络部分即可，主机位本就应有值）
+                if (self::maskIP16($candidate, $bits) !== self::maskIP16($baseBin, $bits)) {
+                    continue;
+                }
+                $serverBin = inet_pton($addrStr);
+                if ($serverBin !== false && $candidate === $serverBin) {
+                    // 撞上服务端地址则 +1（仍在前缀内才有效）
+                    $candidate = self::addIntToIP16($candidate, 1);
+                    if (self::maskIP16($candidate, $bits) !== self::maskIP16($baseBin, $bits)) {
+                        continue;
+                    }
+                }
+                $out['ipv6'] = inet_ntop($candidate).'/128';
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * 16 字节大端整数加小整数（返回 16 字节串）。
+     */
+    public static function addIntToIP16(string $bytes16, int $off): string
+    {
+        $out = $bytes16;
+        $carry = $off;
+        for ($i = 15; $i >= 0 && $carry > 0; $i--) {
+            $sum = ord($out[$i]) + ($carry % 256);
+            $carry = intdiv($carry, 256) + intdiv($sum, 256);
+            $out[$i] = chr($sum % 256);
+        }
+
+        return $out;
+    }
+
+    /**
+     * 按前缀长度掩码 16 字节地址（返回掩码后字节串）。
+     */
+    public static function maskIP16(string $bytes16, int $bits): string
+    {
+        $out = '';
+        for ($i = 0; $i < 16; $i++) {
+            $b = $bits - $i * 8;
+            if ($b >= 8) {
+                $out .= $bytes16[$i];
+            } elseif ($b <= 0) {
+                $out .= "\x00";
+            } else {
+                $out .= chr(ord($bytes16[$i]) & (0xFF << (8 - $b) & 0xFF));
+            }
+        }
+
+        return $out;
+    }
+
     public static function guid($format = false)
     {
         if (function_exists('com_create_guid') === true) {

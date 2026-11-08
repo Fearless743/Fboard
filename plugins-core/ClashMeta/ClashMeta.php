@@ -29,6 +29,7 @@ class ClashMeta extends AbstractProtocol
         ProtocolTypes::SHADOWQUIC,
         ProtocolTypes::SUDOKU,
         ProtocolTypes::TRUSTTUNNEL,
+        ProtocolTypes::MASQUE,
     ];
 
     protected $protocolRequirements = [
@@ -210,9 +211,15 @@ class ClashMeta extends AbstractProtocol
                 array_push($proxy, self::buildTrustTunnel($item['password'], $item));
                 array_push($proxies, $item['name']);
             }
-            // NOTE: MASQUE 不在此输出。mihomo 的 masque 类型是 Cloudflare
-            // WARP/usque 变体（ECDSA 设备密钥），与 sing-box CONNECT-IP
-            //（Basic 鉴权 + 服务端分配地址）不兼容，本面版不下发。
+            if ($item['type'] === ProtocolTypes::MASQUE) {
+                // usque 模式：mihomo masque（ECDSA 设备密钥 + 静态 IP）。
+                // 与 sing-box CONNECT-IP 不兼容的客户端请勿混用同一节点。
+                $masque = $this->buildMasque($item);
+                if (is_array($masque)) {
+                    array_push($proxy, $masque);
+                    array_push($proxies, $item['name']);
+                }
+            }
         }
 
         $config['proxies'] = array_merge($config['proxies'] ? $config['proxies'] : [], $proxy);
@@ -849,6 +856,54 @@ class ClashMeta extends AbstractProtocol
         }
         if (data_get($protocol_settings, 'skip_verification')) {
             $array['skip-cert-verify'] = true;
+        }
+
+        return $array;
+    }
+
+    /**
+     * mihomo masque 代理（usque/WARP 兼容模式，非 sing-box CONNECT-IP）。
+     * 字段依据 MasqueOption：server/port/private-key/public-key/ip/ipv6/
+     * mtu/udp。认证靠端点公钥 pin + 设备证书，静态 IP 由面板按 userId
+     * 在隧道前缀内确定性分配。实例方法：需要订阅用户私钥与 userId。
+     */
+    public function buildMasque($server)
+    {
+        $protocol_settings = data_get($server, 'protocol_settings', []) ?: [];
+        $user = $this->user;
+        $privKey = (string) data_get($user, 'usque_device_private', '');
+        $userId = (int) data_get($user, 'id', 0);
+        $endpointPubPem = (string) data_get($protocol_settings, 'endpoint_public_key', '');
+        // mihomo private-key 必须是 SEC1 DER：历史数据若为 PKCS#8 则用
+        // 存储的公钥组装转换（ensureSec1DerBase64）。
+        $privKey = Helper::ensureSec1DerBase64($privKey, data_get($user, 'usque_device_public')) ?? $privKey;
+        $endpointPubKey = Helper::pemToDerBase64($endpointPubPem);
+        if ($privKey === '' || $endpointPubKey === null || $userId <= 0) {
+            return null;
+        }
+        $prefixes = data_get($protocol_settings, 'addresses', []);
+        if (!is_array($prefixes)) {
+            $prefixes = [$prefixes];
+        }
+        $ips = Helper::usqueStaticIPs(array_values(array_filter($prefixes)), $userId);
+        if ($ips['ip'] === null && $ips['ipv6'] === null) {
+            return null;
+        }
+        $array = [
+            'name' => $server['name'],
+            'type' => 'masque',
+            'server' => $server['host'],
+            'port' => (int) $server['port'],
+            'private-key' => $privKey,
+            'public-key' => $endpointPubKey,
+            'mtu' => (int) data_get($protocol_settings, 'mtu', 1280),
+            'udp' => true,
+        ];
+        if ($ips['ip'] !== null) {
+            $array['ip'] = $ips['ip'];
+        }
+        if ($ips['ipv6'] !== null) {
+            $array['ipv6'] = $ips['ipv6'];
         }
 
         return $array;

@@ -285,7 +285,8 @@ class NodeConfigBuilders
         return [
             ...$baseConfig,
             'server_port' => (int) $node->server_port,
-            // MASQUE 强制 TLS over QUIC（Xray 侧经 cert_config 提供证书，内联进 masqueSettings）。
+            // MASQUE 双模：QUIC 监听统一使用端点密钥自签证书（usque pin /
+            // sing-box 跳过校验），不再经 cert_config 下发 TLS 证书。
             'tls' => 1,
             'server_name' => data_get($protocolSettings, 'server_name', $node->host ?? ''),
             'addresses' => data_get($protocolSettings, 'addresses', []),
@@ -293,7 +294,8 @@ class NodeConfigBuilders
             'path' => data_get($protocolSettings, 'path', '/.well-known/masque/ip/'),
             'mtu' => (int) data_get($protocolSettings, 'mtu', 1280),
             'versions' => data_get($protocolSettings, 'versions', [3]),
-            'allow_insecure' => (bool) data_get($protocolSettings, 'allow_insecure', false),
+            'endpoint_private_key' => data_get($protocolSettings, 'endpoint_private_key'),
+            'endpoint_public_key' => data_get($protocolSettings, 'endpoint_public_key'),
         ];
     }
 }

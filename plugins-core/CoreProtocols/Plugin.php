@@ -623,13 +623,21 @@ class Plugin extends AbstractPlugin
                 'type' => 'string',
                 'default' => null,
                 'label' => 'SNI / server_name',
-                'description' => '可选，客户端 TLS SNI；留空则使用节点地址。',
+                'description' => '可选，客户端 TLS SNI；留空则使用节点地址（服务端忽略 SNI）。',
             ],
-            'allow_insecure' => [
-                'type' => 'boolean',
-                'default' => false,
-                'label' => '跳过证书校验',
-                'description' => '客户端是否跳过服务端证书校验（自签证书测试用）。',
+            'endpoint_private_key' => [
+                'type' => 'string',
+                'default' => null,
+                'label' => '端点私钥 (PEM)',
+                'description' => '必填，ECDSA P-256 私钥 PEM。服务端据此自签 QUIC 证书；usque/mihomo 客户端 pin 对应公钥，sing-box 客户端须跳过校验。可通过 fboard:masque-keygen 生成。',
+                'placeholder' => '-----BEGIN EC PRIVATE KEY-----',
+            ],
+            'endpoint_public_key' => [
+                'type' => 'string',
+                'default' => null,
+                'label' => '端点公钥 (PEM)',
+                'description' => '必填，与私钥配对的 PKIX 公钥 PEM。mihomo 订阅的 public-key 字段来源（自动 pin，无需跳过校验）。',
+                'placeholder' => '-----BEGIN PUBLIC KEY-----',
             ],
         ], [
             'addresses' => 'required|array|min:1',
@@ -638,8 +646,9 @@ class Plugin extends AbstractPlugin
             'mtu' => 'nullable|integer|min:1280|max:9000',
             'versions' => 'nullable|array',
             'server_name' => 'nullable|string|max:253',
-            'allow_insecure' => 'nullable|boolean',
-        ], '[masque]', self::builder('masque'));
+            'endpoint_private_key' => 'required|string',
+            'endpoint_public_key' => 'required|string',
+        ], '[masque]', self::builder('masque'), self::password('masque'), [], true);
     }
 
     private static function getRealityFields(): array

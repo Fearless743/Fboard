@@ -64,6 +64,34 @@ class PasswordGenerators
     }
 
     /**
+     * MASQUE（双模）：返回用户 usque 设备公钥（base64 PKIX DER）。
+     * 节点侧用其校验 QUIC 客户端证书（usque/mihomo 模式），sing-box
+     * 订阅则将其作为 Basic 密码（服务端按同一 validator 查找）。
+     * 缺失时自愈生成并持久化，保证老用户不断连。
+     */
+    public static function masque(Server $node, User $user): string
+    {
+        $pub = (string) data_get($user, 'usque_device_public', '');
+        if ($pub === '') {
+            try {
+                $kp = \App\Utils\Helper::generateUsqueDeviceKeypair();
+                $user->usque_device_private = $kp['private'];
+                $user->usque_device_public = $kp['public'];
+                $user->save();
+                $pub = $kp['public'];
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+        if ($pub === '') {
+            // 无可用密钥时回退 uuid（节点鉴权会失败，便于暴露问题）
+            return (string) $user->uuid;
+        }
+
+        return $pub;
+    }
+
+    /**
      * 订阅侧 server_key（Shadowsocks 用 16 字节摘要）。
      */
     public static function shadowsocksServerKey(Server $node): ?string

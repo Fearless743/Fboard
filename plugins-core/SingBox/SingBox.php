@@ -179,6 +179,8 @@ class SingBox extends AbstractProtocol
                 $httpConfig = $this->buildHttp($this->user['uuid'], $item);
                 $proxies[] = $httpConfig;
             }
+            // NOTE: MASQUE 为 endpoint 类型节点，由 buildEndpoints() 单独下发，
+            // 不进入 outbounds（sing-box masque-client 不是 outbound）。
         }
         foreach ($outbounds as &$outbound) {
             if (!in_array($outbound['type'], ['urltest', 'selector'])) {
@@ -870,7 +872,8 @@ class SingBox extends AbstractProtocol
             if (!$this->supportsFeature('sing-box', '1.15.0')) {
                 continue;
             }
-            $endpoints[] = $this->buildMasque($this->user['uuid'], $item);
+            // $item['password'] 为 passwordGenerator 派生的设备公钥（节点侧同一凭证）。
+            $endpoints[] = $this->buildMasque($item['password'] ?? $this->user['uuid'], $item);
         }
         $this->config['endpoints'] = array_values($endpoints);
 
@@ -900,7 +903,9 @@ class SingBox extends AbstractProtocol
             'mtu' => (int) data_get($protocol_settings, 'mtu', 1280),
             'tls' => [
                 'enabled' => true,
-                'insecure' => (bool) data_get($protocol_settings, 'allow_insecure', false),
+                // 服务端证书为端点密钥自签发（usque 架构），sing-box 只能跳过校验；
+                // mihomo 侧走公钥 pin，无需 insecure（见 ClashMeta）。
+                'insecure' => true,
                 'alpn' => ['h3'],
             ],
         ];

@@ -616,7 +616,8 @@ class General extends AbstractProtocol
             'version' => (int) $versions[0],
             'path' => (string) data_get($protocol_settings, 'path', '/.well-known/masque/ip/'),
             'sni' => (string) (data_get($protocol_settings, 'server_name') ?: $host),
-            'insecure' => data_get($protocol_settings, 'allow_insecure') ? '1' : '0',
+            // 服务端证书为端点密钥自签发，客户端必须跳过校验。
+            'insecure' => '1',
             'mtu' => (int) data_get($protocol_settings, 'mtu', 1280),
             'alpn' => 'h3',
         ];

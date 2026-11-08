@@ -28,6 +28,7 @@ class ClashMeta extends AbstractProtocol
         ProtocolTypes::MIERU,
         ProtocolTypes::SHADOWQUIC,
         ProtocolTypes::SUDOKU,
+        ProtocolTypes::TRUSTTUNNEL,
     ];
 
     protected $protocolRequirements = [
@@ -205,6 +206,13 @@ class ClashMeta extends AbstractProtocol
                 array_push($proxy, self::buildSudoku($item['password'], $item));
                 array_push($proxies, $item['name']);
             }
+            if ($item['type'] === ProtocolTypes::TRUSTTUNNEL) {
+                array_push($proxy, self::buildTrustTunnel($item['password'], $item));
+                array_push($proxies, $item['name']);
+            }
+            // NOTE: MASQUE 不在此输出。mihomo 的 masque 类型是 Cloudflare
+            // WARP/usque 变体（ECDSA 设备密钥），与 sing-box CONNECT-IP
+            //（Basic 鉴权 + 服务端分配地址）不兼容，本面版不下发。
         }
 
         $config['proxies'] = array_merge($config['proxies'] ? $config['proxies'] : [], $proxy);
@@ -802,6 +810,46 @@ class ClashMeta extends AbstractProtocol
             $httpmask['path-root'] = $pathRoot;
         }
         $array['httpmask'] = $httpmask;
+
+        return $array;
+    }
+
+    /**
+     * mihomo trusttunnel 代理（官方 TrustTunnel 协议，兼容本面板 Xray 内核
+     * proxy/trusttunnel 及官方 trusttunnel_endpoint）。
+     * 字段依据 TrustTunnelOption（username/password/sni/alpn/skip-cert-verify
+     * /udp/health-check/quic）：https://wiki.metacubex.one/en/config/proxies/trusttunnel/
+     * client_random_prefix/auth_key/dns_upstreams/anti_dpi 仅官方客户端
+     * 支持（tt:// 订阅），mihomo 无对应字段，此处省略。
+     */
+    public static function buildTrustTunnel($password, $server)
+    {
+        $protocol_settings = data_get($server, 'protocol_settings', []) ?: [];
+        $password = (string) $password;
+        $array = [
+            'name' => $server['name'],
+            'type' => 'trusttunnel',
+            'server' => $server['host'],
+            'port' => (int) $server['port'],
+            'username' => $password,
+            'password' => $password,
+            'udp' => true,
+            'health-check' => true,
+        ];
+
+        if ($sni = data_get($protocol_settings, 'custom_sni', data_get($protocol_settings, 'hostname'))) {
+            $array['sni'] = (string) $sni;
+        }
+        $upstream = data_get($protocol_settings, 'upstream_protocol', 'http2');
+        if ($upstream === 'http3') {
+            $array['quic'] = true;
+            $array['alpn'] = ['h3'];
+        } else {
+            $array['alpn'] = ['h2'];
+        }
+        if (data_get($protocol_settings, 'skip_verification')) {
+            $array['skip-cert-verify'] = true;
+        }
 
         return $array;
     }

@@ -277,4 +277,23 @@ class NodeConfigBuilders
             'skip_verification' => (bool) data_get($protocolSettings, 'skip_verification', false),
         ];
     }
+
+    public static function masque(Server $node, array $baseConfig): array
+    {
+        $protocolSettings = $node->protocol_settings;
+
+        return [
+            ...$baseConfig,
+            'server_port' => (int) $node->server_port,
+            // MASQUE 强制 TLS over QUIC（Xray 侧经 cert_config 提供证书，内联进 masqueSettings）。
+            'tls' => 1,
+            'server_name' => data_get($protocolSettings, 'server_name', $node->host ?? ''),
+            'addresses' => data_get($protocolSettings, 'addresses', []),
+            'advertise_routes' => data_get($protocolSettings, 'advertise_routes'),
+            'path' => data_get($protocolSettings, 'path', '/.well-known/masque/ip/'),
+            'mtu' => (int) data_get($protocolSettings, 'mtu', 1280),
+            'versions' => data_get($protocolSettings, 'versions', [3]),
+            'allow_insecure' => (bool) data_get($protocolSettings, 'allow_insecure', false),
+        ];
+    }
 }

@@ -25,6 +25,7 @@ final class ProtocolTypes
     public const SUDOKU = 'sudoku';
     public const SHADOWQUIC = 'shadowquic';
     public const TRUSTTUNNEL = 'trusttunnel';
+    public const MASQUE = 'masque';
 
     /**
      * CoreProtocols 注册的全部 type（不含别名）。
@@ -48,6 +49,7 @@ final class ProtocolTypes
             self::SUDOKU,
             self::SHADOWQUIC,
             self::TRUSTTUNNEL,
+            self::MASQUE,
         ];
     }
 }

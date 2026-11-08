@@ -12,7 +12,8 @@ class GuestRoute
     public function map(Registrar $router)
     {
         $router->group([
-            'prefix' => 'guest'
+            'prefix' => 'guest',
+            'middleware' => 'throttle:60,1'
         ], function ($router) {
             // Plan
             $router->get('/plan/fetch', [PlanController::class, 'fetch']);

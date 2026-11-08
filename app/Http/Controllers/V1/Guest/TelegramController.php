@@ -24,7 +24,13 @@ class TelegramController extends Controller
 
     public function webhook(Request $request): void
     {
-        $expectedToken = md5(admin_setting('telegram_bot_token'));
+        $botToken = (string) admin_setting('telegram_bot_token');
+        // 未配置 token 时 md5('') 是公开常量，任何人都能算出 access_token，必须直接拒绝。
+        if ($botToken === '') {
+            throw new ApiException('telegram bot is not configured', 401);
+        }
+        // 注意：access_token 走 query 会落进 access 日志/代理日志，建议用 WSS 并在 Telegram 端配置 secret_token。
+        $expectedToken = md5($botToken);
         if ($request->input('access_token') !== $expectedToken) {
             throw new ApiException('access_token is error', 401);
         }

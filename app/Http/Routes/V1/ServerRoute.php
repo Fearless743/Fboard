@@ -15,7 +15,7 @@ class ServerRoute
         ], function ($router) {
             $router->group([
                 'prefix' => 'UniProxy',
-                'middleware' => 'server'
+                'middleware' => ['server', 'throttle:60,1']
             ], function ($route) {
                 $route->get('config', [UniProxyController::class, 'config']);
                 $route->get('user', [UniProxyController::class, 'user']);
@@ -26,14 +26,14 @@ class ServerRoute
             });
             $router->group([
                 'prefix' => 'ShadowsocksTidalab',
-                'middleware' => 'server:shadowsocks'
+                'middleware' => ['server:shadowsocks', 'throttle:60,1']
             ], function ($route) {
                 $route->get('user', [ShadowsocksTidalabController::class, 'user']);
                 $route->post('submit', [ShadowsocksTidalabController::class, 'submit']);
             });
             $router->group([
                 'prefix' => 'TrojanTidalab',
-                'middleware' => 'server:trojan'
+                'middleware' => ['server:trojan', 'throttle:60,1']
             ], function ($route) {
                 $route->get('config', [TrojanTidalabController::class, 'config']);
                 $route->get('user', [TrojanTidalabController::class, 'user']);

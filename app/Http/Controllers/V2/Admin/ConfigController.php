@@ -73,6 +73,20 @@ class ConfigController extends Controller
         'subscribe_template_surfboard' => 'surfboard',
     ];
 
+    /**
+     * 敏感配置字段：默认打码返回，明文仅 id=1 超级管理员带 ?show_secrets=1 可见。
+     * save 时收到掩码值则跳过（不覆盖真实密钥）。
+     */
+    private const SECRET_KEYS = [
+        'server_token',
+        'email_password',
+        'telegram_bot_token',
+        'recaptcha_key',
+        'recaptcha_v3_secret_key',
+        'turnstile_secret_key',
+    ];
+    private const SECRET_MASK = '******';
+
     public function fetch(Request $request)
     {
         $key = $request->input('key');
@@ -95,11 +109,44 @@ class ConfigController extends Controller
         if ($key) {
             $section = $this->getConfigSection((string) $key);
             if ($section !== null) {
-                return $this->success([$key => $section]);
+                return $this->success($this->maskSecrets([$key => $section], $request));
             }
         }
 
-        return $this->success($this->getConfigMappings());
+        return $this->success($this->maskSecrets($this->getConfigMappings(), $request));
+    }
+
+    /**
+     * 敏感字段是否可见明文：仅 id=1 超级管理员显式带 ?show_secrets=1。
+     */
+    private function canViewSecrets(Request $request): bool
+    {
+        return (string) $request->input('show_secrets') === '1'
+            && (int) $request->user()?->id === 1;
+    }
+
+    /**
+     * 对 section 映射中的敏感字段打码（有值才打码，空值保持原样以便前端区分未配置）。
+     *
+     * @param array<string, mixed> $mappings
+     * @return array<string, mixed>
+     */
+    private function maskSecrets(array $mappings, Request $request): array
+    {
+        if ($this->canViewSecrets($request)) {
+            return $mappings;
+        }
+        foreach ($mappings as $section => $fields) {
+            if (!is_array($fields)) {
+                continue;
+            }
+            foreach (self::SECRET_KEYS as $secretKey) {
+                if (array_key_exists($secretKey, $fields) && filled($fields[$secretKey])) {
+                    $mappings[$section][$secretKey] = self::SECRET_MASK;
+                }
+            }
+        }
+        return $mappings;
     }
 
     /**
@@ -277,6 +324,10 @@ class ConfigController extends Controller
         foreach ($data as $k => $v) {
             if (isset(self::SUBSCRIBE_TEMPLATE_KEYS[$k])) {
                 SubscribeTemplate::setContent(self::SUBSCRIBE_TEMPLATE_KEYS[$k], $v);
+                continue;
+            }
+            // 前端拿到的是打码值时跳过保存，防止把真实密钥覆盖成 ******。
+            if (in_array($k, self::SECRET_KEYS, true) && $v === self::SECRET_MASK) {
                 continue;
             }
             // 规范化指纹列表：trim + 小写 + 去重；剔除 random/randomized 元选项

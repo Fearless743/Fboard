@@ -57,6 +57,32 @@ class Helper
         return strtolower($token);
     }
 
+    /**
+     * 校验登录后跳转路径：只允许站内相对路径（如 /dashboard），防止开放重定向。
+     * 非法输入（绝对 URL、协议相对 //、反斜杠、非字符串）一律回退到 dashboard。
+     */
+    public static function sanitizeRedirect(mixed $redirect): string
+    {
+        if (!is_string($redirect) || $redirect === '') {
+            return 'dashboard';
+        }
+        $redirect = trim($redirect);
+        // 允许 "dashboard" 这类裸路径或 "/xxx" 开头的相对路径；拒绝 //、反斜杠、scheme: 等
+        if (str_starts_with($redirect, '/')) {
+            if (str_contains($redirect, '\\') || str_starts_with($redirect, '//')) {
+                return 'dashboard';
+            }
+            if (preg_match('#^[a-zA-Z][a-zA-Z0-9+.-]*:#', $redirect)) {
+                return 'dashboard';
+            }
+            return $redirect;
+        }
+        if (preg_match('/^[A-Za-z0-9][A-Za-z0-9_.\/-]*$/', $redirect) && !str_contains($redirect, '\\')) {
+            return $redirect;
+        }
+        return 'dashboard';
+    }
+
     public static function generateOrderNo(): string
     {
         $randomChar = mt_rand(10000, 99999);

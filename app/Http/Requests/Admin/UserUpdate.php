@@ -24,6 +24,8 @@ class UserUpdate extends FormRequest
             'plan_id' => 'nullable|integer',
             'commission_rate' => 'nullable|integer|min:0|max:100',
             'discount' => 'nullable|integer|min:0|max:100',
+            // 注意：is_admin/is_staff 仅 id=1 的超级管理员可改，
+            // 越权检查在 V2\Admin\UserController::update 开头执行（非超管传入直接 403）。
             'is_admin' => 'boolean',
             'is_staff' => 'boolean',
             'u' => 'integer',

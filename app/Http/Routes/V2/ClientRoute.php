@@ -10,7 +10,7 @@ class ClientRoute
     {
         $router->group([
             'prefix' => 'client',
-            'middleware' => 'client'
+            'middleware' => ['client', 'throttle:60,1']
         ], function ($router) {
             // App
             $router->get('/app/getConfig', [AppController::class, 'getConfig']);

@@ -12,7 +12,7 @@ class ServerRoute
     {
         $router->group([
             'prefix' => 'server',
-            'middleware' => 'server.v2'
+            'middleware' => ['server.v2', 'throttle:60,1']
         ], function ($route) {
             $route->match(['GET', 'POST'], 'handshake', [ServerController::class, 'handshake']);
             $route->post('report', [ServerController::class, 'report']);
@@ -26,6 +26,7 @@ class ServerRoute
 
         $router->group([
             'prefix' => 'server/machine',
+            'middleware' => 'throttle:60,1'
         ], function ($route) {
             $route->post('nodes', [MachineController::class, 'nodes']);
             $route->post('status', [MachineController::class, 'status']);

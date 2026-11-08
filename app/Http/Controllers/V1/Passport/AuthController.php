@@ -101,7 +101,9 @@ class AuthController extends Controller
     {
         // 处理直接通过token重定向
         if ($token = $request->input('token')) {
-            $redirect = '/#/login?verify=' . $token . '&redirect=' . ($request->input('redirect', 'dashboard'));
+            // redirect 只允许站内相对路径并做 urlencode，防开放重定向跳转到钓鱼站。
+            $redirect = \App\Utils\Helper::sanitizeRedirect($request->input('redirect', 'dashboard'));
+            $redirect = '/#/login?verify=' . $token . '&redirect=' . rawurlencode($redirect);
 
             return redirect()->to(
                 admin_setting('app_url')

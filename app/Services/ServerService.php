@@ -165,7 +165,13 @@ class ServerService
 
     /**
      * 处理节点流量数据汇报
+     *
+     * 防刷额度：单条 u+d 超过 100TB 视为异常直接丢弃；单次上报超过 20000 条时截断，
+     * 避免恶意节点用超大值/海量条目刷爆用户额度或打满队列。
      */
+    public const TRAFFIC_SINGLE_ENTRY_MAX_BYTES = 100 * 1024 * 1024 * 1024 * 1024; // 100TB
+    public const TRAFFIC_REPORT_MAX_ENTRIES = 20000;
+
     public static function processTraffic(Server $node, array $traffic): void
     {
         // 只接受非负增量：负值会把用户 u/d 打穿，造成流量“回退”/刷重置。
@@ -174,10 +180,16 @@ class ServerService
             && is_numeric($item[0]) && is_numeric($item[1])
             && (float) $item[0] >= 0
             && (float) $item[1] >= 0
+            && ((float) $item[0] + (float) $item[1]) <= self::TRAFFIC_SINGLE_ENTRY_MAX_BYTES
         );
 
         if (empty($data)) {
             return;
+        }
+
+        // 单次上报条数上限：超出部分直接截断（保留前 N 条）。
+        if (count($data) > self::TRAFFIC_REPORT_MAX_ENTRIES) {
+            $data = array_slice($data, 0, self::TRAFFIC_REPORT_MAX_ENTRIES, true);
         }
 
         $nodeType = strtoupper($node->type);
@@ -196,6 +208,10 @@ class ServerService
     {
         $service = app(DeviceStateService::class);
         foreach ($alive as $uid => $ips) {
+            // 非法 uid（<=0）直接丢弃：防止脏数据写入设备状态或污染在线统计。
+            if ((int) $uid <= 0) {
+                continue;
+            }
             $service->setDevices((int) $uid, $nodeId, (array) $ips);
         }
 
@@ -223,6 +239,8 @@ class ServerService
         $nodeTypeUpper = strtoupper($nodeType);
 
         // 管理端「在线人数」读 SERVER_*_ONLINE_USER；优先用真实在线快照，而非本周期有流量的用户数
+        // 非法 uid（<=0）先过滤，不计入在线人数、不写连接数缓存。
+        $online = array_filter($online, fn($conn, $uid) => (int) $uid > 0, ARRAY_FILTER_USE_BOTH);
         Cache::put(
             CacheKey::get("SERVER_{$nodeTypeUpper}_ONLINE_USER", $nodeId),
             count($online),

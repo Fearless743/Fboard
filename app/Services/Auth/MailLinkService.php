@@ -43,7 +43,7 @@ class MailLinkService
         Cache::put($key, $user->id, 300);
         Cache::put($cooldownKey, time(), $cooldown);
 
-        $redirectUrl = '/#/login?verify=' . $code . '&redirect=' . ($redirect ? $redirect : 'dashboard');
+        $redirectUrl = '/#/login?verify=' . $code . '&redirect=' . rawurlencode(Helper::sanitizeRedirect($redirect));
         if (admin_setting('app_url')) {
             $link = admin_setting('app_url') . $redirectUrl;
         } else {

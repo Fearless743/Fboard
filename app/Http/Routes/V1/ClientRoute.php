@@ -11,7 +11,7 @@ class ClientRoute
     {
         $router->group([
             'prefix' => 'client',
-            'middleware' => 'client'
+            'middleware' => ['client', 'throttle:60,1']
         ], function ($router) {
             // Client
             $router->get('/subscribe', [ClientController::class, 'subscribe'])->name('client.subscribe.legacy');

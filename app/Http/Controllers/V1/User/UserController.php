@@ -178,6 +178,10 @@ class UserController extends Controller
             return $this->fail([400, __('Reset failed')]);
         }
 
+        // uuid/token 已轮换：旧订阅失效的同时必须踢掉全部旧 Sanctum 会话，
+        // 否则泄露的 token 仍可继续调用用户接口（与 changePassword 同逻辑）。
+        $user->tokens()->delete();
+
         HookManager::call('user.reset_security.after', [
             'user' => $user,
             'old_uuid' => $oldUuid,

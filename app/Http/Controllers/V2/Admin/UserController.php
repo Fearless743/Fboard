@@ -257,6 +257,14 @@ class UserController extends Controller
     {
         $params = $request->validated();
 
+        // 提权防护：只有 id=1 的超级管理员能改 is_admin/is_staff，
+        // 其他管理员即使传入这两个字段也直接 403（而不是静默忽略，避免以为已生效）。
+        if (array_key_exists('is_admin', $params) || array_key_exists('is_staff', $params)) {
+            if ((int) $request->user()?->id !== 1) {
+                return $this->fail([403, '无权限修改管理员/员工标识']);
+            }
+        }
+
         $user = User::find($request->input('id'));
         if (!$user) {
             return $this->fail([400202, '用户不存在']);

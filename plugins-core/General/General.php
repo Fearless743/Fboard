@@ -23,6 +23,7 @@ class General extends AbstractProtocol
         ProtocolTypes::HTTP,
         ProtocolTypes::SHADOWQUIC,
         ProtocolTypes::TRUSTTUNNEL,
+        ProtocolTypes::MASQUE,
     ];
 
     protected $protocolRequirements = [
@@ -49,6 +50,7 @@ class General extends AbstractProtocol
                 ProtocolTypes::HTTP => self::buildHttp($item['password'], $item),
                 ProtocolTypes::SHADOWQUIC => self::buildShadowQUIC($item['password'], $item),
                 ProtocolTypes::TRUSTTUNNEL => self::buildTrustTunnel($item['password'], $item),
+                ProtocolTypes::MASQUE => self::buildMasque($item['password'], $item),
                 default => '',
             };
         }
@@ -590,5 +592,46 @@ class General extends AbstractProtocol
         }
 
         return 'tt://?'.Helper::base64EncodeUrlSafe($payload)."\r\n";
+    }
+
+    /**
+     * MASQUE 自定义分享链接（Fboard 约定，非标准协议）：
+     * masque://user:pass@host:port?version=&path=&sni=&insecure=&mtu=&address=&advertise_routes=&alpn=#name
+     * 官方客户端请使用 SingBox 订阅中的 masque-client endpoint JSON。
+     */
+    public static function buildMasque($password, $server)
+    {
+        $protocol_settings = data_get($server, 'protocol_settings', []) ?: [];
+        $password = (string) $password;
+        $host = (string) ($server['host'] ?? '');
+        $port = (int) ($server['port'] ?? 443);
+        if ($host === '') {
+            return '';
+        }
+        $versions = data_get($protocol_settings, 'versions', [3]);
+        if (!is_array($versions) || $versions === []) {
+            $versions = [3];
+        }
+        $params = [
+            'version' => (int) $versions[0],
+            'path' => (string) data_get($protocol_settings, 'path', '/.well-known/masque/ip/'),
+            'sni' => (string) (data_get($protocol_settings, 'server_name') ?: $host),
+            'insecure' => data_get($protocol_settings, 'allow_insecure') ? '1' : '0',
+            'mtu' => (int) data_get($protocol_settings, 'mtu', 1280),
+            'alpn' => 'h3',
+        ];
+        $addresses = data_get($protocol_settings, 'addresses', []);
+        if ($addresses !== null && $addresses !== []) {
+            $params['address'] = implode(',', (array) $addresses);
+        }
+        if ($routes = data_get($protocol_settings, 'advertise_routes')) {
+            $params['advertise_routes'] = implode(',', (array) $routes);
+        }
+        $query = http_build_query($params);
+        $name = rawurlencode((string) ($server['name'] ?? ''));
+        $userinfo = rawurlencode($password).':'.rawurlencode($password);
+        $addr = Helper::wrapIPv6($host);
+
+        return "masque://{$userinfo}@{$addr}:{$port}/?{$query}#{$name}\r\n";
     }
 }

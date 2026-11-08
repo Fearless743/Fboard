@@ -20,6 +20,7 @@ class SingBox extends AbstractProtocol
         ProtocolTypes::ANYTLS,
         ProtocolTypes::SOCKS,
         ProtocolTypes::HTTP,
+        ProtocolTypes::MASQUE,
     ];
     private $config;
     const CUSTOM_TEMPLATE_FILE = 'resources/rules/custom.sing-box.json';
@@ -114,6 +115,7 @@ class SingBox extends AbstractProtocol
         $appName = admin_setting('app_name', 'Fboard');
         $this->config = $this->loadConfig();
         $this->buildOutbounds();
+        $this->buildEndpoints();
         $this->buildRule();
         $this->adaptConfigForVersion();
         $user = $this->user;
@@ -848,6 +850,65 @@ class SingBox extends AbstractProtocol
                 $array['tls']['server_name'] = $serverName;
             }
             $this->appendEch($array['tls'], data_get($protocol_settings, 'tls_settings.ech'));
+        }
+
+        return $array;
+    }
+
+    /**
+     * sing-box endpoints（masque-client 等 endpoint 类型节点）。
+     * endpoints 与 outbounds 分开存放，不参与 selector/urltest 分组。
+     */
+    protected function buildEndpoints()
+    {
+        $endpoints = $this->config['endpoints'] ?? [];
+        foreach ($this->servers as $item) {
+            if ($item['type'] !== ProtocolTypes::MASQUE) {
+                continue;
+            }
+            // MASQUE 需 sing-box >= 1.15.0（testing 分支）；未知客户端一律跳过。
+            if (!$this->supportsFeature('sing-box', '1.15.0')) {
+                continue;
+            }
+            $endpoints[] = $this->buildMasque($this->user['uuid'], $item);
+        }
+        $this->config['endpoints'] = array_values($endpoints);
+
+        return $this->config['endpoints'];
+    }
+
+    /**
+     * sing-box masque-client endpoint（RFC 9484 CONNECT-IP）。
+     * 仅 HTTP/3 由 Xray 内核 serving；version 取节点配置首项。
+     */
+    protected function buildMasque($password, $server): array
+    {
+        $protocol_settings = data_get($server, 'protocol_settings', []) ?: [];
+        $versions = data_get($protocol_settings, 'versions', [3]);
+        if (!is_array($versions) || $versions === []) {
+            $versions = [3];
+        }
+        $array = [
+            'type' => 'masque-client',
+            'tag' => $server['name'],
+            'server' => $server['host'],
+            'server_port' => (int) $server['port'],
+            'username' => (string) $password,
+            'password' => (string) $password,
+            'path' => (string) data_get($protocol_settings, 'path', '/.well-known/masque/ip/'),
+            'version' => (int) $versions[0],
+            'mtu' => (int) data_get($protocol_settings, 'mtu', 1280),
+            'tls' => [
+                'enabled' => true,
+                'insecure' => (bool) data_get($protocol_settings, 'allow_insecure', false),
+                'alpn' => ['h3'],
+            ],
+        ];
+        if ($serverName = data_get($protocol_settings, 'server_name', $server['host'])) {
+            $array['tls']['server_name'] = $serverName;
+        }
+        if ($routes = data_get($protocol_settings, 'advertise_routes')) {
+            $array['advertise_routes'] = is_array($routes) ? array_values($routes) : [$routes];
         }
 
         return $array;

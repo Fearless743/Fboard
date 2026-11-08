@@ -22,6 +22,7 @@ class Plugin extends AbstractPlugin
         $this->registerMieru();
         $this->registerShadowQUIC();
         $this->registerSudoku();
+        $this->registerTrustTunnel();
     }
 
     /**
@@ -505,6 +506,80 @@ class Plugin extends AbstractPlugin
             'custom_tables' => 'nullable|array',
             'handshake_timeout' => 'nullable|integer|min:0',
         ], '[sudoku]', self::builder('sudoku'), self::password('sudoku'), [], true);
+    }
+
+    private function registerTrustTunnel(): void
+    {
+        // TrustTunnel：Xray-core proxy/trusttunnel 入站（HTTP/1.1 + HTTP/2 CONNECT + Basic 鉴权，
+        // TCP 隧道 + UDP 多路复用 + _check 健康检查；ICMP 暂不支持）。强制 TLS，需配置证书。
+        $this->registerProtocolDefinition(ProtocolTypes::TRUSTTUNNEL, 'TrustTunnel', [
+            'hostname' => [
+                'type' => 'string',
+                'default' => null,
+                'label' => '主机名',
+                'description' => 'TLS SNI / 证书域名，也是订阅 tt:// 链接的 hostname。留空则使用节点地址。',
+                'placeholder' => 'vpn.example.com',
+            ],
+            'upstream_protocol' => [
+                'type' => 'string',
+                'default' => 'http2',
+                'label' => '上游协议',
+                'options' => ['http2' => 'HTTP/2', 'http3' => 'HTTP/3'],
+                'description' => '客户端优先使用的传输协议；HTTP/3 失败会自动回落 HTTP/2。',
+            ],
+            'custom_sni' => [
+                'type' => 'string',
+                'default' => null,
+                'label' => '自定义 SNI',
+                'description' => '可选。客户端 TLS 握手使用的 SNI，留空则使用主机名。',
+            ],
+            'has_ipv6' => [
+                'type' => 'boolean',
+                'default' => true,
+                'label' => 'IPv6 可用',
+            ],
+            'anti_dpi' => [
+                'type' => 'boolean',
+                'default' => false,
+                'label' => '反 DPI',
+                'description' => '客户端 TLS ClientHello 随机前缀伪装（需客户端支持；当前 Xray 内核服务端不校验）。',
+            ],
+            'client_random_prefix' => [
+                'type' => 'string',
+                'default' => null,
+                'label' => 'ClientRandom 前缀',
+                'placeholder' => 'a0b0/f0f0',
+                'description' => '可选，hex 前缀或 prefix/mask 格式，下发给客户端；当前 Xray 内核服务端不校验。',
+            ],
+            'client_random_auth_key' => [
+                'type' => 'string',
+                'default' => null,
+                'label' => 'ClientRandom Auth Key',
+                'description' => '可选，hex 格式的 SNI 绑定 auth key，下发给客户端；当前 Xray 内核服务端不校验。',
+            ],
+            'dns_upstreams' => [
+                'type' => 'array',
+                'default' => null,
+                'label' => 'DNS 上游',
+                'description' => '可选，客户端 DNS 上游列表（如 1.1.1.1、tls://dns.example.com）。',
+            ],
+            'skip_verification' => [
+                'type' => 'boolean',
+                'default' => false,
+                'label' => '跳过证书校验',
+                'description' => '客户端是否跳过服务端证书校验（自签证书测试用；生产环境请使用可信证书并保持关闭）。',
+            ],
+        ], [
+            'hostname' => 'nullable|string|max:253',
+            'upstream_protocol' => 'nullable|string|in:http2,http3',
+            'custom_sni' => 'nullable|string|max:253',
+            'has_ipv6' => 'nullable|boolean',
+            'anti_dpi' => 'nullable|boolean',
+            'client_random_prefix' => 'nullable|string|max:128',
+            'client_random_auth_key' => 'nullable|string|max:128',
+            'dns_upstreams' => 'nullable|array',
+            'skip_verification' => 'nullable|boolean',
+        ], '[tt]', self::builder('trusttunnel'));
     }
 
     private static function getRealityFields(): array

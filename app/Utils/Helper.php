@@ -211,6 +211,40 @@ class Helper
     }
 
     /**
+     * RFC 9000 §16 QUIC 可变长整数编码（TrustTunnel deeplink Tag/Length 用）。
+     * 2 高位决定字节数：00=1B, 01=2B, 10=4B, 11=8B，大端序。
+     */
+    public static function encodeTlsVarint(int $n): string
+    {
+        if ($n < 0) {
+            $n = 0;
+        }
+        if ($n < (1 << 6)) {
+            return chr($n);
+        }
+        if ($n < (1 << 14)) {
+            return chr(0x40 | ($n >> 8)).chr($n & 0xFF);
+        }
+        if ($n < (1 << 30)) {
+            return chr(0x80 | (($n >> 24) & 0xFF)).chr(($n >> 16) & 0xFF).chr(($n >> 8) & 0xFF).chr($n & 0xFF);
+        }
+        // 8 字节（PHP 64 位 int 足够覆盖 deeplink 长度范围）
+        $out = chr(0xC0 | (($n >> 56) & 0xFF));
+        for ($shift = 48; $shift >= 0; $shift -= 8) {
+            $out .= chr(($n >> $shift) & 0xFF);
+        }
+        return $out;
+    }
+
+    /**
+     * TrustTunnel deeplink TLV 条目：Tag(varint) + Length(varint) + Value。
+     */
+    public static function encodeTrustTunnelTlv(int $tag, string $value): string
+    {
+        return self::encodeTlsVarint($tag).self::encodeTlsVarint(strlen($value)).$value;
+    }
+
+    /**
      * 将 REALITY / X25519 密钥规范化为 base64.RawURLEncoding（无填充、URL 安全）。
      * Xray / mihomo / Clash.Meta 等客户端只接受该格式，标准 Base64（含 + / =）会报
      * "invalid REALITY public key"。

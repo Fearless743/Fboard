@@ -24,6 +24,7 @@ final class ProtocolTypes
     public const MIERU = 'mieru';
     public const SUDOKU = 'sudoku';
     public const SHADOWQUIC = 'shadowquic';
+    public const TRUSTTUNNEL = 'trusttunnel';
 
     /**
      * CoreProtocols 注册的全部 type（不含别名）。
@@ -46,6 +47,7 @@ final class ProtocolTypes
             self::MIERU,
             self::SUDOKU,
             self::SHADOWQUIC,
+            self::TRUSTTUNNEL,
         ];
     }
 }

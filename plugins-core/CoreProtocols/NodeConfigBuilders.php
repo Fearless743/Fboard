@@ -254,4 +254,27 @@ class NodeConfigBuilders
             ],
         ];
     }
+
+    public static function trusttunnel(Server $node, array $baseConfig): array
+    {
+        $protocolSettings = $node->protocol_settings;
+
+        return [
+            ...$baseConfig,
+            'server_port' => (int) $node->server_port,
+            // TrustTunnel 强制 TLS（Xray 侧经 cert_config 提供证书）。
+            'tls' => 1,
+            // 服务端 SNI/证书域名：优先 hostname，缺省用节点 host。
+            'server_name' => data_get($protocolSettings, 'hostname', $node->host ?? ''),
+            'hostname' => data_get($protocolSettings, 'hostname'),
+            'upstream_protocol' => data_get($protocolSettings, 'upstream_protocol', 'http2'),
+            'custom_sni' => data_get($protocolSettings, 'custom_sni'),
+            'has_ipv6' => (bool) data_get($protocolSettings, 'has_ipv6', true),
+            'anti_dpi' => (bool) data_get($protocolSettings, 'anti_dpi', false),
+            'client_random_prefix' => data_get($protocolSettings, 'client_random_prefix'),
+            'client_random_auth_key' => data_get($protocolSettings, 'client_random_auth_key'),
+            'dns_upstreams' => data_get($protocolSettings, 'dns_upstreams'),
+            'skip_verification' => (bool) data_get($protocolSettings, 'skip_verification', false),
+        ];
+    }
 }

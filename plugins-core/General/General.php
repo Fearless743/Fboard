@@ -22,6 +22,7 @@ class General extends AbstractProtocol
         ProtocolTypes::TUIC,
         ProtocolTypes::HTTP,
         ProtocolTypes::SHADOWQUIC,
+        ProtocolTypes::TRUSTTUNNEL,
     ];
 
     protected $protocolRequirements = [
@@ -47,6 +48,7 @@ class General extends AbstractProtocol
                 ProtocolTypes::TUIC => self::buildTuic($item['password'], $item),
                 ProtocolTypes::HTTP => self::buildHttp($item['password'], $item),
                 ProtocolTypes::SHADOWQUIC => self::buildShadowQUIC($item['password'], $item),
+                ProtocolTypes::TRUSTTUNNEL => self::buildTrustTunnel($item['password'], $item),
                 default => '',
             };
         }
@@ -530,5 +532,63 @@ class General extends AbstractProtocol
         }
         $uri .= "#{$name}\r\n";
         return $uri;
+    }
+
+    /**
+     * TrustTunnel deeplink（tt://?base64url(TLV)），见 DEEP_LINK.md v1。
+     * 为兼容已发布的官方客户端（max supported: 1），编码 version=1；
+     * 不含 subscription_url（v2 字段），其余静态参数齐全。
+     */
+    public static function buildTrustTunnel($password, $server)
+    {
+        $protocol_settings = data_get($server, 'protocol_settings', []) ?: [];
+        $password = (string) $password;
+        $host = (string) ($server['host'] ?? '');
+        $port = (int) ($server['port'] ?? 443);
+        $hostname = (string) (data_get($protocol_settings, 'hostname') ?: $host);
+        if ($hostname === '') {
+            return '';
+        }
+
+        $payload = '';
+        $payload .= Helper::encodeTrustTunnelTlv(0x00, Helper::encodeTlsVarint(1)); // version=1
+        $payload .= Helper::encodeTrustTunnelTlv(0x01, $hostname);
+        $payload .= Helper::encodeTrustTunnelTlv(0x02, $host.':'.$port);
+        if ($sni = data_get($protocol_settings, 'custom_sni')) {
+            $payload .= Helper::encodeTrustTunnelTlv(0x03, (string) $sni);
+        }
+        if (!data_get($protocol_settings, 'has_ipv6', true)) {
+            $payload .= Helper::encodeTrustTunnelTlv(0x04, "\x00");
+        }
+        $payload .= Helper::encodeTrustTunnelTlv(0x05, $password); // username=UUID
+        $payload .= Helper::encodeTrustTunnelTlv(0x06, $password);
+        if (data_get($protocol_settings, 'skip_verification')) {
+            $payload .= Helper::encodeTrustTunnelTlv(0x07, "\x01");
+        }
+        $upstreamVersion = data_get($protocol_settings, 'upstream_protocol', 'http2') === 'http3' ? 2 : 1;
+        $payload .= Helper::encodeTrustTunnelTlv(0x09, Helper::encodeTlsVarint($upstreamVersion));
+        if (data_get($protocol_settings, 'anti_dpi')) {
+            $payload .= Helper::encodeTrustTunnelTlv(0x0A, "\x01");
+        }
+        if ($prefix = data_get($protocol_settings, 'client_random_prefix')) {
+            $payload .= Helper::encodeTrustTunnelTlv(0x0B, (string) $prefix);
+        }
+        $payload .= Helper::encodeTrustTunnelTlv(0x0C, (string) ($server['name'] ?? ''));
+        if ($upstreams = data_get($protocol_settings, 'dns_upstreams')) {
+            $list = is_array($upstreams) ? array_values(array_filter($upstreams)) : [$upstreams];
+            if ($list !== []) {
+                $encoded = '';
+                foreach ($list as $u) {
+                    $u = (string) $u;
+                    $encoded .= Helper::encodeTlsVarint(strlen($u)).$u;
+                }
+                $payload .= Helper::encodeTrustTunnelTlv(0x0D, $encoded);
+            }
+        }
+        if ($key = data_get($protocol_settings, 'client_random_auth_key')) {
+            $payload .= Helper::encodeTrustTunnelTlv(0x0F, (string) $key);
+        }
+
+        return 'tt://?'.Helper::base64EncodeUrlSafe($payload)."\r\n";
     }
 }

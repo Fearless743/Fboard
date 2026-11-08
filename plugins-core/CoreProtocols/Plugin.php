@@ -23,6 +23,7 @@ class Plugin extends AbstractPlugin
         $this->registerShadowQUIC();
         $this->registerSudoku();
         $this->registerTrustTunnel();
+        $this->registerMasque();
     }
 
     /**
@@ -89,7 +90,7 @@ class Plugin extends AbstractPlugin
             'tls_settings' => ['type' => 'object', 'show_when' => ['tls' => '1'], 'fields' => [
                 'server_name' => ['type' => 'string', 'default' => null, 'label' => '服务器名称'],
                 'allow_insecure' => ['type' => 'boolean', 'default' => false, 'label' => '允许不安全连接'],
-                'alpn' => ['type' => 'array', 'default' => null, 'label' => 'ALPN (服务端)', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
+                'alpn' => ['type' => 'array', 'default' => ['h2', 'http/1.1'], 'label' => 'ALPN (服务端)', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
                 'client_alpn' => ['type' => 'array', 'default' => null, 'label' => 'ALPN (客户端)', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
                 'ech' => ['type' => 'object', 'fields' => [
                     'enabled' => ['type' => 'boolean', 'default' => false, 'label' => 'ECH'],
@@ -117,7 +118,7 @@ class Plugin extends AbstractPlugin
             'tls_settings' => ['type' => 'object', 'show_when' => ['tls' => '1'], 'fields' => [
                 'server_name' => ['type' => 'string', 'default' => null, 'label' => '服务器名称'],
                 'allow_insecure' => ['type' => 'boolean', 'default' => false, 'label' => '允许不安全连接'],
-                'alpn' => ['type' => 'array', 'default' => null, 'label' => 'ALPN (服务端)', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
+                'alpn' => ['type' => 'array', 'default' => ['h2', 'http/1.1'], 'label' => 'ALPN (服务端)', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
                 'client_alpn' => ['type' => 'array', 'default' => null, 'label' => 'ALPN (客户端)', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
                 'ech' => ['type' => 'object', 'fields' => [
                     'enabled' => ['type' => 'boolean', 'default' => false, 'label' => 'ECH'],
@@ -166,7 +167,7 @@ class Plugin extends AbstractPlugin
             'tls_settings' => ['type' => 'object', 'show_when' => ['tls' => '1'], 'fields' => [
                 'server_name' => ['type' => 'string', 'default' => null, 'label' => '服务器名称'],
                 'allow_insecure' => ['type' => 'boolean', 'default' => false, 'label' => '允许不安全连接'],
-                'alpn' => ['type' => 'array', 'default' => null, 'label' => 'ALPN (服务端)', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
+                'alpn' => ['type' => 'array', 'default' => ['h2', 'http/1.1'], 'label' => 'ALPN (服务端)', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
                 'client_alpn' => ['type' => 'array', 'default' => null, 'label' => 'ALPN (客户端)', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
                 'ech' => ['type' => 'object', 'fields' => [
                     'enabled' => ['type' => 'boolean', 'default' => false, 'label' => 'ECH'],
@@ -206,7 +207,7 @@ class Plugin extends AbstractPlugin
             'tls' => ['type' => 'object', 'fields' => [
                 'server_name' => ['type' => 'string', 'default' => null, 'label' => '服务器名称'],
                 'allow_insecure' => ['type' => 'boolean', 'default' => false, 'label' => '允许不安全连接'],
-                'alpn' => ['type' => 'array', 'default' => null, 'label' => 'ALPN (服务端)', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
+                'alpn' => ['type' => 'array', 'default' => ['h2', 'http/1.1'], 'label' => 'ALPN (服务端)', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
                 'client_alpn' => ['type' => 'array', 'default' => null, 'label' => 'ALPN (客户端)', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
                 'ech' => ['type' => 'object', 'fields' => [
                     'enabled' => ['type' => 'boolean', 'default' => false, 'label' => 'ECH'],
@@ -251,7 +252,7 @@ class Plugin extends AbstractPlugin
             'tls' => ['type' => 'object', 'fields' => [
                 'server_name' => ['type' => 'string', 'default' => null, 'label' => '服务器名称'],
                 'allow_insecure' => ['type' => 'boolean', 'default' => false, 'label' => '允许不安全连接'],
-                'alpn' => ['type' => 'array', 'default' => null, 'label' => 'ALPN (服务端)', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
+                'alpn' => ['type' => 'array', 'default' => ['h2', 'http/1.1'], 'label' => 'ALPN (服务端)', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
                 'client_alpn' => ['type' => 'array', 'default' => null, 'label' => 'ALPN (客户端)', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
                 'ech' => ['type' => 'object', 'fields' => [
                     'enabled' => ['type' => 'boolean', 'default' => false, 'label' => 'ECH'],
@@ -294,7 +295,7 @@ class Plugin extends AbstractPlugin
             'tls' => ['type' => 'object', 'fields' => [
                 'server_name' => ['type' => 'string', 'default' => null, 'label' => '服务器名称'],
                 'allow_insecure' => ['type' => 'boolean', 'default' => false, 'label' => '允许不安全连接'],
-                'alpn' => ['type' => 'array', 'default' => null, 'label' => 'ALPN (服务端)', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
+                'alpn' => ['type' => 'array', 'default' => ['h2', 'http/1.1'], 'label' => 'ALPN (服务端)', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
                 'client_alpn' => ['type' => 'array', 'default' => null, 'label' => 'ALPN (客户端)', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
                 'ech' => ['type' => 'object', 'fields' => [
                     'enabled' => ['type' => 'boolean', 'default' => false, 'label' => 'ECH'],
@@ -318,7 +319,7 @@ class Plugin extends AbstractPlugin
             'tls_settings' => ['type' => 'object', 'show_when' => ['tls' => '1'], 'fields' => [
                 'server_name' => ['type' => 'string', 'default' => null, 'label' => '服务器名称'],
                 'allow_insecure' => ['type' => 'boolean', 'default' => false, 'label' => '允许不安全连接'],
-                'alpn' => ['type' => 'array', 'default' => null, 'label' => 'ALPN (服务端)', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
+                'alpn' => ['type' => 'array', 'default' => ['h2', 'http/1.1'], 'label' => 'ALPN (服务端)', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
                 'client_alpn' => ['type' => 'array', 'default' => null, 'label' => 'ALPN (客户端)', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
                 'ech' => ['type' => 'object', 'fields' => [
                     'enabled' => ['type' => 'boolean', 'default' => false, 'label' => 'ECH'],
@@ -339,7 +340,7 @@ class Plugin extends AbstractPlugin
             'tls_settings' => ['type' => 'object', 'show_when' => ['tls' => '1'], 'fields' => [
                 'server_name' => ['type' => 'string', 'default' => null, 'label' => '服务器名称'],
                 'allow_insecure' => ['type' => 'boolean', 'default' => false, 'label' => '允许不安全连接'],
-                'alpn' => ['type' => 'array', 'default' => null, 'label' => 'ALPN (服务端)', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
+                'alpn' => ['type' => 'array', 'default' => ['h2', 'http/1.1'], 'label' => 'ALPN (服务端)', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
                 'client_alpn' => ['type' => 'array', 'default' => null, 'label' => 'ALPN (客户端)', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
                 'ech' => ['type' => 'object', 'fields' => [
                     'enabled' => ['type' => 'boolean', 'default' => false, 'label' => 'ECH'],
@@ -360,7 +361,7 @@ class Plugin extends AbstractPlugin
             'tls_settings' => ['type' => 'object', 'show_when' => ['tls' => '1'], 'fields' => [
                 'server_name' => ['type' => 'string', 'default' => null, 'label' => '服务器名称'],
                 'allow_insecure' => ['type' => 'boolean', 'default' => false, 'label' => '允许不安全连接'],
-                'alpn' => ['type' => 'array', 'default' => null, 'label' => 'ALPN (服务端)', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
+                'alpn' => ['type' => 'array', 'default' => ['h2', 'http/1.1'], 'label' => 'ALPN (服务端)', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
                 'client_alpn' => ['type' => 'array', 'default' => null, 'label' => 'ALPN (客户端)', 'options' => ['h3' => 'h3 (HTTP/3)', 'h2' => 'h2 (HTTP/2)', 'http/1.1' => 'http/1.1']],
                 'ech' => ['type' => 'object', 'fields' => [
                     'enabled' => ['type' => 'boolean', 'default' => false, 'label' => 'ECH'],
@@ -580,6 +581,65 @@ class Plugin extends AbstractPlugin
             'dns_upstreams' => 'nullable|array',
             'skip_verification' => 'nullable|boolean',
         ], '[tt]', self::builder('trusttunnel'));
+    }
+
+    private function registerMasque(): void
+    {
+        // MASQUE：Xray-core proxy/masque 入站（RFC 9484 CONNECT-IP over HTTP/3 + QUIC，
+        // gVisor netstack 终结 TCP/ICMP，UDP 手动解析分发）。强制 TLS，需配置证书。
+        $this->registerProtocolDefinition(ProtocolTypes::MASQUE, 'MASQUE', [
+            'addresses' => [
+                'type' => 'array',
+                'default' => null,
+                'label' => '隧道地址',
+                'description' => '必填，隧道网络前缀，每种 IP 版本至多一个，如 10.0.0.1/24。前缀地址归服务端使用，其余地址分配给客户端。',
+                'placeholder' => '10.0.0.1/24',
+            ],
+            'advertise_routes' => [
+                'type' => 'array',
+                'default' => null,
+                'label' => '宣告路由',
+                'description' => '可选，额外宣告给客户端的路由前缀；留空则宣告全流量（0.0.0.0/0 + ::/0）。',
+            ],
+            'path' => [
+                'type' => 'string',
+                'default' => '/.well-known/masque/ip/',
+                'label' => '路径前缀',
+                'description' => 'CONNECT-IP 资源路径前缀，需与客户端一致。',
+            ],
+            'mtu' => [
+                'type' => 'integer',
+                'default' => 1280,
+                'label' => 'MTU',
+            ],
+            'versions' => [
+                'type' => 'array',
+                'default' => [3],
+                'label' => 'HTTP 版本',
+                'options' => ['1' => 'HTTP/1', '2' => 'HTTP/2', '3' => 'HTTP/3'],
+                'description' => '当前 Xray 内核仅支持 HTTP/3（QUIC），选 1/2 暂无服务能力；sing-box 客户端默认 3 并自动回落。',
+            ],
+            'server_name' => [
+                'type' => 'string',
+                'default' => null,
+                'label' => 'SNI / server_name',
+                'description' => '可选，客户端 TLS SNI；留空则使用节点地址。',
+            ],
+            'allow_insecure' => [
+                'type' => 'boolean',
+                'default' => false,
+                'label' => '跳过证书校验',
+                'description' => '客户端是否跳过服务端证书校验（自签证书测试用）。',
+            ],
+        ], [
+            'addresses' => 'required|array|min:1',
+            'advertise_routes' => 'nullable|array',
+            'path' => 'nullable|string|max:253',
+            'mtu' => 'nullable|integer|min:1280|max:9000',
+            'versions' => 'nullable|array',
+            'server_name' => 'nullable|string|max:253',
+            'allow_insecure' => 'nullable|boolean',
+        ], '[masque]', self::builder('masque'));
     }
 
     private static function getRealityFields(): array

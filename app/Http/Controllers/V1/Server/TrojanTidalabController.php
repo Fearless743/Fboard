@@ -111,7 +111,7 @@ class TrojanTidalabController extends Controller
         $protocolSettings = $server->protocol_settings;
         $json = json_decode(self::TROJAN_CONFIG);
         $json->local_port = $server->server_port;
-        $json->ssl->sni = data_get($protocolSettings, 'server_name', $server->host);
+        $json->ssl->sni = data_get($protocolSettings, 'tls_settings.server_name', data_get($protocolSettings, 'server_name', $server->host));
         $json->ssl->cert = "/root/.cert/server.crt";
         $json->ssl->key = "/root/.cert/server.key";
         $json->api->api_port = $localPort;

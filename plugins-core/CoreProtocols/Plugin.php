@@ -162,8 +162,6 @@ class Plugin extends AbstractPlugin
             'tls' => ['type' => 'integer', 'default' => 1, 'label' => 'TLS', 'options' => ['0' => '关闭', '1' => 'TLS', '2' => 'Reality']],
             'network' => ['type' => 'string', 'default' => null, 'label' => '传输协议', 'options' => ['tcp' => 'TCP', 'kcp' => 'KCP', 'ws' => 'WebSocket', 'quic' => 'QUIC', 'grpc' => 'gRPC', 'xhttp' => 'XHTTP', 'httpupgrade' => 'HTTPUpgrade']],
             'network_settings' => ['type' => 'array', 'default' => null, 'label' => '网络设置'],
-            'server_name' => ['type' => 'string', 'default' => null, 'label' => '服务器名称', 'show_when' => ['tls' => '1']],
-            'allow_insecure' => ['type' => 'boolean', 'default' => false, 'label' => '允许不安全连接', 'show_when' => ['tls' => '1']],
             'tls_settings' => ['type' => 'object', 'show_when' => ['tls' => '1'], 'fields' => [
                 'server_name' => ['type' => 'string', 'default' => null, 'label' => '服务器名称'],
                 'allow_insecure' => ['type' => 'boolean', 'default' => false, 'label' => '允许不安全连接'],
@@ -182,9 +180,7 @@ class Plugin extends AbstractPlugin
             ...self::getMultiplexFields(),
             ...self::getUtlsFields(),
         ], array_merge(
-            ['tls' => 'nullable|integer|in:0,1,2', 'network' => 'required|string', 'network_settings' => 'nullable|array',
-             'server_name' => 'nullable|string', 'allow_insecure' => 'nullable|boolean'],
-            self::getTlsSettingsValidationRules(true),
+            ['tls' => 'nullable|integer|in:0,1,2', 'network' => 'required|string', 'network_settings' => 'nullable|array'],            self::getTlsSettingsValidationRules(true),
             self::getRealityValidationRules(),
             self::getMultiplexValidationRules(),
             self::getUtlsValidationRules(),

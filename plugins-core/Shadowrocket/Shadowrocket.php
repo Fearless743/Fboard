@@ -19,6 +19,7 @@ class Shadowrocket extends AbstractProtocol
         ProtocolTypes::ANYTLS,
         ProtocolTypes::SOCKS,
         ProtocolTypes::MIERU,
+        ProtocolTypes::SUDOKU,
     ];
 
     protected $protocolRequirements = [
@@ -71,6 +72,9 @@ class Shadowrocket extends AbstractProtocol
             }
             if ($item['type'] === ProtocolTypes::MIERU) {
                 $uri .= self::buildMieru($item['password'], $item);
+            }
+            if ($item['type'] === ProtocolTypes::SUDOKU) {
+                $uri .= self::buildSudoku($item['password'], $item);
             }
         }
         return response(base64_encode($uri))
@@ -491,4 +495,73 @@ class Shadowrocket extends AbstractProtocol
         $uri .= "\r\n";
         return $uri;
     }
+    public static function buildSudoku($password, $server)
+    {
+        $protocol_settings = $server['protocol_settings'] ?? [];
+        $name = $server['name'] ?? '';
+        $host = $server['host'];
+        $port = (int) $server['port'];
+
+        $ascii = data_get($protocol_settings, 'table_type', 'prefer_entropy');
+        $asciiMap = [
+            'prefer_ascii' => 'ascii',
+            'prefer_entropy' => 'entropy',
+        ];
+        $ascii = $asciiMap[$ascii] ?? $ascii;
+
+        $payload = [
+            'n' => $name,
+            'h' => $host,
+            'p' => $port,
+            'k' => $password,
+            'a' => $ascii,
+            'e' => data_get($protocol_settings, 'aead_method', 'chacha20-poly1305'),
+            'x' => !(bool) data_get($protocol_settings, 'enable_pure_downlink', true),
+        ];
+        if ($custom = data_get($protocol_settings, 'custom_table')) {
+            $payload['t'] = $custom;
+        }
+        if ($customs = data_get($protocol_settings, 'custom_tables')) {
+            if (is_array($customs) && count($customs) > 0) {
+                $payload['ts'] = array_values($customs);
+            }
+        }
+        $httpmask = [
+            'hd' => (bool) data_get($protocol_settings, 'httpmask.disable', false),
+        ];
+        $mode = data_get($protocol_settings, 'httpmask.mode', 'legacy');
+        if ($mode && $mode !== 'legacy') {
+            $httpmask['hm'] = $mode;
+        }
+        $tls = data_get($protocol_settings, 'httpmask.tls');
+        $httpmask['ht'] = $tls === null ? true : (bool) $tls;
+        $h = data_get($protocol_settings, 'httpmask.host');
+        if (!$h) {
+            $h = $host;
+        }
+        if ($h) {
+            $httpmask['hh'] = $h;
+        }
+        $pathRoot = \App\Support\SudokuKey::normalizeHttpMaskPathRoot(
+            data_get($protocol_settings, 'httpmask.path_root')
+        );
+        if ($pathRoot !== null) {
+            $httpmask['hy'] = $pathRoot;
+        }
+        $mux = data_get($protocol_settings, 'multiplex');
+        if (is_array($mux)) {
+            $mux = !empty($mux['enabled']) ? 'on' : 'off';
+        }
+        if ($mux && $mux !== 'off') {
+            $httpmask['hx'] = $mux;
+        }
+        foreach ($httpmask as $k => $v) {
+            $payload[$k] = $v;
+        }
+        $json = json_encode($payload, JSON_UNESCAPED_SLASHES);
+        $b64 = rtrim(strtr(base64_encode($json), '+/', '-_'), '=');
+        $uri = "sudoku://{$b64}\r\n";
+        return $uri;
+    }
+
 }

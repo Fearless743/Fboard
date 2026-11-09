@@ -473,8 +473,8 @@ class Plugin extends AbstractPlugin
                 'mode' => ['type' => 'string', 'default' => 'auto', 'label' => 'HTTPMask 模式', 'options' => [
                     'auto' => 'auto（推荐，兼容裸 TCP）', 'legacy' => 'legacy', 'stream' => 'stream', 'poll' => 'poll', 'ws' => 'ws',
                 ]],
-                'tls' => ['type' => 'boolean', 'default' => true, 'label' => '启用 TLS（CF 转发）'],
-                'host' => ['type' => 'string', 'default' => null, 'label' => 'Host/SNI（CF 域名）', 'placeholder' => 'cdn.example.com'],
+                'tls' => ['type' => 'boolean', 'default' => true, 'label' => '启用 TLS'],
+                'host' => ['type' => 'string', 'default' => null, 'label' => 'Host/SNI（域名）', 'placeholder' => 'cdn.example.com'],
                 // mihomo: 单段路径，仅 [A-Za-z0-9_-]；可用 "/aabbcc/" 形式，保存/下发时会规范化
                 'path_root' => [
                     'type' => 'string',

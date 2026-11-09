@@ -812,7 +812,7 @@ class ClashMeta extends AbstractProtocol
         $httpmask = [
             'disable' => (bool) data_get($protocol_settings, 'httpmask.disable', false),
             'mode' => data_get($protocol_settings, 'httpmask.mode', 'legacy'),
-            // CF 转发：默认启用 TLS，并把 Host/SNI 指向 CF 域名
+            // 默认启用 TLS，并把 Host/SNI 指向域名
             'tls' => (bool) (data_get($protocol_settings, 'httpmask.tls') ?? true),
         ];
         $host = data_get($protocol_settings, 'httpmask.host');

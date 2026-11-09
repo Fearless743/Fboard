@@ -386,9 +386,17 @@ class Plugin extends AbstractPlugin
                 'description' => '可选。官方 mieru Traffic Pattern 的 Base64 串，用于 TCP 分片 / Nonce 前缀等抗 DPI 流量整形；留空则使用默认行为。可用 mita/mieru export traffic-pattern 导出。',
                 'placeholder' => '留空使用默认；或点击右侧按钮生成',
             ],
+            'multiplexing' => ['type' => 'string', 'default' => '', 'label' => '多路复用', 'options' => [
+                '' => '默认',
+                'MULTIPLEXING_OFF' => '关闭',
+                'MULTIPLEXING_LOW' => '低',
+                'MULTIPLEXING_MIDDLE' => '中',
+                'MULTIPLEXING_HIGH' => '高',
+            ]],
         ], [
             'transport' => 'required|string|in:TCP,UDP',
             'traffic_pattern' => 'string',
+            'multiplexing' => 'nullable|string|in:,MULTIPLEXING_DEFAULT,MULTIPLEXING_OFF,MULTIPLEXING_LOW,MULTIPLEXING_MIDDLE,MULTIPLEXING_HIGH',
         ], '[mieru]', self::builder('mieru'));
     }
 

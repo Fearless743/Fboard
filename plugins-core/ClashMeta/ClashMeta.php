@@ -737,6 +737,11 @@ class ClashMeta extends AbstractProtocol
             $array['port-range'] = $server['ports'];
         }
 
+        // mieru 客户端多路复用级别（MULTIPLEXING_*）
+        if ($multiplexing = data_get($protocol_settings, 'multiplexing')) {
+            $array['multiplexing'] = $multiplexing;
+        }
+
         return $array;
     }
 

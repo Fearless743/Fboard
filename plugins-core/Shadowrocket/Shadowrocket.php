@@ -480,6 +480,10 @@ class Shadowrocket extends AbstractProtocol
             $params['mport'] = $server['ports'];
         }
 
+        if ($multiplexing = data_get($protocol_settings, 'multiplexing')) {
+            $params['multiplexing'] = $multiplexing;
+        }
+
         $query = http_build_query($params, '', '&', PHP_QUERY_RFC3986);
         $username = rawurlencode($password);
         $password = rawurlencode($password);

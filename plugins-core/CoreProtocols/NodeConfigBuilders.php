@@ -208,6 +208,7 @@ class NodeConfigBuilders
             'transport' => data_get($protocolSettings, 'transport', 'TCP'),
             'traffic_pattern' => $protocolSettings['traffic_pattern'],
             'multiplex' => data_get($protocolSettings, 'multiplex'),
+            'multiplexing' => data_get($protocolSettings, 'multiplexing'),
         ];
     }
 

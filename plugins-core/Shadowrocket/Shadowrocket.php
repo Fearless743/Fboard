@@ -497,71 +497,69 @@ class Shadowrocket extends AbstractProtocol
     }
     public static function buildSudoku($password, $server)
     {
+        // Shadowrocket 2.2.92+ 原生 Sudoku 导出方言（非官方 sudoku://base64url(json) 短链）：
+        //   sudoku://<base64("<aead>:<key>@<host>:<port>")>?obfsParam=<json>&obfs=httpmask&udp=1#<name>
+        // obfsParam 内字段命名与 mihomo Sudoku 代理一致（padding-min/table-type/httpmask.*），
+        // 与 Shadowrocket 实际导出的链接逐字段对齐；官方短链格式 Shadowrocket 无法直接导入。
         $protocol_settings = $server['protocol_settings'] ?? [];
         $name = $server['name'] ?? '';
         $host = $server['host'];
         $port = (int) $server['port'];
 
-        $ascii = data_get($protocol_settings, 'table_type', 'prefer_entropy');
-        $asciiMap = [
-            'prefer_ascii' => 'ascii',
-            'prefer_entropy' => 'entropy',
-        ];
-        $ascii = $asciiMap[$ascii] ?? $ascii;
+        $aead = data_get($protocol_settings, 'aead_method', 'chacha20-poly1305') ?: 'chacha20-poly1305';
+        $userinfo = rtrim(base64_encode($aead . ':' . $password . '@' . Helper::wrapIPv6($host) . ':' . $port), '=');
 
-        $payload = [
-            'n' => $name,
-            'h' => $host,
-            'p' => $port,
-            'k' => $password,
-            'a' => $ascii,
-            'e' => data_get($protocol_settings, 'aead_method', 'chacha20-poly1305'),
-            'x' => !(bool) data_get($protocol_settings, 'enable_pure_downlink', true),
-        ];
-        if ($custom = data_get($protocol_settings, 'custom_table')) {
-            $payload['t'] = $custom;
-        }
-        if ($customs = data_get($protocol_settings, 'custom_tables')) {
-            if (is_array($customs) && count($customs) > 0) {
-                $payload['ts'] = array_values($customs);
-            }
-        }
-        $httpmask = [
-            'hd' => (bool) data_get($protocol_settings, 'httpmask.disable', false),
-        ];
-        $mode = data_get($protocol_settings, 'httpmask.mode', 'legacy');
-        if ($mode && $mode !== 'legacy') {
-            $httpmask['hm'] = $mode;
-        }
+        $httpmaskHost = data_get($protocol_settings, 'httpmask.host') ?: $host;
         $tls = data_get($protocol_settings, 'httpmask.tls');
-        $httpmask['ht'] = $tls === null ? true : (bool) $tls;
-        $h = data_get($protocol_settings, 'httpmask.host');
-        if (!$h) {
-            $h = $host;
-        }
-        if ($h) {
-            $httpmask['hh'] = $h;
-        }
+        $httpmask = [
+            'tls' => $tls === null ? true : (bool) $tls,
+            'host' => $httpmaskHost,
+            // Shadowrocket 导出为整数 0/1（非 bool），其导入解析器按此形式读取
+            'disable' => (int) (bool) data_get($protocol_settings, 'httpmask.disable', false),
+            'mode' => data_get($protocol_settings, 'httpmask.mode', 'legacy') ?: 'legacy',
+        ];
         $pathRoot = \App\Support\SudokuKey::normalizeHttpMaskPathRoot(
             data_get($protocol_settings, 'httpmask.path_root')
         );
         if ($pathRoot !== null) {
-            $httpmask['hy'] = $pathRoot;
+            // Shadowrocket 导出带前导斜杠，如 "/QL0EUOjp"
+            $httpmask['path-root'] = '/' . $pathRoot;
+        }
+
+        $obfsParam = [
+            'padding-min' => (int) data_get($protocol_settings, 'padding_min', 5),
+            'table-type' => data_get($protocol_settings, 'table_type', 'prefer_entropy') ?: 'prefer_entropy',
+            'enable-pure-downlink' => (bool) data_get($protocol_settings, 'enable_pure_downlink', true),
+            'padding-max' => (int) data_get($protocol_settings, 'padding_max', 15),
+            'httpmask' => $httpmask,
+        ];
+        if ($custom = data_get($protocol_settings, 'custom_table')) {
+            $obfsParam['custom-table'] = $custom;
+        }
+        if ($customs = data_get($protocol_settings, 'custom_tables')) {
+            if (is_array($customs) && count($customs) > 0) {
+                $obfsParam['custom-tables'] = array_values($customs);
+            }
         }
         $mux = data_get($protocol_settings, 'multiplex');
         if (is_array($mux)) {
             $mux = !empty($mux['enabled']) ? 'on' : 'off';
         }
         if ($mux && $mux !== 'off') {
-            $httpmask['hx'] = $mux;
+            $obfsParam['multiplex'] = $mux;
         }
-        foreach ($httpmask as $k => $v) {
-            $payload[$k] = $v;
+
+        $params = [
+            'obfsParam' => json_encode($obfsParam),
+            'obfs' => 'httpmask',
+            'udp' => 1,
+        ];
+        $query = http_build_query($params, '', '&', PHP_QUERY_RFC3986);
+        $uri = "sudoku://{$userinfo}?{$query}";
+        if ($name !== '' && $name !== null) {
+            $uri .= '#' . rawurlencode((string) $name);
         }
-        $json = json_encode($payload, JSON_UNESCAPED_SLASHES);
-        $b64 = rtrim(strtr(base64_encode($json), '+/', '-_'), '=');
-        $uri = "sudoku://{$b64}\r\n";
-        return $uri;
+        return $uri . "\r\n";
     }
 
 }

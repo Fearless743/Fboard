@@ -180,7 +180,8 @@ class Plugin extends AbstractPlugin
             ...self::getMultiplexFields(),
             ...self::getUtlsFields(),
         ], array_merge(
-            ['tls' => 'nullable|integer|in:0,1,2', 'network' => 'required|string', 'network_settings' => 'nullable|array'],            self::getTlsSettingsValidationRules(true),
+            ['tls' => 'nullable|integer|in:0,1,2', 'network' => 'required|string', 'network_settings' => 'nullable|array'],
+            self::getTlsSettingsValidationRules(true),
             self::getRealityValidationRules(),
             self::getMultiplexValidationRules(),
             self::getUtlsValidationRules(),

@@ -221,9 +221,44 @@ class Server extends Model
         return $result;
     }
 
+    /**
+     * Trojan 早期版本把 server_name / allow_insecure 放在 protocol_settings 根级，
+     * 现统一为 tls_settings.*。此处回填旧数据，防止历史节点订阅丢失 SNI。
+     */
+    private static function normalizeTrojanTlsSettings(array $settings): array
+    {
+        $tlsSettings = $settings['tls_settings'] ?? null;
+        if (!is_array($tlsSettings)) {
+            $tlsSettings = [];
+        }
+
+        $tlsServerName = $tlsSettings['server_name'] ?? null;
+        if ($tlsServerName === null || $tlsServerName === '') {
+            $legacyServerName = $settings['server_name'] ?? null;
+            if ($legacyServerName !== null && $legacyServerName !== '') {
+                $tlsSettings['server_name'] = $legacyServerName;
+            }
+        }
+
+        if (!array_key_exists('allow_insecure', $tlsSettings) || $tlsSettings['allow_insecure'] === null) {
+            if (array_key_exists('allow_insecure', $settings)) {
+                $tlsSettings['allow_insecure'] = (bool) $settings['allow_insecure'];
+            }
+        }
+
+        if ($tlsSettings !== []) {
+            $settings['tls_settings'] = $tlsSettings;
+        }
+
+        return $settings;
+    }
+
     public function getProtocolSettingsAttribute($value)
     {
         $settings = json_decode($value, true) ?? [];
+        if ($this->type === 'trojan') {
+            $settings = self::normalizeTrojanTlsSettings($settings);
+        }
         $configs = self::getProtocolConfigurations()[$this->type] ?? [];
         return $this->castSettingsWithConfig($settings, $configs);
     }
@@ -233,9 +268,14 @@ class Server extends Model
         if (is_string($value)) {
             $value = json_decode($value, true);
         }
+        $value ??= [];
+        if ($this->type === 'trojan') {
+            // 兼容旧版根级 server_name/allow_insecure，保存时一并迁移进 tls_settings
+            $value = self::normalizeTrojanTlsSettings($value);
+        }
 
         $configs = self::getProtocolConfigurations()[$this->type] ?? [];
-        $castedSettings = $this->castSettingsWithConfig($value ?? [], $configs);
+        $castedSettings = $this->castSettingsWithConfig($value, $configs);
 
         // 保存时规范化 REALITY 密钥为 RawURL Base64，与 Xray/mihomo 一致
         if (!empty($castedSettings['reality_settings']) && is_array($castedSettings['reality_settings'])) {

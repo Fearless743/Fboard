@@ -99,6 +99,52 @@ class NodeConfigBuildersTest extends TestCase
         $this->assertSame('reality.example.com', $config['tls_settings']['server_name'] ?? null);
     }
 
+    public function test_trojan_standard_tls_uses_tls_settings(): void
+    {
+        $node = $this->server('trojan', [
+            'tls' => 1,
+            'network' => 'ws',
+            'network_settings' => ['path' => '/ws', 'headers' => ['Host' => 'cdn.example.com']],
+            'tls_settings' => [
+                'server_name' => 'sni.example.com',
+                'allow_insecure' => true,
+                'alpn' => ['h2', 'http/1.1'],
+            ],
+            'multiplex' => ['enabled' => false],
+        ]);
+
+        $config = NodeConfigBuilders::trojan($node, $this->baseConfig('trojan'));
+
+        $this->assertSame(1, $config['tls']);
+        $this->assertSame('example.com', $config['host']);
+        $this->assertSame('sni.example.com', $config['server_name']);
+        $this->assertSame('sni.example.com', $config['tls_settings']['server_name'] ?? null);
+        $this->assertTrue($config['tls_settings']['allow_insecure'] ?? null);
+    }
+
+    public function test_trojan_reality_uses_normalized_reality_settings(): void
+    {
+        $node = $this->server('trojan', [
+            'tls' => 2,
+            'network' => 'tcp',
+            'tls_settings' => ['server_name' => 'ignored.example.com'],
+            'reality_settings' => [
+                'server_name' => 'reality.example.com',
+                'public_key' => 'pk',
+                'private_key' => 'sk',
+                'short_id' => 'abcd',
+            ],
+            'multiplex' => null,
+        ]);
+
+        $config = NodeConfigBuilders::trojan($node, $this->baseConfig('trojan'));
+
+        $this->assertSame(2, $config['tls']);
+        $this->assertSame('reality.example.com', $config['tls_settings']['server_name'] ?? null);
+        $this->assertSame('pk', $config['tls_settings']['public_key'] ?? null);
+        $this->assertSame('abcd', $config['tls_settings']['short_id'] ?? null);
+    }
+
     public function test_hysteria_listen_ports_for_range(): void
     {
         $node = $this->server('hysteria', [

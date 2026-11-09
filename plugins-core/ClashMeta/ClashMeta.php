@@ -612,6 +612,25 @@ class ClashMeta extends AbstractProtocol
                 if ($host = data_get($protocol_settings, 'network_settings.host'))
                     $array['ws-opts']['headers'] = ['Host' => $host];
                 break;
+            case 'xhttp':
+                $array['network'] = 'xhttp';
+                $xhttpOpts = [];
+                if ($path = data_get($protocol_settings, 'network_settings.path'))
+                    $xhttpOpts['path'] = $path;
+                if ($host = data_get($protocol_settings, 'network_settings.host'))
+                    $xhttpOpts['host'] = $host;
+                if ($mode = data_get($protocol_settings, 'network_settings.mode'))
+                    $xhttpOpts['mode'] = $mode;
+                foreach (['downloadSettings', 'download-settings', 'download_settings'] as $dsKey) {
+                    $ds = data_get($protocol_settings, 'network_settings.' . $dsKey);
+                    if (is_array($ds) && !empty($ds)) {
+                        $xhttpOpts['download-settings'] = $ds;
+                        break;
+                    }
+                }
+                if (!empty($xhttpOpts))
+                    $array['xhttp-opts'] = $xhttpOpts;
+                break;
             default:
                 $array['network'] = 'tcp';
                 break;

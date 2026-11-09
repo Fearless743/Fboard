@@ -812,7 +812,16 @@ class ClashMeta extends AbstractProtocol
         $httpmask = [
             'disable' => (bool) data_get($protocol_settings, 'httpmask.disable', false),
             'mode' => data_get($protocol_settings, 'httpmask.mode', 'legacy'),
+            // CF 转发：默认启用 TLS，并把 Host/SNI 指向 CF 域名
+            'tls' => (bool) (data_get($protocol_settings, 'httpmask.tls') ?? true),
         ];
+        $host = data_get($protocol_settings, 'httpmask.host');
+        if (!$host) {
+            $host = data_get($server, 'host');
+        }
+        if ($host) {
+            $httpmask['host'] = $host;
+        }
         // mihomo 仅允许单段 [A-Za-z0-9_-]；非法值省略，避免订阅导入报
         // invalid http-mask-path-root: contains invalid character '.'
         $pathRoot = SudokuKey::normalizeHttpMaskPathRoot(

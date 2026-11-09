@@ -247,6 +247,8 @@ class NodeConfigBuilders
                 'handshake_timeout' => data_get($protocolSettings, 'handshake_timeout', 5),
                 'disable_http_mask' => (bool) data_get($protocolSettings, 'httpmask.disable', false),
                 'http_mask_mode' => data_get($protocolSettings, 'httpmask.mode', 'legacy'),
+                'http_mask_tls' => data_get($protocolSettings, 'httpmask.tls'),
+                'http_mask_host' => data_get($protocolSettings, 'httpmask.host'),
                 'path_root' => SudokuKey::normalizeHttpMaskPathRoot(
                     data_get($protocolSettings, 'httpmask.path_root')
                 ),

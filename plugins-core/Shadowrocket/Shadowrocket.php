@@ -26,7 +26,7 @@ class Shadowrocket extends AbstractProtocol
         'shadowrocket.hysteria.protocol_settings.version' => [2 => '1993'],
         'shadowrocket.anytls.base_version' => '2592',
         'shadowrocket.trojan.protocol_settings.network' => [
-            'whitelist' => ['tcp', 'ws', 'grpc', 'h2', 'httpupgrade'],
+            'whitelist' => ['tcp', 'ws', 'grpc', 'h2', 'httpupgrade', 'xhttp'],
             'strict' => true,
         ],
     ];

@@ -206,7 +206,7 @@ class NodeConfigBuilders
             ...$baseConfig,
             'server_port' => (int) $node->server_port,
             'transport' => data_get($protocolSettings, 'transport', 'TCP'),
-            'traffic_pattern' => $protocolSettings['traffic_pattern'],
+            'traffic_pattern' => data_get($protocolSettings, 'traffic_pattern'),
             'multiplex' => data_get($protocolSettings, 'multiplex'),
             'multiplexing' => data_get($protocolSettings, 'multiplexing'),
         ];

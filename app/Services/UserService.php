@@ -248,6 +248,9 @@ class UserService
      */
     public function assignPlan(User $user, Plan $plan, int $validityDays): User
     {
+        // 兑换/发放新套餐等同于新购：清零旧周期已用流量，避免新套餐继承旧用量。
+        app(TrafficResetService::class)->performReset($user, \App\Models\TrafficResetLog::SOURCE_GIFT_CARD);
+
         $user->plan_id = $plan->id;
         $user->group_id = $plan->group_id;
         $user->transfer_enable = $plan->transfer_enable * 1073741824;

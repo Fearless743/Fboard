@@ -37,6 +37,7 @@ class ShadowrocketSudokuTest extends TestCase
             'host' => 'cf.999311.xyz',
             'port' => 443,
             'protocol_settings' => [
+                'advanced' => true,
                 'aead_method' => 'chacha20-poly1305',
                 'padding_min' => 5,
                 'padding_max' => 15,
@@ -78,6 +79,7 @@ class ShadowrocketSudokuTest extends TestCase
             'host' => 'example.com',
             'port' => 8443,
             'protocol_settings' => [
+                'advanced' => true,
                 'httpmask' => [
                     'disable' => true,
                     'path_root' => '/aabbcc/',
@@ -118,5 +120,38 @@ class ShadowrocketSudokuTest extends TestCase
 
         $parsed = $this->parse(Shadowrocket::buildSudoku('key-hex', $server));
         $this->assertArrayNotHasKey('path-root', $parsed['obfsParam']['httpmask']);
+    }
+
+    public function test_advanced_disabled_omits_advanced_fields(): void
+    {
+        $server = [
+            'name' => 'n',
+            'host' => 'example.com',
+            'port' => 443,
+            'protocol_settings' => [
+                // 即便残留模板默认值，未开高级模式也不下发
+                'padding_min' => 5,
+                'padding_max' => 15,
+                'table_type' => 'prefer_entropy',
+                'enable_pure_downlink' => true,
+                'custom_table' => 'xpxvvpvv',
+                'custom_tables' => ['xpxvvpvv'],
+                'handshake_timeout' => 5,
+                'httpmask' => ['mode' => 'ws'],
+                'multiplex' => 'auto',
+            ],
+        ];
+
+        $parsed = $this->parse(Shadowrocket::buildSudoku('key-hex', $server));
+        $obfs = $parsed['obfsParam'];
+        $this->assertArrayNotHasKey('padding-min', $obfs);
+        $this->assertArrayNotHasKey('padding-max', $obfs);
+        $this->assertArrayNotHasKey('table-type', $obfs);
+        $this->assertArrayNotHasKey('enable-pure-downlink', $obfs);
+        $this->assertArrayNotHasKey('custom-table', $obfs);
+        $this->assertArrayNotHasKey('custom-tables', $obfs);
+        // 非高级字段仍下发
+        $this->assertSame('auto', $obfs['multiplex']);
+        $this->assertSame('ws', $obfs['httpmask']['mode']);
     }
 }

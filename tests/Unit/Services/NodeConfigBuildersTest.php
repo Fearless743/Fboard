@@ -202,6 +202,57 @@ class NodeConfigBuildersTest extends TestCase
         $this->assertSame('auto', $config['sudoku_config']['multiplex']);
     }
 
+    public function test_sudoku_advanced_disabled_omits_advanced_fields(): void
+    {
+        $node = $this->server('sudoku', [
+            'master_public_key' => 'pub-key',
+            'aead_method' => 'aes-128-gcm',
+            // 模板残留默认值，未开高级模式也不应下发
+            'padding_min' => 5,
+            'padding_max' => 15,
+            'table_type' => 'prefer_entropy',
+            'enable_pure_downlink' => true,
+            'custom_table' => 'xpxvvpvv',
+            'custom_tables' => ['xpxvvpvv'],
+            'handshake_timeout' => 5,
+            'httpmask' => ['mode' => 'stream'],
+            'multiplex' => 'auto',
+        ]);
+
+        $config = NodeConfigBuilders::sudoku($node, $this->baseConfig('sudoku'));
+
+        foreach (['padding_min', 'padding_max', 'table_type', 'enable_pure_downlink', 'custom_table', 'custom_tables', 'handshake_timeout'] as $key) {
+            $this->assertArrayNotHasKey($key, $config['sudoku_config']);
+        }
+        $this->assertSame('aes-128-gcm', $config['sudoku_config']['aead_method']);
+        $this->assertSame('auto', $config['sudoku_config']['multiplex']);
+    }
+
+    public function test_sudoku_advanced_enabled_includes_advanced_fields(): void
+    {
+        $node = $this->server('sudoku', [
+            'advanced' => true,
+            'master_public_key' => 'pub-key',
+            'padding_min' => 3,
+            'padding_max' => 12,
+            'table_type' => 'prefer_ascii',
+            'enable_pure_downlink' => false,
+            'custom_table' => 'xpxvvpvv',
+            'custom_tables' => ['xpxvvpvv'],
+            'handshake_timeout' => 7,
+        ]);
+
+        $config = NodeConfigBuilders::sudoku($node, $this->baseConfig('sudoku'));
+
+        $this->assertSame(3, $config['sudoku_config']['padding_min']);
+        $this->assertSame(12, $config['sudoku_config']['padding_max']);
+        $this->assertSame('prefer_ascii', $config['sudoku_config']['table_type']);
+        $this->assertFalse($config['sudoku_config']['enable_pure_downlink']);
+        $this->assertSame('xpxvvpvv', $config['sudoku_config']['custom_table']);
+        $this->assertSame(['xpxvvpvv'], $config['sudoku_config']['custom_tables']);
+        $this->assertSame(7, $config['sudoku_config']['handshake_timeout']);
+    }
+
     public function test_shadowquic_defaults(): void
     {
         $node = $this->server('shadowquic', [

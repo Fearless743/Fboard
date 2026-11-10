@@ -801,6 +801,8 @@ class ClashMeta extends AbstractProtocol
     public static function buildSudoku($password, $server)
     {
         $protocol_settings = data_get($server, 'protocol_settings', []);
+        // 未开启高级模式时不下发高级参数，由客户端默认值接管
+        $advanced = (bool) data_get($protocol_settings, 'advanced', false);
         $array = [
             'name' => $server['name'],
             'type' => 'sudoku',
@@ -808,18 +810,20 @@ class ClashMeta extends AbstractProtocol
             'port' => $server['port'],
             'key' => $password,
             'aead-method' => data_get($protocol_settings, 'aead_method', 'chacha20-poly1305'),
-            'padding-min' => (int) data_get($protocol_settings, 'padding_min', 5),
-            'padding-max' => (int) data_get($protocol_settings, 'padding_max', 15),
-            'table-type' => data_get($protocol_settings, 'table_type', 'prefer_entropy'),
-            'enable-pure-downlink' => (bool) data_get($protocol_settings, 'enable_pure_downlink', true),
         ];
 
-        if ($custom = data_get($protocol_settings, 'custom_table')) {
-            $array['custom-table'] = $custom;
-        }
-        if ($customs = data_get($protocol_settings, 'custom_tables')) {
-            if (is_array($customs) && count($customs) > 0) {
-                $array['custom-tables'] = array_values($customs);
+        if ($advanced) {
+            $array['padding-min'] = (int) data_get($protocol_settings, 'padding_min', 5);
+            $array['padding-max'] = (int) data_get($protocol_settings, 'padding_max', 15);
+            $array['table-type'] = data_get($protocol_settings, 'table_type', 'prefer_entropy');
+            $array['enable-pure-downlink'] = (bool) data_get($protocol_settings, 'enable_pure_downlink', true);
+            if ($custom = data_get($protocol_settings, 'custom_table')) {
+                $array['custom-table'] = $custom;
+            }
+            if ($customs = data_get($protocol_settings, 'custom_tables')) {
+                if (is_array($customs) && count($customs) > 0) {
+                    $array['custom-tables'] = array_values($customs);
+                }
             }
         }
         if ($mux = data_get($protocol_settings, 'multiplex')) {

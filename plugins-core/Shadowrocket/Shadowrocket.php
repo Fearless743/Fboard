@@ -526,19 +526,23 @@ class Shadowrocket extends AbstractProtocol
             $httpmask['path-root'] = '/' . $pathRoot;
         }
 
+        // 未开启高级模式时不下发高级参数，由客户端默认值接管
+        $advanced = (bool) data_get($protocol_settings, 'advanced', false);
         $obfsParam = [
-            'padding-min' => (int) data_get($protocol_settings, 'padding_min', 5),
-            'table-type' => data_get($protocol_settings, 'table_type', 'prefer_entropy') ?: 'prefer_entropy',
-            'enable-pure-downlink' => (bool) data_get($protocol_settings, 'enable_pure_downlink', true),
-            'padding-max' => (int) data_get($protocol_settings, 'padding_max', 15),
             'httpmask' => $httpmask,
         ];
-        if ($custom = data_get($protocol_settings, 'custom_table')) {
-            $obfsParam['custom-table'] = $custom;
-        }
-        if ($customs = data_get($protocol_settings, 'custom_tables')) {
-            if (is_array($customs) && count($customs) > 0) {
-                $obfsParam['custom-tables'] = array_values($customs);
+        if ($advanced) {
+            $obfsParam['padding-min'] = (int) data_get($protocol_settings, 'padding_min', 5);
+            $obfsParam['table-type'] = data_get($protocol_settings, 'table_type', 'prefer_entropy') ?: 'prefer_entropy';
+            $obfsParam['enable-pure-downlink'] = (bool) data_get($protocol_settings, 'enable_pure_downlink', true);
+            $obfsParam['padding-max'] = (int) data_get($protocol_settings, 'padding_max', 15);
+            if ($custom = data_get($protocol_settings, 'custom_table')) {
+                $obfsParam['custom-table'] = $custom;
+            }
+            if ($customs = data_get($protocol_settings, 'custom_tables')) {
+                if (is_array($customs) && count($customs) > 0) {
+                    $obfsParam['custom-tables'] = array_values($customs);
+                }
             }
         }
         $mux = data_get($protocol_settings, 'multiplex');

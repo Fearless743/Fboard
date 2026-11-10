@@ -231,13 +231,24 @@ class NodeConfigBuilders
     public static function sudoku(Server $node, array $baseConfig): array
     {
         $protocolSettings = $node->protocol_settings;
+        // 未开启高级模式时不下发高级参数，由 Xray/内核侧默认值接管
+        $advanced = (bool) data_get($protocolSettings, 'advanced', false);
 
-        return [
-            ...$baseConfig,
-            'server_port' => (int) $node->server_port,
-            'server_key' => data_get($protocolSettings, 'master_public_key'),
-            'sudoku_config' => [
-                'aead_method' => data_get($protocolSettings, 'aead_method', 'chacha20-poly1305'),
+        $sudokuConfig = [
+            'aead_method' => data_get($protocolSettings, 'aead_method', 'chacha20-poly1305'),
+            'disable_http_mask' => (bool) data_get($protocolSettings, 'httpmask.disable', false),
+            'http_mask_mode' => data_get($protocolSettings, 'httpmask.mode', 'legacy'),
+            'http_mask_tls' => data_get($protocolSettings, 'httpmask.tls'),
+            'http_mask_host' => data_get($protocolSettings, 'httpmask.host'),
+            'path_root' => SudokuKey::normalizeHttpMaskPathRoot(
+                data_get($protocolSettings, 'httpmask.path_root')
+            ),
+            'fallback' => data_get($protocolSettings, 'fallback'),
+            'multiplex' => self::mapMultiplexString(data_get($protocolSettings, 'multiplex', 'off')),
+        ];
+
+        if ($advanced) {
+            $sudokuConfig += [
                 'padding_min' => data_get($protocolSettings, 'padding_min', 5),
                 'padding_max' => data_get($protocolSettings, 'padding_max', 15),
                 'table_type' => data_get($protocolSettings, 'table_type', 'prefer_entropy'),
@@ -245,16 +256,14 @@ class NodeConfigBuilders
                 'custom_table' => data_get($protocolSettings, 'custom_table'),
                 'custom_tables' => data_get($protocolSettings, 'custom_tables', []),
                 'handshake_timeout' => data_get($protocolSettings, 'handshake_timeout', 5),
-                'disable_http_mask' => (bool) data_get($protocolSettings, 'httpmask.disable', false),
-                'http_mask_mode' => data_get($protocolSettings, 'httpmask.mode', 'legacy'),
-                'http_mask_tls' => data_get($protocolSettings, 'httpmask.tls'),
-                'http_mask_host' => data_get($protocolSettings, 'httpmask.host'),
-                'path_root' => SudokuKey::normalizeHttpMaskPathRoot(
-                    data_get($protocolSettings, 'httpmask.path_root')
-                ),
-                'fallback' => data_get($protocolSettings, 'fallback'),
-                'multiplex' => self::mapMultiplexString(data_get($protocolSettings, 'multiplex', 'off')),
-            ],
+            ];
+        }
+
+        return [
+            ...$baseConfig,
+            'server_port' => (int) $node->server_port,
+            'server_key' => data_get($protocolSettings, 'master_public_key'),
+            'sudoku_config' => $sudokuConfig,
         ];
     }
 

@@ -4,6 +4,7 @@ namespace App\Observers;
 
 use App\Models\Server;
 use App\Services\NodeSyncService;
+use Illuminate\Support\Facades\Cache;
 
 class ServerObserver
 {
@@ -44,7 +45,10 @@ class ServerObserver
 
     public function deleted(Server $server): void
     {
-        $this->notifyMachineChange(null, $server->getOriginal('machine_id') ?: $server->machine_id);
+        $oldMachineId = $server->getOriginal('machine_id') ?: $server->machine_id;
+        // Stop treating the removed node as live so it is not kept loading.
+        Cache::forget("node_ws_alive:{$server->id}");
+        $this->notifyMachineChange(null, $oldMachineId);
     }
 
     private function notifyMachineChange(?int $newMachineId, ?int $oldMachineId): void

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Facades\Cache;
 use Workerman\Connection\TcpConnection;
 
 /**
@@ -104,6 +105,9 @@ class NodeRegistry
         // Remove nodes no longer on this machine
         foreach (array_diff($oldNodeIds, $newNodeIds) as $removedId) {
             self::remove($removedId, $conn);
+            // Drop stale online cache so the panel stops treating the removed
+            // (possibly deleted) node as live and keeps serving/loading it.
+            Cache::forget("node_ws_alive:{$removedId}");
         }
 
         // Add newly assigned nodes (via add() to close any stale standalone connection)

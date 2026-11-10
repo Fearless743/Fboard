@@ -272,9 +272,14 @@ class MachineController extends Controller
         $machine = ServerMachine::find($params['id']);
         $machineId = $machine->id;
 
+        $affectedNodeIds = Server::where('machine_id', $machineId)->pluck('id');
         // Detach nodes first (sets machine_id = null), then delete and notify
         Server::where('machine_id', $machineId)->update(['machine_id' => null]);
         $machine->delete();
+
+        foreach ($affectedNodeIds as $nid) {
+            Cache::forget("node_ws_alive:{$nid}");
+        }
 
         // Notify with empty node list so WS process cleans up registry
         NodeSyncService::notifyMachineNodesChanged($machineId);
@@ -420,6 +425,7 @@ class MachineController extends Controller
         $server->machine_id = null;
         $server->save();
 
+        Cache::forget("node_ws_alive:{$server->id}");
         NodeSyncService::notifyMachineNodesChanged($machineId);
 
         return $this->success(true);

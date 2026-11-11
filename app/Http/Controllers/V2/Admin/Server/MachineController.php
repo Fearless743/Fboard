@@ -701,6 +701,41 @@ class MachineController extends Controller
     }
 
     /**
+     * 查询机器远程运维回执（sync.upgrade / sync.kernel 等的 op.ack）。
+     * 前端单机升级后轮询此接口确认节点是否真正执行成功。
+     */
+    public function opsAck(Request $request)
+    {
+        $params = $request->validate([
+            'id' => 'required|integer|exists:v2_server_machine,id',
+            'op' => 'nullable|string|max:32',
+        ]);
+
+        $machineId = (int) $params['id'];
+        $op = isset($params['op']) ? strtolower(trim((string) $params['op'])) : '';
+
+        $acks = [];
+        if ($op !== '') {
+            $payload = Cache::get("op_ack:{$machineId}:{$op}");
+            if (is_array($payload)) {
+                $acks[$op] = $payload;
+            }
+        } else {
+            foreach (['upgrade', 'restart', 'kernel.stop', 'kernel.start', 'kernel.reload', 'kernel.restart'] as $candidate) {
+                $payload = Cache::get("op_ack:{$machineId}:{$candidate}");
+                if (is_array($payload)) {
+                    $acks[$candidate] = $payload;
+                }
+            }
+        }
+
+        return $this->success([
+            'machine_id' => $machineId,
+            'acks' => $acks,
+        ]);
+    }
+
+    /**
      * 查找可接收机器级运维命令的机器。
      * 机器级操作不依赖节点数量，机器本身就是升级/内核运维目标。
      */

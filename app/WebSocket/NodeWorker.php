@@ -8,6 +8,7 @@ use App\Services\DeviceStateService;
 use App\Services\NodeRegistry;
 use App\Services\ServerService;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
 use Workerman\Connection\TcpConnection;
 use Workerman\Timer;
@@ -29,6 +30,7 @@ class NodeWorker
     private array $handlers = [
         'pong' => [NodeEventHandlers::class, 'handlePong'],
         'node.status' => [NodeEventHandlers::class, 'handleNodeStatus'],
+        'machine.status' => [NodeEventHandlers::class, 'handleMachineStatus'],
         'report.devices' => [NodeEventHandlers::class, 'handleDeviceReport'],
         'request.devices' => [NodeEventHandlers::class, 'handleDeviceRequest'],
         'report.logs' => [NodeEventHandlers::class, 'handleReportLogs'],
@@ -265,6 +267,14 @@ class NodeWorker
             'data' => [
                 'machine_id' => $machineId,
                 'node_ids' => $nodeIds,
+                'nodes' => $nodes->map(fn($node) => [
+                    'id' => (int) $node->id,
+                    'type' => (string) $node->type,
+                    'name' => (string) $node->name,
+                ])->values()->all(),
+                'base_config' => [
+                    'push_interval' => (int) admin_setting('server_push_interval', 60),
+                ],
             ],
         ]));
 
@@ -302,7 +312,7 @@ class NodeWorker
                     if (!Cache::has($cacheKey)) {
                         Cache::put($cacheKey, time(), self::HEARTBEAT_DB_WRITE_MIN_INTERVAL);
                         try {
-                            \DB::table('v2_server_machine')
+                            DB::table('v2_server_machine')
                                 ->where('id', $machineId)
                                 ->update(['last_seen_at' => time()]);
                         } catch (\Throwable $e) {
@@ -316,7 +326,7 @@ class NodeWorker
             }
 
             // Machine-level events (no node_id), e.g. report.logs
-            if ($event === 'report.logs' || $event === 'op.ack') {
+            if ($event === 'report.logs' || $event === 'op.ack' || $event === 'machine.status') {
                 $handler = $this->handlers[$event] ?? null;
                 if ($handler) {
                     $handler($conn, 0, $msg['data'] ?? []);

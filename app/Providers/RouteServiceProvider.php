@@ -33,18 +33,6 @@ class RouteServiceProvider extends ServiceProvider
         RateLimiter::for('auth', function (Request $request) {
             return Limit::perMinute(30)->by($request->ip());
         });
-
-        // 节点/机器轮询接口按节点或机器维度限流，避免同一出口 IP 下多节点共享桶导致 "Too Many Attempts."
-        RateLimiter::for('server', function (Request $request) {
-            if ($request->filled('node_id')) {
-                $key = 'node:' . $request->input('node_id');
-            } elseif ($request->filled('machine_id')) {
-                $key = 'machine:' . $request->input('machine_id');
-            } else {
-                $key = 'ip:' . $request->ip();
-            }
-            return Limit::perMinute(60)->by($key);
-        });
     }
 
     /**

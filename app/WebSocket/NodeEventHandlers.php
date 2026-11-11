@@ -3,6 +3,8 @@
 namespace App\WebSocket;
 
 use App\Models\Server;
+use App\Models\ServerMachine;
+use App\Models\ServerMachineLoadHistory;
 use App\Services\DeviceStateService;
 use App\Services\NodeRegistry;
 use App\Services\ServerService;
@@ -22,7 +24,20 @@ class NodeEventHandlers
     }
 
     /**
-     * Handle node status update
+     * Handle node status update (WS-only report channel).
+     *
+     * Payload (sent by fboard-node as `node.status`):
+     *   {
+     *     node_id: int,
+     *     traffic: {uid: [up, down]},
+     *     alive:   {uid: [ips]},
+     *     online:  {uid: connCount},
+     *     status:  {cpu, mem:{total,used}, swap:{...}, disk:{...}},
+     *     metrics: {...}
+     *   }
+     * All keys except node_id are optional; missing sections are skipped.
+     * For backward compat, a flat metrics map without the `metrics` wrapper
+     * is still accepted as metrics.
      */
     public static function handleNodeStatus(TcpConnection $conn, int $nodeId, array $data): void
     {
@@ -31,9 +46,137 @@ class NodeEventHandlers
 
         $nodeType = strtoupper($node->type);
         Cache::put(CacheKey::get('SERVER_' . $nodeType . '_LAST_CHECK_AT', $nodeId), time(), 3600);
-        ServerService::updateMetrics($node, $data);
+        ServerService::touchNode($node);
+
+        $traffic = $data['traffic'] ?? null;
+        if (is_array($traffic) && !empty($traffic)) {
+            ServerService::processTraffic($node, $traffic);
+        }
+
+        $alive = $data['alive'] ?? null;
+        if (is_array($alive) && !empty($alive)) {
+            ServerService::processAlive($nodeId, $alive);
+        }
+
+        $online = $data['online'] ?? null;
+        if (is_array($online)) {
+            ServerService::processOnline($node, $online);
+        }
+
+        $status = $data['status'] ?? null;
+        if (is_array($status) && !empty($status)) {
+            ServerService::processStatus($node, $status);
+        }
+
+        $metrics = $data['metrics'] ?? null;
+        if (is_array($metrics) && !empty($metrics)) {
+            ServerService::updateMetrics($node, $metrics);
+        } elseif (!isset($data['traffic'], $data['alive'], $data['online'], $data['status'], $data['metrics'])) {
+            // Legacy flat payload: whole data is the metrics map.
+            ServerService::updateMetrics($node, $data);
+        }
 
         WsLog::debug("[WS] Node#{$nodeId} status updated");
+    }
+
+    /**
+     * Handle machine status update (WS-only, replaces POST /api/v2/server/machine/status).
+     *
+     * Payload: {cpu, mem:{total,used}, swap, disk, net:{in_speed,out_speed}, version, kernel}
+     */
+    public static function handleMachineStatus(TcpConnection $conn, int $nodeId, array $data): void
+    {
+        $machineId = (int) ($conn->machineId ?? 0);
+        if ($machineId <= 0) {
+            return;
+        }
+
+        $machine = ServerMachine::find($machineId);
+        if (!$machine || !$machine->is_active) {
+            return;
+        }
+
+        if (!isset($data['cpu']) || !is_numeric($data['cpu'])) {
+            return;
+        }
+        $mem = $data['mem'] ?? null;
+        if (!is_array($mem)) {
+            return;
+        }
+
+        $recordedAt = time();
+        $loadStatus = [
+            'cpu' => (float) $data['cpu'],
+            'mem' => [
+                'total' => (int) ($mem['total'] ?? 0),
+                'used' => (int) ($mem['used'] ?? 0),
+            ],
+            'swap' => [
+                'total' => (int) ($data['swap']['total'] ?? 0),
+                'used' => (int) ($data['swap']['used'] ?? 0),
+            ],
+            'disk' => [
+                'total' => (int) ($data['disk']['total'] ?? 0),
+                'used' => (int) ($data['disk']['used'] ?? 0),
+            ],
+            'updated_at' => $recordedAt,
+        ];
+
+        $net = $data['net'] ?? null;
+        if (is_array($net) && isset($net['in_speed'], $net['out_speed'])) {
+            $loadStatus['net'] = [
+                'in_speed' => (float) $net['in_speed'],
+                'out_speed' => (float) $net['out_speed'],
+            ];
+        }
+
+        $version = trim((string) ($data['version'] ?? ''));
+        if ($version !== '') {
+            $loadStatus['version'] = substr($version, 0, 64);
+        }
+
+        $kernel = $data['kernel'] ?? null;
+        if (is_array($kernel)) {
+            $status = (string) ($kernel['status'] ?? '');
+            if (in_array($status, ['idle', 'running', 'stopped', 'partial'], true)) {
+                $loadStatus['kernel'] = [
+                    'status' => $status,
+                    'nodes_total' => max(0, (int) ($kernel['nodes_total'] ?? 0)),
+                    'nodes_running' => max(0, (int) ($kernel['nodes_running'] ?? 0)),
+                    'nodes_desired' => max(0, (int) ($kernel['nodes_desired'] ?? 0)),
+                ];
+            }
+        }
+
+        $machine->forceFill([
+            'load_status' => $loadStatus,
+            'last_seen_at' => $recordedAt,
+        ])->save();
+
+        $historyData = [
+            'machine_id' => $machine->id,
+            'cpu' => (float) $data['cpu'],
+            'mem_total' => (int) ($mem['total'] ?? 0),
+            'mem_used' => (int) ($mem['used'] ?? 0),
+            'disk_total' => (int) ($data['disk']['total'] ?? 0),
+            'disk_used' => (int) ($data['disk']['used'] ?? 0),
+            'recorded_at' => $recordedAt,
+        ];
+        if (is_array($net) && isset($net['in_speed'], $net['out_speed'])) {
+            $historyData['net_in_speed'] = (float) $net['in_speed'];
+            $historyData['net_out_speed'] = (float) $net['out_speed'];
+        }
+
+        ServerMachineLoadHistory::create($historyData);
+
+        if (random_int(1, 20) === 1) {
+            ServerMachineLoadHistory::query()
+                ->where('machine_id', $machine->id)
+                ->where('recorded_at', '<', now()->subDay()->timestamp)
+                ->delete();
+        }
+
+        WsLog::debug("[WS] Machine#{$machineId} status updated");
     }
 
     /**

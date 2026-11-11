@@ -180,9 +180,11 @@ sh update.sh
 3. When PHP extension installation fails, check if PHP version is correct
 4. For database connection failures, check database configuration and permissions
 
-## Enable WebSocket Real-time Sync (Optional)
+## Enable WebSocket Real-time Sync (Required)
 
-WebSocket enables real-time synchronization of configurations and user changes to nodes.
+WebSocket is the only panel↔node channel: configuration, users, traffic
+reports and status all go through it. The WS server must be running and
+`/ws` must be proxied to it, otherwise nodes cannot start.
 
 ### 1. Start WS Server
 
@@ -197,7 +199,7 @@ Add a WebSocket daemon process in aaPanel Supervisor:
 
 Add the WebSocket location **before** the main `location ^~ /` block in your site's Nginx configuration:
 ```nginx
-location /ws/ {
+location = /ws {
     proxy_pass http://127.0.0.1:8076;
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
@@ -207,9 +209,11 @@ location /ws/ {
     proxy_read_timeout 60s;
 }
 ```
+> Must be `location = /ws` (exact match): the node dials exactly `/ws`,
+> which a `location /ws/` prefix block would not match.
 
 ### 3. Restart Services
 
 Restart the Octane and WS Server processes in Supervisor.
 
-> The node will automatically detect WebSocket availability during handshake. No extra configuration is needed on the node side.
+> Verify with: `curl -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: test==" https://your-panel/ws` — a working setup answers `101 Switching Protocols`, not `404`.

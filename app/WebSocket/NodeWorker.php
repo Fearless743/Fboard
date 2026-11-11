@@ -33,6 +33,7 @@ class NodeWorker
         'machine.status' => [NodeEventHandlers::class, 'handleMachineStatus'],
         'report.devices' => [NodeEventHandlers::class, 'handleDeviceReport'],
         'request.devices' => [NodeEventHandlers::class, 'handleDeviceRequest'],
+        'request.sync' => [NodeEventHandlers::class, 'handleSyncRequest'],
         'report.logs' => [NodeEventHandlers::class, 'handleReportLogs'],
         'op.ack' => [NodeEventHandlers::class, 'handleOpAck'],
     ];

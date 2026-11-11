@@ -284,6 +284,22 @@ class NodeEventHandlers
     }
 
     /**
+     * Handle explicit full-sync request from a node (WS-only re-pull).
+     * Covers nodes added via sync.nodes (panel only auto-pushes on connect)
+     * and races where the connect-time push arrived before the node was ready.
+     */
+    public static function handleSyncRequest(TcpConnection $conn, int $nodeId, array $data = []): void
+    {
+        $node = Server::find($nodeId);
+        if (!$node) return;
+
+        $target = NodeRegistry::get($nodeId) ?? $conn;
+        self::pushFullSync($target, $node);
+
+        WsLog::debug("[WS] Node#{$nodeId} requested full sync");
+    }
+
+    /**
      * Push full config + users to newly connected node
      */
     public static function pushFullSync(TcpConnection $conn, Server $node): void

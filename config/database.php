@@ -142,6 +142,9 @@ return [
             'password' => env('REDIS_PASSWORD', null),
             'port' => env('REDIS_PORT', 6379),
             'database' => env('REDIS_DB', 0),
+            // Bound the connect phase so an unreachable Redis fails fast and
+            // cannot block the single-threaded Workerman WS worker forever.
+            'timeout' => (float) env('REDIS_TIMEOUT', 2.0),
             'persistent' => true, // 开启持久连接
         ],
 
@@ -151,6 +154,7 @@ return [
             'password' => env('REDIS_PASSWORD', null),
             'port' => env('REDIS_PORT', 6379),
             'database' => env('REDIS_CACHE_DB', 1),
+            'timeout' => (float) env('REDIS_TIMEOUT', 2.0),
         ],
 
     ],

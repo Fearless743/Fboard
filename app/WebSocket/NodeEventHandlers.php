@@ -192,7 +192,7 @@ class NodeEventHandlers
             $data = $data['devices'];
         }
 
-        // Get old data
+        // Get old data (index-based, no keyspace scan)
         $oldDevices = $service->getNodeDevices($nodeId);
 
         // Calculate diff
@@ -205,16 +205,24 @@ class NodeEventHandlers
             }
         }
 
+        $affected = [];
+
         // Handle removed users
         foreach ($removedUsers as $userId => $ips) {
-            $service->removeNodeDevices($nodeId, $userId);
-            $service->notifyUpdate($userId);
+            $service->removeNodeDevices($nodeId, (int) $userId);
+            $affected[] = (int) $userId;
         }
 
-        // Handle new/updated users
+        // Handle new/updated users (online_count write-back is batched below).
+        // Previous IPs are already known from getNodeDevices(), so setDevices()
+        // can skip its HKEYS round-trip.
         foreach ($newDevices as $userId => $ips) {
-            $service->setDevices($userId, $nodeId, $ips);
+            $service->setDevices($userId, $nodeId, $ips, false, $oldDevices[$userId] ?? []);
+            $affected[] = $userId;
         }
+
+        // One bulk UPDATE instead of one per user.
+        $service->notifyUpdates($affected);
 
         // Fan-out to every online node: multi-node device limits only work when
         // peers receive the fleet-wide snapshot, not just the reporter.
@@ -248,14 +256,10 @@ class NodeEventHandlers
      */
     public static function handleDeviceRequest(TcpConnection $conn, int $nodeId, array $data = []): void
     {
-        $node = Server::find($nodeId);
-        if (!$node) return;
-
-        $users = ServerService::getAvailableUsers($node);
-        $userIds = $users->pluck('id')->toArray();
-
         $service = app(DeviceStateService::class);
-        $devices = $service->getUsersDevices($userIds);
+
+        // Fleet-wide snapshot: only users with devices, one pipeline round-trip.
+        $devices = $service->getActiveDevices();
 
         NodeRegistry::send($nodeId, 'sync.devices', [
             'users' => $devices,
@@ -265,16 +269,16 @@ class NodeEventHandlers
     }
 
     /**
-     * Push device state to node
+     * Push device state to node.
+     *
+     * $devices may be precomputed by the caller so a fan-out to N nodes costs
+     * one snapshot build instead of N × O(users) work.
      */
-    public static function pushDeviceStateToNode(int $nodeId, DeviceStateService $service): void
+    public static function pushDeviceStateToNode(int $nodeId, DeviceStateService $service, ?array $devices = null): void
     {
-        $node = Server::find($nodeId);
-        if (!$node) return;
-
-        $users = ServerService::getAvailableUsers($node);
-        $userIds = $users->pluck('id')->toArray();
-        $devices = $service->getUsersDevices($userIds);
+        if ($devices === null) {
+            $devices = $service->getActiveDevices();
+        }
 
         NodeRegistry::send($nodeId, 'sync.devices', [
             'users' => $devices

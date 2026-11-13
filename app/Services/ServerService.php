@@ -207,13 +207,17 @@ class ServerService
     public static function processAlive(int $nodeId, array $alive): void
     {
         $service = app(DeviceStateService::class);
+        $affected = [];
         foreach ($alive as $uid => $ips) {
             // 非法 uid（<=0）直接丢弃：防止脏数据写入设备状态或污染在线统计。
             if ((int) $uid <= 0) {
                 continue;
             }
-            $service->setDevices((int) $uid, $nodeId, (array) $ips);
+            // Batched online_count write-back below instead of one UPDATE/row.
+            $service->setDevices((int) $uid, $nodeId, (array) $ips, false);
+            $affected[] = (int) $uid;
         }
+        $service->notifyUpdates($affected);
 
         // Signal the WS worker to fan-out sync.devices to every online node.
         // Prefer the dedicated helper when available; fall back to the Redis

@@ -74,66 +74,100 @@ class NodeWorker
     public function onWorkerStart(Worker $worker): void
     {
         WsLog::info("[WS] Worker started, pid={$worker->id}");
-        $this->subscribeRedis();
-        $this->setupTimers();
+        $this->safely('redis subscribe', fn () => $this->subscribeRedis());
+        $this->safely('timer setup', fn () => $this->setupTimers());
+    }
+
+    /**
+     * Run a Workerman callback body without letting a transient dependency
+     * failure (Redis down, DB hiccup, …) escape. Workerman treats an exception
+     * thrown from a handshake/timer callback as fatal and calls stopAll(),
+     * which took the whole ws-server down during a Redis outage.
+     */
+    private function safely(string $where, callable $fn): void
+    {
+        try {
+            $fn();
+        } catch (\Throwable $e) {
+            WsLog::warning("[WS] {$where} failed: {$e->getMessage()}");
+        }
     }
 
     private function setupTimers(): void
     {
-        Cache::put(self::HEARTBEAT_CACHE_KEY, time(), self::HEARTBEAT_TTL);
+        $this->safely('heartbeat write', fn () => Cache::put(self::HEARTBEAT_CACHE_KEY, time(), self::HEARTBEAT_TTL));
         Timer::add(self::HEARTBEAT_INTERVAL, function () {
-            Cache::put(self::HEARTBEAT_CACHE_KEY, time(), self::HEARTBEAT_TTL);
+            $this->safely('heartbeat write', fn () => Cache::put(self::HEARTBEAT_CACHE_KEY, time(), self::HEARTBEAT_TTL));
         });
 
         Timer::add(self::PING_INTERVAL, function () {
-            $seen = [];
+            $this->safely('ping broadcast', function () {
+                $seen = [];
 
-            foreach (NodeRegistry::getConnectedNodeIds() as $nodeId) {
-                $conn = NodeRegistry::get($nodeId);
-                if ($conn) {
-                    $oid = spl_object_id($conn);
-                    if (!isset($seen[$oid])) {
-                        $seen[$oid] = true;
-                        $conn->send(json_encode(['event' => 'ping']));
+                foreach (NodeRegistry::getConnectedNodeIds() as $nodeId) {
+                    $conn = NodeRegistry::get($nodeId);
+                    if ($conn) {
+                        $oid = spl_object_id($conn);
+                        if (!isset($seen[$oid])) {
+                            $seen[$oid] = true;
+                            $conn->send(json_encode(['event' => 'ping']));
+                        }
                     }
                 }
-            }
 
-            foreach (NodeRegistry::getConnectedMachineIds() as $machineId) {
-                $conn = NodeRegistry::getMachine($machineId);
-                if ($conn) {
-                    $oid = spl_object_id($conn);
-                    if (!isset($seen[$oid])) {
-                        $seen[$oid] = true;
-                        $conn->send(json_encode(['event' => 'ping']));
+                foreach (NodeRegistry::getConnectedMachineIds() as $machineId) {
+                    $conn = NodeRegistry::getMachine($machineId);
+                    if ($conn) {
+                        $oid = spl_object_id($conn);
+                        if (!isset($seen[$oid])) {
+                            $seen[$oid] = true;
+                            $conn->send(json_encode(['event' => 'ping']));
+                        }
                     }
                 }
-            }
+            });
         });
 
         Timer::add(10, function () {
-            // HTTP alive path (Octane) cannot see NodeRegistry; it sets this flag.
-            $pushAll = (bool) Redis::get('device:push_all');
-            if ($pushAll) {
-                Redis::del('device:push_all');
-                $pendingNodeIds = NodeRegistry::getConnectedNodeIds();
-            } else {
-                $pendingNodeIds = Redis::spop('device:push_pending_nodes', 100);
-            }
-            if (empty($pendingNodeIds)) {
-                return;
-            }
-
-            // Deduplicate and always fan-out whatever is pending.
-            $pendingNodeIds = array_values(array_unique(array_map('intval', (array) $pendingNodeIds)));
-
-            $service = app(DeviceStateService::class);
-            foreach ($pendingNodeIds as $nodeId) {
-                if (NodeRegistry::get($nodeId) !== null) {
-                    NodeEventHandlers::pushDeviceStateToNode($nodeId, $service);
-                }
-            }
+            $this->safely('device push', fn () => $this->pushPendingDevices());
         });
+    }
+
+    /**
+     * Fan out sync.devices to every pending node.
+     *
+     * The fleet snapshot is built once per tick and reused for all nodes:
+     * building it per node was O(nodes × users) Redis round-trips and blocked
+     * the single-threaded worker long enough to stall WS handshakes.
+     */
+    private function pushPendingDevices(): void
+    {
+        // HTTP alive path (Octane) cannot see NodeRegistry; it sets this flag.
+        $pushAll = (bool) Redis::get('device:push_all');
+        if ($pushAll) {
+            Redis::del('device:push_all');
+            $pendingNodeIds = NodeRegistry::getConnectedNodeIds();
+        } else {
+            $pendingNodeIds = Redis::spop('device:push_pending_nodes', 100);
+        }
+        if (empty($pendingNodeIds)) {
+            return;
+        }
+
+        // Deduplicate and always fan-out whatever is pending.
+        $pendingNodeIds = array_values(array_unique(array_map('intval', (array) $pendingNodeIds)));
+
+        $service = app(DeviceStateService::class);
+        $devices = null;
+        foreach ($pendingNodeIds as $nodeId) {
+            if (NodeRegistry::get($nodeId) === null) {
+                continue;
+            }
+            if ($devices === null) {
+                $devices = $service->getActiveDevices();
+            }
+            NodeEventHandlers::pushDeviceStateToNode($nodeId, $service, $devices);
+        }
     }
 
     public function onConnect(TcpConnection $conn): void
@@ -150,24 +184,36 @@ class NodeWorker
 
     public function onWebSocketConnect(TcpConnection $conn, $httpMessage): void
     {
-        $queryString = '';
-        if (is_string($httpMessage)) {
-            $queryString = parse_url($httpMessage, PHP_URL_QUERY) ?? '';
-        } elseif ($httpMessage instanceof \Workerman\Protocols\Http\Request) {
-            $queryString = $httpMessage->queryString();
-        }
+        try {
+            $queryString = '';
+            if (is_string($httpMessage)) {
+                $queryString = parse_url($httpMessage, PHP_URL_QUERY) ?? '';
+            } elseif ($httpMessage instanceof \Workerman\Protocols\Http\Request) {
+                $queryString = $httpMessage->queryString();
+            }
 
-        parse_str($queryString, $params);
+            parse_str($queryString, $params);
 
-        if (isset($conn->authTimer)) {
-            Timer::del($conn->authTimer);
-        }
+            if (isset($conn->authTimer)) {
+                Timer::del($conn->authTimer);
+            }
 
-        // 判断认证模式
-        if (!empty($params['machine_id'])) {
-            $this->authenticateMachine($conn, $params);
-        } else {
-            $this->authenticateNode($conn, $params);
+            // 判断认证模式
+            if (!empty($params['machine_id'])) {
+                $this->authenticateMachine($conn, $params);
+            } else {
+                $this->authenticateNode($conn, $params);
+            }
+        } catch (\Throwable $e) {
+            // Never let an auth-path dependency failure (Redis/DB) bubble into
+            // Workerman: it would stopAll() the entire WS server.
+            WsLog::warning("[WS] handshake auth failed: {$e->getMessage()}");
+            $this->safely('close failed handshake', function () use ($conn) {
+                $conn->close(json_encode([
+                    'event' => 'error',
+                    'data' => ['message' => 'internal error'],
+                ]));
+            });
         }
     }
 
@@ -287,6 +333,17 @@ class NodeWorker
 
     public function onMessage(TcpConnection $conn, $data): void
     {
+        try {
+            $this->dispatchMessage($conn, $data);
+        } catch (\Throwable $e) {
+            // A Redis/DB failure while handling one message must not kill the
+            // worker (and every panel instance's WS) — log and drop the message.
+            WsLog::warning("[WS] message handler failed: {$e->getMessage()}");
+        }
+    }
+
+    private function dispatchMessage(TcpConnection $conn, $data): void
+    {
         $msg = json_decode($data, true);
         if (!is_array($msg)) {
             return;
@@ -356,6 +413,15 @@ class NodeWorker
 
     public function onClose(TcpConnection $conn): void
     {
+        try {
+            $this->cleanupConnection($conn);
+        } catch (\Throwable $e) {
+            WsLog::warning("[WS] close cleanup failed: {$e->getMessage()}");
+        }
+    }
+
+    private function cleanupConnection(TcpConnection $conn): void
+    {
         $service = app(DeviceStateService::class);
 
         // 机器模式：清理所有关联节点
@@ -366,9 +432,7 @@ class NodeWorker
                 Cache::forget("node_ws_alive:{$nodeId}");
 
                 $affectedUserIds = $service->clearAllNodeDevices($nodeId);
-                foreach ($affectedUserIds as $userId) {
-                    $service->notifyUpdate($userId);
-                }
+                $service->notifyUpdates($affectedUserIds);
             }
 
             if (!empty($conn->machineId)) {
@@ -393,9 +457,7 @@ class NodeWorker
             Cache::forget("node_ws_alive:{$nodeId}");
 
             $affectedUserIds = $service->clearAllNodeDevices($nodeId);
-            foreach ($affectedUserIds as $userId) {
-                $service->notifyUpdate($userId);
-            }
+            $service->notifyUpdates($affectedUserIds);
 
             NodeEventHandlers::markAllOnlineNodesForDevicePush();
 

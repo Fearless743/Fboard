@@ -18,8 +18,16 @@ class ProtocolDefinitionRegistry
     private bool $loaded = false;
     private bool $initializing = false;
 
+    /**
+     * 协议字段 → 订阅侧 casting 配置的派生缓存（请求级）。
+     *
+     * @var array<string, array<string, array<string, mixed>>>|null
+     */
+    private ?array $castingConfigurations = null;
+
     public function register(ProtocolDefinition $definition): void
     {
+        $this->castingConfigurations = null;
         $this->definitions[$definition->type] = $definition;
         foreach ($definition->aliases as $alias) {
             $alias = strtolower((string) $alias);
@@ -77,6 +85,39 @@ class ProtocolDefinitionRegistry
     }
 
     /**
+     * 协议字段定义转换为订阅侧 casting 配置，按请求缓存。
+     *
+     * 订阅下发会为每个节点调用一次；没有缓存时每个节点都要遍历全部协议定义。
+     *
+     * @return array<string, array<string, array<string, mixed>>>
+     */
+    public function getCastingConfigurations(): array
+    {
+        if ($this->castingConfigurations !== null) {
+            return $this->castingConfigurations;
+        }
+
+        $configs = [];
+        foreach ($this->getAll() as $type => $definition) {
+            $configs[$type] = [];
+            foreach ($definition->configFields as $key => $field) {
+                if (!isset($field['type'])) {
+                    continue;
+                }
+                $configs[$type][$key] = [
+                    'type' => $field['type'],
+                    'default' => $field['default'] ?? null,
+                ];
+                if ($field['type'] === 'object' && isset($field['fields'])) {
+                    $configs[$type][$key]['fields'] = $field['fields'];
+                }
+            }
+        }
+
+        return $this->castingConfigurations = $configs;
+    }
+
+    /**
      * 将别名规范为协议 type（小写）。未知别名原样返回小写字符串。
      */
     public function normalizeType(?string $type): ?string
@@ -122,6 +163,7 @@ class ProtocolDefinitionRegistry
         $this->definitions = [];
         $this->aliases = [];
         $this->loaded = false;
+        $this->castingConfigurations = null;
     }
 
     private function loadIfNeeded(): void

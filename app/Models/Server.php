@@ -5,8 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\App;
+use App\Support\ServerCacheBag;
 use App\Traits\HasPinyinSearch;
 use App\Utils\CacheKey;
 use App\Utils\Helper;
@@ -77,6 +77,19 @@ class Server extends Model
     public const STATUS_ONLINE = 2;
 
     public const CHECK_INTERVAL = 300; // 5 minutes in seconds
+
+    /**
+     * 节点运行状态访问器使用的缓存键后缀。
+     *
+     * 批量入口按此列表预读缓存，避免每个访问器单独回源。
+     */
+    public const CACHE_ACCESSOR_SUFFIXES = [
+        'LAST_CHECK_AT',
+        'LAST_PUSH_AT',
+        'ONLINE_USER',
+        'METRICS',
+        'LOAD_STATUS',
+    ];
 
     public static function getValidTypes(): array
     {
@@ -158,34 +171,7 @@ class Server extends Model
 
     public static function getProtocolConfigurations(): array
     {
-        $registry = app(ProtocolDefinitionRegistry::class);
-        $configs = [];
-
-        foreach ($registry->getAll() as $type => $definition) {
-            $configs[$type] = self::convertConfigFieldsToCastingFormat(
-                $definition->configFields,
-            );
-        }
-
-        return $configs;
-    }
-
-    private static function convertConfigFieldsToCastingFormat(
-        array $fields,
-    ): array {
-        $result = [];
-        foreach ($fields as $key => $field) {
-            if (isset($field["type"])) {
-                $result[$key] = [
-                    "type" => $field["type"],
-                    "default" => $field["default"] ?? null,
-                ];
-                if ($field["type"] === "object" && isset($field["fields"])) {
-                    $result[$key]["fields"] = $field["fields"];
-                }
-            }
-        }
-        return $result;
+        return app(ProtocolDefinitionRegistry::class)->getCastingConfigurations();
     }
 
     private function castValueWithConfig($value, array $config)
@@ -569,13 +555,7 @@ class Server extends Model
     protected function lastCheckAt(): Attribute
     {
         return Attribute::make(
-            get: function () {
-                $type = strtoupper($this->type);
-                $serverId = $this->parent_id ?: $this->id;
-                return Cache::get(
-                    CacheKey::get("SERVER_{$type}_LAST_CHECK_AT", $serverId),
-                );
-            },
+            get: fn () => $this->cacheAccessor('LAST_CHECK_AT'),
         );
     }
 
@@ -585,13 +565,7 @@ class Server extends Model
     protected function lastPushAt(): Attribute
     {
         return Attribute::make(
-            get: function () {
-                $type = strtoupper($this->type);
-                $serverId = $this->parent_id ?: $this->id;
-                return Cache::get(
-                    CacheKey::get("SERVER_{$type}_LAST_PUSH_AT", $serverId),
-                );
-            },
+            get: fn () => $this->cacheAccessor('LAST_PUSH_AT'),
         );
     }
 
@@ -601,13 +575,7 @@ class Server extends Model
     protected function online(): Attribute
     {
         return Attribute::make(
-            get: function () {
-                $type = strtoupper($this->type);
-                $serverId = $this->parent_id ?: $this->id;
-                return Cache::get(
-                    CacheKey::get("SERVER_{$type}_ONLINE_USER", $serverId),
-                ) ?? 0;
-            },
+            get: fn () => $this->cacheAccessor('ONLINE_USER') ?? 0,
         );
     }
 
@@ -659,13 +627,7 @@ class Server extends Model
     protected function metrics(): Attribute
     {
         return Attribute::make(
-            get: function () {
-                $type = strtoupper($this->type);
-                $serverId = $this->parent_id ?: $this->id;
-                return Cache::get(
-                    CacheKey::get("SERVER_{$type}_METRICS", $serverId),
-                );
-            },
+            get: fn () => $this->cacheAccessor('METRICS'),
         );
     }
 
@@ -700,14 +662,37 @@ class Server extends Model
     protected function loadStatus(): Attribute
     {
         return Attribute::make(
-            get: function () {
-                $type = strtoupper($this->type);
-                $serverId = $this->parent_id ?: $this->id;
-                return Cache::get(
-                    CacheKey::get("SERVER_{$type}_LOAD_STATUS", $serverId),
-                );
-            },
+            get: fn () => $this->cacheAccessor('LOAD_STATUS'),
         );
+    }
+
+    /**
+     * 缓存访问器使用的节点类型（虚拟节点合并后为父节点类型）。
+     */
+    public function cacheAccessorType(): string
+    {
+        return strtoupper((string) $this->type);
+    }
+
+    /**
+     * 缓存访问器使用的节点 ID（虚拟/子节点按父节点读取）。
+     */
+    public function cacheAccessorId(): int
+    {
+        return (int) ($this->parent_id ?: $this->id);
+    }
+
+    /**
+     * 读取节点运行状态缓存（请求内 memoize + 支持批量预读）。
+     */
+    private function cacheAccessor(string $suffix): mixed
+    {
+        $key = CacheKey::get(
+            "SERVER_{$this->cacheAccessorType()}_{$suffix}",
+            $this->cacheAccessorId(),
+        );
+
+        return app(ServerCacheBag::class)->get($key);
     }
 
     public function getCurrentRate(): float

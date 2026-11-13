@@ -7,6 +7,7 @@ use App\Models\ServerMachine;
 use App\Models\ServerRoute;
 use App\Models\User;
 use App\Services\Plugin\HookManager;
+use App\Support\ServerCacheBag;
 use App\Utils\CacheKey;
 use App\Utils\Helper;
 use App\WebSocket\NodeEventHandlers;
@@ -23,9 +24,12 @@ class ServerService
      */
     public static function getAllServers(): Collection
     {
-        $query = Server::orderBy('sort', 'ASC');
+        app(ServerCacheBag::class)->flush();
 
-        return $query->get()->append([
+        $servers = Server::orderBy('sort', 'ASC')->get();
+        self::preloadServerCache($servers);
+
+        return $servers->append([
             'last_check_at',
             'last_push_at',
             'online',
@@ -56,6 +60,8 @@ class ServerService
      */
     public static function getAvailableServers(User $user): array
     {
+        app(ServerCacheBag::class)->flush();
+
         $servers = Server::where(function ($query) use ($user) {
                 $groupId = (string) $user->group_id;
                 // 同时匹配字符串和整型两种存储形式，避免 JSON_CONTAINS 类型不匹配
@@ -71,6 +77,11 @@ class ServerService
             ->orderBy('sort', 'ASC')
             ->get()
             ->append(['last_check_at', 'last_push_at', 'online', 'is_online', 'available_status', 'cache_key', 'server_key']);
+
+        // 只有存在子/虚拟节点时才需要父节点；提前一次性加载，避免逐个懒加载（1+N）
+        if ($servers->contains(fn (Server $server) => $server->parent_id !== null)) {
+            $servers->load('parent');
+        }
 
         $servers = collect($servers)->map(function ($server) use ($user) {
             // 虚拟节点继承父节点配置（合并后会同步 appends，避免 is_online 等字段丢失）
@@ -107,9 +118,30 @@ class ServerService
             ]);
 
             return $server;
-        })->toArray();
+        });
 
-        return $servers;
+        self::preloadServerCache($servers);
+
+        return $servers->toArray();
+    }
+
+    /**
+     * 批量预读节点运行状态缓存，避免每个访问器、每个节点单独回源。
+     *
+     * @param  iterable<int, Server>  $servers
+     */
+    private static function preloadServerCache(iterable $servers): void
+    {
+        $keys = [];
+        foreach ($servers as $server) {
+            $type = $server->cacheAccessorType();
+            $serverId = $server->cacheAccessorId();
+            foreach (Server::CACHE_ACCESSOR_SUFFIXES as $suffix) {
+                $keys[] = CacheKey::get("SERVER_{$type}_{$suffix}", $serverId);
+            }
+        }
+
+        app(ServerCacheBag::class)->preload($keys);
     }
 
     /**

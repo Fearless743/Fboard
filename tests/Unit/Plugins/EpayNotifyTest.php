@@ -6,8 +6,7 @@ use Plugin\Epay\Plugin;
 use Tests\TestCase;
 
 /**
- * 易支付回调：签名合法 + TRADE_SUCCESS 时，仍须校验回调金额，
- * 否则少付即可入账。
+ * 易支付回调：签名合法 + TRADE_SUCCESS 即视为成功，不校验回调金额。
  */
 class EpayNotifyTest extends TestCase
 {
@@ -31,7 +30,7 @@ class EpayNotifyTest extends TestCase
         return md5($str);
     }
 
-    public function test_notify_accepts_matching_money_when_expected_provided(): void
+    public function test_notify_accepts_valid_signature_and_returns_trade_numbers(): void
     {
         $plugin = $this->makePlugin();
         $params = [
@@ -40,21 +39,22 @@ class EpayNotifyTest extends TestCase
             'out_trade_no' => 'ORDER-100',
             'type' => 'alipay',
             'name' => 'ORDER-100',
-            'money' => '100.00', // 100 元 = 10000 分
+            'money' => '100.00',
             'trade_status' => 'TRADE_SUCCESS',
         ];
         $params['sign'] = $this->sign($params, 'test-secret');
         $params['sign_type'] = 'MD5';
 
-        // 通过可选 expected 校验（插件接口扩展 / 控制器传入）
-        $result = $plugin->notify($params, 10000);
+        $result = $plugin->notify($params);
 
         $this->assertIsArray($result);
         $this->assertSame('ORDER-100', $result['trade_no']);
         $this->assertSame('gw-1', $result['callback_no']);
+        // 不再返回 paid_amount，避免 PaymentController 做金额比对
+        $this->assertArrayNotHasKey('paid_amount', $result);
     }
 
-    public function test_notify_rejects_underpayment_when_expected_cents_given(): void
+    public function test_notify_ignores_underpayment_amount(): void
     {
         $plugin = $this->makePlugin();
         $params = [
@@ -63,18 +63,47 @@ class EpayNotifyTest extends TestCase
             'out_trade_no' => 'ORDER-101',
             'type' => 'alipay',
             'name' => 'ORDER-101',
-            'money' => '0.01', // 少付
+            'money' => '0.01', // 少付也不再拒绝
             'trade_status' => 'TRADE_SUCCESS',
         ];
         $params['sign'] = $this->sign($params, 'test-secret');
         $params['sign_type'] = 'MD5';
 
-        $result = $plugin->notify($params, 10000);
+        $result = $plugin->notify($params);
 
-        $this->assertFalse(
-            $result,
-            '签名合法但 money 少于订单应付时必须拒绝入账'
-        );
+        $this->assertIsArray($result);
+        $this->assertSame('ORDER-101', $result['trade_no']);
+    }
+
+    public function test_notify_accepts_missing_money(): void
+    {
+        $plugin = $this->makePlugin();
+        $params = [
+            'pid' => '1000',
+            'trade_no' => 'gw-4',
+            'out_trade_no' => 'ORDER-103',
+            'trade_status' => 'TRADE_SUCCESS',
+        ];
+        $params['sign'] = $this->sign($params, 'test-secret');
+        $params['sign_type'] = 'MD5';
+
+        $this->assertIsArray($plugin->notify($params));
+    }
+
+    public function test_notify_rejects_invalid_signature(): void
+    {
+        $plugin = $this->makePlugin();
+        $params = [
+            'pid' => '1000',
+            'trade_no' => 'gw-5',
+            'out_trade_no' => 'ORDER-104',
+            'money' => '100.00',
+            'trade_status' => 'TRADE_SUCCESS',
+            'sign' => 'bad-sign',
+            'sign_type' => 'MD5',
+        ];
+
+        $this->assertFalse($plugin->notify($params));
     }
 
     public function test_notify_rejects_non_success_status(): void
@@ -90,6 +119,6 @@ class EpayNotifyTest extends TestCase
         $params['sign'] = $this->sign($params, 'test-secret');
         $params['sign_type'] = 'MD5';
 
-        $this->assertFalse($plugin->notify($params, 10000));
+        $this->assertFalse($plugin->notify($params));
     }
 }

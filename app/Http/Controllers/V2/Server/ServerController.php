@@ -46,32 +46,56 @@ class ServerController extends Controller
     {
         $node = $request->attributes->get('node_info');
 
-        ServerService::touchNode($node);
-
-        $traffic = $request->input('traffic');
-        if (is_array($traffic) && !empty($traffic)) {
-            ServerService::processTraffic($node, $traffic);
+        // Idempotent traffic accounting: a node retries the same report when
+        // the HTTP response is lost. Without this key the retry would count
+        // the same traffic twice and could push users over quota early.
+        $reportId = trim((string) $request->input('report_id', ''));
+        $reportKey = null;
+        if ($reportId !== '') {
+            if (!preg_match('/^[A-Za-z0-9_.:-]{1,64}$/', $reportId)) {
+                abort(422, 'Invalid report_id');
+            }
+            $reportKey = "server_report:{$node->id}:{$reportId}";
+            // Cache::add is atomic: the first request wins, duplicates skip.
+            if (!Cache::add($reportKey, 1, 3600)) {
+                return response()->json(['data' => true, 'duplicate' => true]);
+            }
         }
 
-        $alive = $request->input('alive');
-        if (is_array($alive) && !empty($alive)) {
-            ServerService::processAlive($node->id, $alive);
-        }
+        try {
+            ServerService::touchNode($node);
 
-        // online 允许空数组：表示当前无在线用户，需清零 ONLINE_USER
-        $online = $request->input('online');
-        if (is_array($online)) {
-            ServerService::processOnline($node, $online);
-        }
+            $traffic = $request->input('traffic');
+            if (is_array($traffic) && !empty($traffic)) {
+                ServerService::processTraffic($node, $traffic);
+            }
 
-        $status = $request->input('status');
-        if (is_array($status) && !empty($status)) {
-            ServerService::processStatus($node, $status);
-        }
+            $alive = $request->input('alive');
+            if (is_array($alive) && !empty($alive)) {
+                ServerService::processAlive($node->id, $alive);
+            }
 
-        $metrics = $request->input('metrics');
-        if (is_array($metrics) && !empty($metrics)) {
-            ServerService::updateMetrics($node, $metrics);
+            // online 允许空数组：表示当前无在线用户，需清零 ONLINE_USER
+            $online = $request->input('online');
+            if (is_array($online)) {
+                ServerService::processOnline($node, $online);
+            }
+
+            $status = $request->input('status');
+            if (is_array($status) && !empty($status)) {
+                ServerService::processStatus($node, $status);
+            }
+
+            $metrics = $request->input('metrics');
+            if (is_array($metrics) && !empty($metrics)) {
+                ServerService::updateMetrics($node, $metrics);
+            }
+        } catch (\Throwable $e) {
+            // Processing failed before completion: allow the node to retry.
+            if ($reportKey !== null) {
+                Cache::forget($reportKey);
+            }
+            throw $e;
         }
 
         return response()->json(['data' => true]);

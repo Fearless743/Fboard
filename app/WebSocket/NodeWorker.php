@@ -321,6 +321,7 @@ class NodeWorker
                 ])->values()->all(),
                 'base_config' => [
                     'push_interval' => (int) admin_setting('server_push_interval', 60),
+                    'pull_interval' => (int) admin_setting('server_pull_interval', 60),
                 ],
             ],
         ]));

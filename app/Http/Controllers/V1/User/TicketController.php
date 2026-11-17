@@ -238,9 +238,10 @@ class TicketController extends Controller
             return $this->fail([422, __('The current required minimum withdrawal commission is :limit', ['limit' => $limit / 100])]);
         }
 
+        $withdrawal = null;
         try {
             // 锁用户行：校验额度 + 扣除申请金额，防止同余额重复提现
-            DB::transaction(function () use ($request, $amountCents, $limit) {
+            DB::transaction(function () use ($request, $amountCents, $limit, &$withdrawal) {
                 $user = User::query()->lockForUpdate()->find($request->user()->id);
                 if (!$user) {
                     throw new ApiException(__('The user does not exist'));
@@ -280,6 +281,11 @@ class TicketController extends Controller
             throw $e;
         } catch (\Exception $e) {
             throw $e;
+        }
+
+        // 事务提交后再通知，避免队列在事务未提交时读取到不一致的数据
+        if ($withdrawal) {
+            HookManager::call('withdrawal.create.after', $withdrawal);
         }
 
         return $this->success(true);

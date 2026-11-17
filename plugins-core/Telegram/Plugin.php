@@ -5,6 +5,7 @@ namespace Plugin\Telegram;
 use App\Models\Order;
 use App\Models\Ticket;
 use App\Models\User;
+use App\Models\Withdrawal;
 use App\Services\Plugin\AbstractPlugin;
 use App\Services\Plugin\HookManager;
 use App\Services\TelegramService;
@@ -37,6 +38,7 @@ class Plugin extends AbstractPlugin
     $this->listen('ticket.create.after', [$this, 'sendTicketNotify'], 10);
     $this->listen('ticket.reply.user.after', [$this, 'sendTicketNotify'], 10);
     $this->listen('payment.notify.success', [$this, 'sendPaymentNotify'], 10);
+    $this->listen('withdrawal.create.after', [$this, 'sendWithdrawalNotify'], 10);
   }
 
   public function sendPaymentNotify(Order $order): void
@@ -105,6 +107,27 @@ class Plugin extends AbstractPlugin
     $TGmessage .= "━━━━━━━━━━━━━━━━━━━━\n";
     $TGmessage .= "📝 *主题*: `" . Helper::escapeMarkdown($ticket->subject) . "`\n";
     $TGmessage .= "💬 *内容*: `" . Helper::escapeMarkdown($message->message) . "`";
+    $this->telegramService->sendMessageWithAdmin($TGmessage, true);
+  }
+
+  public function sendWithdrawalNotify(Withdrawal $withdrawal): void
+  {
+    if (!$this->getConfig('enable_withdrawal_notify', true)) {
+      return;
+    }
+
+    $user = User::find($withdrawal->user_id);
+    if (!$user) {
+      return;
+    }
+
+    $TGmessage = "💸 *提现申请提醒* #{$withdrawal->id}\n";
+    $TGmessage .= "━━━━━━━━━━━━━━━━━━━━\n";
+    $TGmessage .= "📧 邮箱: `" . Helper::escapeMarkdown($user->email) . "`\n";
+    $TGmessage .= "💰 金额: `" . number_format($withdrawal->amount / 100, 2, '.', '') . " 元`\n";
+    $TGmessage .= "🏦 方式: `" . Helper::escapeMarkdown($withdrawal->withdraw_method) . "`\n";
+    $TGmessage .= "💳 账号: `" . Helper::escapeMarkdown($withdrawal->withdraw_account) . "`\n";
+    $TGmessage .= "🕐 时间: `" . date('Y-m-d H:i:s', (int) ($withdrawal->created_at ?? time())) . "`";
     $this->telegramService->sendMessageWithAdmin($TGmessage, true);
   }
 

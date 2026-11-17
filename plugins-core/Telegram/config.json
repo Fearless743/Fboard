@@ -1,7 +1,7 @@
 {
     "name": "Telegram Bot 集成",
     "code": "telegram",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "description": "Telegram Bot 消息处理和命令系统",
     "author": "Fboard Team",
     "require": {
@@ -19,6 +19,12 @@
             "default": true,
             "label": "开启支付通知",
             "description": "是否开启支付成功的 Telegram 通知功能"
+        },
+        "enable_withdrawal_notify": {
+            "type": "boolean",
+            "default": true,
+            "label": "开启提现通知",
+            "description": "是否开启提现申请提交的 Telegram 通知功能"
         },
         "start_welcome_title": {
             "type": "string",

@@ -6,14 +6,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{{ $title }}</title>
   <script>
-    {{-- @json 会对 < > ' & " 做 \uXXXX 转义，避免设置项注入内联脚本 --}}
-    window.settings = @json([
-      'base_url' => '/',
-      'title' => (string) $title,
-      'version' => (string) $version,
-      'logo' => (string) $logo,
-      'secure_path' => (string) $secure_path,
-    ]);
+    @php
+      // @json 会对 < > ' & " 做 \uXXXX 转义，避免设置项注入内联脚本。
+      // 先组装数组再交给 @json：表达式内的 (string) 强转会干扰 Blade 的括号匹配，
+      // 导致编译出的 PHP 被截断（"Unclosed '[' ... does not match ')'"）。
+      $settings = [
+        'base_url' => '/',
+        'title' => (string) $title,
+        'version' => (string) $version,
+        'logo' => (string) $logo,
+        'secure_path' => (string) $secure_path,
+      ];
+    @endphp
+    window.settings = @json($settings);
   </script>
   @php
     $manifestPath = public_path('assets/admin/.vite/manifest.json');

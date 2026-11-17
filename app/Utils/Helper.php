@@ -365,6 +365,193 @@ class Helper
         return 'dashboard';
     }
 
+    /**
+     * 服务端富文本 HTML 白名单清洗（纵深防御）。
+     *
+     * admin 前端已用 DOMPurify 消毒，这里防止攻击者绕过前端直接调用 API
+     * 写入恶意 HTML。仅保留排版类标签与安全属性，移除 script、on* 事件、
+     * javascript:/vbscript: URL、危险 data: URL 及 CSS expression 等。
+     *
+     * 未知标签只解包保留文本；script/style/iframe/form 等容器连同内容删除。
+     */
+    public static function sanitizeHtml(?string $html): string
+    {
+        $html = (string) $html;
+        if ($html === '') {
+            return '';
+        }
+
+        $allowedTags = [
+            'p' => true, 'br' => true, 'div' => true, 'span' => true,
+            'h1' => true, 'h2' => true, 'h3' => true, 'h4' => true, 'h5' => true, 'h6' => true,
+            'strong' => true, 'b' => true, 'em' => true, 'i' => true, 'u' => true,
+            's' => true, 'strike' => true, 'del' => true, 'ins' => true,
+            'sub' => true, 'sup' => true, 'small' => true, 'mark' => true,
+            'ul' => true, 'ol' => true, 'li' => true,
+            'blockquote' => true, 'pre' => true, 'code' => true,
+            'a' => true, 'img' => true, 'figure' => true, 'figcaption' => true,
+            'table' => true, 'thead' => true, 'tbody' => true, 'tfoot' => true,
+            'tr' => true, 'th' => true, 'td' => true, 'colgroup' => true, 'col' => true,
+            'hr' => true, 'dl' => true, 'dt' => true, 'dd' => true,
+            'section' => true, 'article' => true, 'header' => true, 'footer' => true,
+        ];
+
+        // 这些标签连同内容一起丢弃；其余未知标签只解包保留文本
+        $dropWithContent = [
+            'script' => true, 'style' => true, 'iframe' => true, 'object' => true,
+            'embed' => true, 'form' => true, 'input' => true, 'button' => true,
+            'textarea' => true, 'select' => true, 'option' => true,
+            'svg' => true, 'math' => true, 'link' => true, 'meta' => true,
+            'base' => true, 'template' => true, 'noscript' => true,
+        ];
+
+        $allowedAttrs = [
+            'class' => true, 'style' => true, 'href' => true, 'src' => true,
+            'alt' => true, 'title' => true, 'width' => true, 'height' => true,
+            'target' => true, 'rel' => true, 'colspan' => true, 'rowspan' => true,
+            'align' => true, 'valign' => true, 'dir' => true, 'lang' => true,
+            'span' => true,
+        ];
+
+        $dom = new \DOMDocument('1.0', 'UTF-8');
+        $previous = libxml_use_internal_errors(true);
+        $loaded = $dom->loadHTML(
+            '<?xml encoding="UTF-8"?><div id="__fboard_sanitize_root__">' . $html . '</div>',
+            LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD
+        );
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+
+        $root = $dom->documentElement;
+        if (!$loaded || !$root instanceof \DOMElement) {
+            return self::stripDangerousHtmlFallback($html, $allowedTags);
+        }
+
+        $xpath = new \DOMXPath($dom);
+
+        // 注释与处理指令全部移除（含 IE 条件注释）
+        $junk = $xpath->query('//comment() | //processing-instruction()');
+        if ($junk !== false) {
+            foreach ($junk as $node) {
+                $node->parentNode?->removeChild($node);
+            }
+        }
+
+        // 由深到浅处理：父节点解包时子节点已经清洗完毕
+        $nodes = $xpath->query('//*');
+        if ($nodes !== false) {
+            for ($i = $nodes->length - 1; $i >= 0; $i--) {
+                $node = $nodes->item($i);
+                if (!$node instanceof \DOMElement || $node === $root || !$node->parentNode) {
+                    continue;
+                }
+                $tag = strtolower($node->nodeName);
+
+                if (isset($dropWithContent[$tag])) {
+                    $node->parentNode->removeChild($node);
+                    continue;
+                }
+                if (!isset($allowedTags[$tag])) {
+                    // 未知标签解包，仅保留其文本内容
+                    while ($node->firstChild) {
+                        $node->parentNode->insertBefore($node->firstChild, $node);
+                    }
+                    $node->parentNode->removeChild($node);
+                    continue;
+                }
+
+                $attrs = [];
+                foreach ($node->attributes as $attr) {
+                    $attrs[] = $attr;
+                }
+                foreach ($attrs as $attr) {
+                    $name = strtolower($attr->nodeName);
+                    $value = (string) $attr->nodeValue;
+
+                    if (str_starts_with($name, 'on')) {
+                        $node->removeAttribute($attr->nodeName);
+                        continue;
+                    }
+                    if ($name === 'style') {
+                        if (preg_match('/(expression\s*\(|javascript\s*:|behavior\s*:|-moz-binding|@import|url\s*\(\s*["\']?\s*(?:javascript|vbscript):)/i', $value)) {
+                            $node->removeAttribute($attr->nodeName);
+                        }
+                        continue;
+                    }
+                    if (in_array($name, ['href', 'src'], true)) {
+                        if (!self::isSafeHtmlAttributeUrl($value)) {
+                            $node->removeAttribute($attr->nodeName);
+                        }
+                        continue;
+                    }
+                    if (!isset($allowedAttrs[$name]) && !str_starts_with($name, 'data-')) {
+                        $node->removeAttribute($attr->nodeName);
+                    }
+                }
+
+                // 新窗口打开一律补 noopener/noreferrer
+                if ($node->hasAttribute('target') && strtolower((string) $node->getAttribute('target')) === '_blank') {
+                    $rel = preg_split('/\s+/', strtolower(trim((string) $node->getAttribute('rel')))) ?: [];
+                    foreach (['noopener', 'noreferrer'] as $needed) {
+                        if (!in_array($needed, $rel, true)) {
+                            $rel[] = $needed;
+                        }
+                    }
+                    $node->setAttribute('rel', implode(' ', array_filter($rel)));
+                }
+            }
+        }
+
+        $out = '';
+        foreach ($root->childNodes as $child) {
+            $out .= $dom->saveHTML($child);
+        }
+        return $out;
+    }
+
+    /**
+     * 校验富文本属性里的 URL：只放行 http/https/mailto/tel、相对路径，
+     * 以及非 SVG 的 base64 图片 data URI。
+     */
+    private static function isSafeHtmlAttributeUrl(string $url): bool
+    {
+        $url = trim($url);
+        if ($url === '') {
+            return true;
+        }
+        // 换行/制表/空字节常被用来拆分 javascript: 之类的 scheme
+        if (preg_match('/[\x00-\x1F\x7F]/', $url)) {
+            $url = preg_replace('/[\x00-\x1F\x7F]/', '', $url) ?? '';
+        }
+        if ($url === '') {
+            return true;
+        }
+        if (preg_match('/^([a-zA-Z][a-zA-Z0-9+.-]*):/', $url, $matches)) {
+            $scheme = strtolower($matches[1]);
+            if (in_array($scheme, ['http', 'https', 'mailto', 'tel'], true)) {
+                return true;
+            }
+            if ($scheme === 'data' && preg_match('/^data:image\/(?:png|jpe?g|gif|webp|bmp|x-icon|avif);base64,[A-Za-z0-9+\/=]+$/i', $url)) {
+                return true;
+            }
+            return false;
+        }
+        return true;
+    }
+
+    /** DOMDocument 解析失败时的兜底清洗 */
+    private static function stripDangerousHtmlFallback(string $html, array $allowedTags): string
+    {
+        $html = preg_replace('/<(script|style|iframe|object|embed|form|input|button|textarea|select|svg|math|link|meta|base|template)\b[^>]*>.*?<\/\1\s*>/is', '', $html) ?? '';
+        $html = preg_replace('/<!--.*?-->|<\?.*?\?>/s', '', $html) ?? '';
+        $html = preg_replace('/\son[a-z]+\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $html) ?? '';
+        $allowed = '';
+        foreach ($allowedTags as $tag => $_) {
+            $allowed .= '<' . $tag . '>';
+        }
+        return strip_tags($html, $allowed);
+    }
+
     public static function generateOrderNo(): string
     {
         $randomChar = mt_rand(10000, 99999);

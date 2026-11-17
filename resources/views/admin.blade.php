@@ -6,13 +6,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{{ $title }}</title>
   <script>
-    window.settings = {
-      base_url: "/",
-      title: "{{ $title }}",
-      version: "{{ $version }}",
-      logo: "{{ $logo }}",
-      secure_path: "{{ $secure_path }}",
-    };
+    {{-- @json 会对 < > ' & " 做 \uXXXX 转义，避免设置项注入内联脚本 --}}
+    window.settings = @json([
+      'base_url' => '/',
+      'title' => (string) $title,
+      'version' => (string) $version,
+      'logo' => (string) $logo,
+      'secure_path' => (string) $secure_path,
+    ]);
   </script>
   @php
     $manifestPath = public_path('assets/admin/.vite/manifest.json');

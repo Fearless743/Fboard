@@ -200,6 +200,15 @@ class General extends AbstractProtocol
                 if ($alpn = data_get($protocol_settings, 'tls_settings.client_alpn', data_get($protocol_settings, 'tls_settings.alpn'))) {
                     $config['alpn'] = is_array($alpn) ? implode(',', $alpn) : $alpn;
                 }
+                // ECH: share the public ECH config list with clients that support it.
+                if ($ech = Helper::normalizeEchSettings(data_get($protocol_settings, 'tls_settings.ech'))) {
+                    if ($echConfigList = Helper::toMihomoEchConfig(data_get($ech, 'config'))) {
+                        $config['ech'] = $echConfigList;
+                    }
+                    if ($echSni = data_get($ech, 'query_server_name')) {
+                        $config['echSni'] = $echSni;
+                    }
+                }
                 break;
             case 2:
                 $config['security'] = "reality";

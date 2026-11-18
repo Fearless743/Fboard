@@ -48,7 +48,7 @@ class RegisterService
 
         // 检查验证码
         $captchaService = app(CaptchaService::class);
-        [$captchaValid, $captchaError] = $captchaService->verify($request);
+        [$captchaValid, $captchaError] = $captchaService->verify($request, 'register');
         if (!$captchaValid) {
             return [false, $captchaError];
         }

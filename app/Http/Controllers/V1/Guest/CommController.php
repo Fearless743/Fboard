@@ -12,6 +12,22 @@ class CommController extends Controller
 {
     public function config()
     {
+        // 仅下发当前启用的验证码类型所需的公钥，避免暴露未使用类型的配置
+        $captchaType = admin_setting('captcha_type', 'recaptcha');
+        $captchaPublicConfig = match ($captchaType) {
+            'turnstile' => [
+                'turnstile_site_key' => admin_setting('turnstile_site_key'),
+            ],
+            'recaptcha-v3' => [
+                'recaptcha_v3_site_key' => admin_setting('recaptcha_v3_site_key'),
+                'recaptcha_v3_score_threshold' => admin_setting('recaptcha_v3_score_threshold', 0.5),
+            ],
+            'recaptcha' => [
+                'recaptcha_site_key' => admin_setting('recaptcha_site_key'),
+            ],
+            default => [],
+        };
+
         $data = [
             'tos_url' => admin_setting('tos_url'),
             'is_email_verify' => (int) admin_setting('email_verify', 0) ? 1 : 0,
@@ -20,11 +36,8 @@ class CommController extends Controller
                 ? Helper::getEmailSuffix()
                 : 0,
             'is_captcha' => (int) admin_setting('captcha_enable', 0) ? 1 : 0,
-            'captcha_type' => admin_setting('captcha_type', 'recaptcha'),
-            'recaptcha_site_key' => admin_setting('recaptcha_site_key'),
-            'recaptcha_v3_site_key' => admin_setting('recaptcha_v3_site_key'),
-            'recaptcha_v3_score_threshold' => admin_setting('recaptcha_v3_score_threshold', 0.5),
-            'turnstile_site_key' => admin_setting('turnstile_site_key'),
+            'captcha_type' => $captchaType,
+            ...$captchaPublicConfig,
             'app_description' => admin_setting('app_description'),
             'app_url' => admin_setting('app_url'),
             'logo' => admin_setting('logo'),

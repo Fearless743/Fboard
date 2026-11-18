@@ -13,6 +13,22 @@ class AppController extends Controller
 {
     public function getConfig(Request $request)
     {
+        // 仅下发当前启用的验证码类型所需的公钥，避免暴露未使用类型的配置
+        $captchaType = admin_setting('captcha_type', 'recaptcha');
+        $captchaPublicConfig = match ($captchaType) {
+            'turnstile' => [
+                'turnstile_site_key' => admin_setting('turnstile_site_key', ''),
+            ],
+            'recaptcha-v3' => [
+                'recaptcha_v3_site_key' => admin_setting('recaptcha_v3_site_key', ''),
+                'recaptcha_v3_score_threshold' => (float) admin_setting('recaptcha_v3_score_threshold', 0.5),
+            ],
+            'recaptcha' => [
+                'recaptcha_site_key' => admin_setting('recaptcha_site_key', ''),
+            ],
+            default => [],
+        };
+
         $config = [
             'app_info' => [
                 'app_name' => admin_setting('app_name', 'Fboard'), // 应用名称
@@ -83,12 +99,9 @@ class AppController extends Controller
                 'is_email_verify' => (int) admin_setting('email_verify', 1), // 是否开启邮箱验证 (0/1)
                 'is_invite_force' => (int) admin_setting('invite_force', 0), // 是否强制邀请码 (0/1)
                 'email_whitelist_suffix' => (int) admin_setting('email_whitelist_suffix', 0), // 邮箱白名单后缀 (0/1)
-                'is_captcha' => (int) admin_setting('captcha_enable', 1), // 是否开启验证码 (0/1)
-                'captcha_type' => admin_setting('captcha_type', 'recaptcha'), // 验证码类型 (recaptcha/turnstile)
-                'recaptcha_site_key' => admin_setting('recaptcha_site_key', '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI'), // reCAPTCHA 站点密钥
-                'recaptcha_v3_site_key' => admin_setting('recaptcha_v3_site_key', '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI'), // reCAPTCHA v3 站点密钥
-                'recaptcha_v3_score_threshold' => (float) admin_setting('recaptcha_v3_score_threshold', 0.5), // reCAPTCHA v3 分数阈值
-                'turnstile_site_key' => admin_setting('turnstile_site_key', '0x4AAAAAAAABkMYinukE8nzUg'), // Turnstile 站点密钥
+                'is_captcha' => (int) admin_setting('captcha_enable', 0), // 是否开启验证码 (0/1)，与校验端默认值保持一致
+                'captcha_type' => $captchaType, // 验证码类型 (recaptcha/recaptcha-v3/turnstile)
+                ...$captchaPublicConfig, // 仅返回当前类型所需的公钥
             ],
             'payment_config' => [
                 'currency' => admin_setting('currency', 'CNY'), // 货币类型

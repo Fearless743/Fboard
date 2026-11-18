@@ -18,9 +18,9 @@ class CommController extends Controller
 
     public function sendEmailVerify(CommSendEmailVerify $request)
     {
-                // 验证人机验证码
+        // 验证人机验证码
         $captchaService = app(CaptchaService::class);
-        [$captchaValid, $captchaError] = $captchaService->verify($request);
+        [$captchaValid, $captchaError] = $captchaService->verify($request, 'send_email_verify');
         if (!$captchaValid) {
             return $this->fail($captchaError);
         }
